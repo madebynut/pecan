@@ -1,0 +1,16 @@
+[package]
+name = "pecan-import"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Bounded local document conversion for Pecan"
+
+[dependencies]
+anydoc.workspace = true
+pecan-document.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

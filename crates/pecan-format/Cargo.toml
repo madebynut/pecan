@@ -1,0 +1,29 @@
+[package]
+name = "pecan-format"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Bounded local code formatting and source mappings for Pecan"
+[dependencies]
+pecan-document.workspace = true
+async-lock.workspace = true
+blake3.workspace = true
+pulldown-cmark.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+pretty_yaml.workspace = true
+taplo.workspace = true
+yaml-rust2.workspace = true
+similar.workspace = true
+logos.workspace = true
+dprint-plugin-typescript = "0.96"
+malva = "0.16"
+markup_fmt = "0.27"
+sqlformat = "0.5"
+[dev-dependencies]
+futures-lite.workspace = true
+
+[lints]
+workspace = true

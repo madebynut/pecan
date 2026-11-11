@@ -1,0 +1,711 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -95,185 +95,50 @@
+ name = "gpui"
+ path = "src/gpui.rs"
+ 
+-[[example]]
+-name = "a11y"
+-path = "examples/a11y.rs"
+-
+-[[example]]
+-name = "active_state_bug"
+-path = "examples/active_state_bug.rs"
+-
+-[[example]]
+-name = "anchor"
+-path = "examples/anchor.rs"
+-
+-[[example]]
+-name = "animation"
+-path = "examples/animation.rs"
+-
+-[[example]]
+-name = "data_table"
+-path = "examples/data_table.rs"
+-
+-[[example]]
+-name = "drag_drop"
+-path = "examples/drag_drop.rs"
+-
+-[[example]]
+-name = "focus_visible"
+-path = "examples/focus_visible.rs"
+-
+-[[example]]
+-name = "gif_viewer"
+-path = "examples/gif_viewer.rs"
+-
+-[[example]]
+-name = "gradient"
+-path = "examples/gradient.rs"
+-
+-[[example]]
+-name = "grid_layout"
+-path = "examples/grid_layout.rs"
+-
+-[[example]]
+-name = "hello_world"
+-path = "examples/hello_world.rs"
+-
+-[[example]]
+-name = "image"
+-path = "examples/image/image.rs"
+-
+-[[example]]
+-name = "image_gallery"
+-path = "examples/image_gallery.rs"
+-
+-[[example]]
+-name = "image_loading"
+-path = "examples/image_loading.rs"
+-
+-[[example]]
+-name = "input"
+-path = "examples/input.rs"
+-
+-[[example]]
+-name = "layer_shell"
+-path = "examples/layer_shell.rs"
+-
+-[[example]]
+-name = "list_example"
+-path = "examples/list_example.rs"
+-
+-[[example]]
+-name = "mouse_pressure"
+-path = "examples/mouse_pressure.rs"
+-
+-[[example]]
+-name = "move_entity_between_windows"
+-path = "examples/move_entity_between_windows.rs"
+-
+-[[example]]
+-name = "on_window_close_quit"
+-path = "examples/on_window_close_quit.rs"
+-
+-[[example]]
+-name = "opacity"
+-path = "examples/opacity.rs"
+-
+-[[example]]
+-name = "ownership_post"
+-path = "examples/ownership_post.rs"
+-
+-[[example]]
+-name = "painting"
+-path = "examples/painting.rs"
+-
+-[[example]]
+-name = "paths_bench"
+-path = "examples/paths_bench.rs"
+-
+-[[example]]
+-name = "pattern"
+-path = "examples/pattern.rs"
+-
+-[[example]]
+-name = "popover"
+-path = "examples/popover.rs"
+-
+-[[example]]
+-name = "scrollable"
+-path = "examples/scrollable.rs"
+-
+-[[example]]
+-name = "set_menus"
+-path = "examples/set_menus.rs"
+-
+-[[example]]
+-name = "shadow"
+-path = "examples/shadow.rs"
+-
+-[[example]]
+-name = "svg"
+-path = "examples/svg/svg.rs"
+-
+-[[example]]
+-name = "system_notifications"
+-path = "examples/system_notifications.rs"
+-
+-[[example]]
+-name = "tab_stop"
+-path = "examples/tab_stop.rs"
+-
+-[[example]]
+-name = "testing"
+-path = "examples/testing.rs"
+-
+-[[example]]
+-name = "text"
+-path = "examples/text.rs"
+-
+-[[example]]
+-name = "text_layout"
+-path = "examples/text_layout.rs"
+-
+-[[example]]
+-name = "text_wrapper"
+-path = "examples/text_wrapper.rs"
+-
+-[[example]]
+-name = "toggle_headless"
+-path = "examples/toggle_headless.rs"
+-
+-[[example]]
+-name = "tree"
+-path = "examples/tree.rs"
+-
+-[[example]]
+-name = "uniform_list"
+-path = "examples/uniform_list.rs"
+-
+-[[example]]
+-name = "view_example"
+-path = "examples/view_example/view_example_main.rs"
+-
+-[[example]]
+-name = "window"
+-path = "examples/window.rs"
+-
+-[[example]]
+-name = "window_movable"
+-path = "examples/window_movable.rs"
+-
+-[[example]]
+-name = "window_positioning"
+-path = "examples/window_positioning.rs"
+-
+-[[example]]
+-name = "window_shadow"
+-path = "examples/window_shadow.rs"
+-
+-[[test]]
+-name = "action_macros"
+-path = "tests/action_macros.rs"
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
+ 
+ [dependencies.accesskit]
+ version = "0.24.0"
+--- a/src/elements/text.rs
++++ b/src/elements/text.rs
+@@ -3,7 +3,7 @@
+     HighlightStyle, Hitbox, HitboxBehavior, InspectorElementId, IntoElement, LayoutId,
+     MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, SharedString, Size, TextOverflow,
+     TextRun, TextStyle, TooltipId, TruncateFrom, WhiteSpace, Window, WrappedLine,
+-    WrappedLineLayout, register_tooltip_mouse_handlers, set_tooltip_on_window,
++    WrappedLineLayout, point, register_tooltip_mouse_handlers, set_tooltip_on_window,
+ };
+ use anyhow::Context as _;
+ use gpui_util::ResultExt;
+@@ -628,6 +628,9 @@
+     truncate_width: Option<Pixels>,
+     size: Option<Size<Pixels>>,
+     bounds: Option<Bounds<Pixels>>,
++    natural_lines: Option<SmallVec<[WrappedLine; 1]>>,
++    justification: Option<(Pixels, bool)>,
++    first_ink: Option<Option<(Pixels, Pixels)>>,
+ }
+ 
+ impl TextLayout {
+@@ -761,6 +764,9 @@
+                         truncate_width,
+                         size: Some(Size::default()),
+                         bounds: None,
++                        natural_lines: None,
++                        justification: None,
++                        first_ink: None,
+                     });
+                     return Size::default();
+                 };
+@@ -780,6 +786,9 @@
+                     truncate_width,
+                     size: Some(size),
+                     bounds: None,
++                    natural_lines: None,
++                    justification: None,
++                    first_ink: None,
+                 });
+ 
+                 size
+@@ -794,6 +803,217 @@
+             .with_context(|| format!("measurement has not been performed on {text}"))
+             .unwrap();
+         element_state.bounds = Some(bounds);
++    }
++
++    /// Visible glyph extent of the first text row, in window coordinates.
++    /// Font metrics are resolved once per shaped layout; moving the element
++    /// only translates the cached extent. Blank rows have no ink extent.
++    pub fn first_line_ink(&self, window: &Window) -> Option<Bounds<Pixels>> {
++        let mut inner = self.0.borrow_mut();
++        let inner = inner.as_mut()?;
++        if inner.first_ink.is_none() {
++            let ink = inner.lines.first().and_then(|line| {
++                let end = line
++                    .wrap_boundaries
++                    .first()
++                    .map(|end| (end.run_ix, end.glyph_ix));
++                let mut ink: Option<(Pixels, Pixels)> = None;
++                for (run_ix, run) in line.unwrapped_layout.runs.iter().enumerate() {
++                    for (glyph_ix, glyph) in run.glyphs.iter().enumerate() {
++                        if end.is_some_and(|end| (run_ix, glyph_ix) >= end) {
++                            break;
++                        }
++                        let Ok(bounds) = window.text_system().typographic_bounds_for_glyph(
++                            run.font_id,
++                            line.font_size(),
++                            glyph.id,
++                        ) else {
++                            continue;
++                        };
++                        if bounds.size.height <= Pixels::ZERO || bounds.size.width <= Pixels::ZERO {
++                            continue;
++                        }
++                        // Font glyph coordinates are y-up; window coordinates are y-down.
++                        let top = -bounds.bottom() + glyph.position.y;
++                        let bottom = -bounds.top() + glyph.position.y;
++                        ink = Some(
++                            ink.map_or((top, bottom), |(lo, hi)| (lo.min(top), hi.max(bottom))),
++                        );
++                    }
++                }
++                let (top, bottom) = ink?;
++                let baseline =
++                    (inner.line_height - line.ascent() - line.descent()) / 2. + line.ascent();
++                Some((baseline + top, baseline + bottom))
++            });
++            inner.first_ink = Some(ink);
++        }
++        let (top, bottom) = inner.first_ink??;
++        let bounds = inner.bounds?;
++        Some(Bounds::from_corners(
++            point(bounds.left(), bounds.top() + top),
++            point(bounds.right(), bounds.top() + bottom),
++        ))
++    }
++
++    /// Byte boundaries where spacing may expand without splitting a word or a glyph cluster.
++    pub fn justification_boundaries(text: &str) -> Vec<usize> {
++        if text
++            .chars()
++            .any(|c| matches!(c as u32, 0x590..=0x8ff | 0xfb1d..=0xfdff | 0xfe70..=0xfeff))
++        {
++            return Vec::new();
++        }
++        fn cjk(c: char) -> bool {
++            matches!(c as u32, 0x3400..=0x9fff | 0x20000..=0x3134f |
++                0x3040..=0x30ff | 0xac00..=0xd7af)
++        }
++        let mut previous = None;
++        let mut has_content = false;
++        let mut boundaries = Vec::new();
++        for (index, current) in text.char_indices() {
++            if let Some(before) = previous {
++                // A fragment's leading space separates it from an inline atom;
++                // only spaces between words may absorb justification.
++                let space = has_content && before == ' ' && !current.is_whitespace();
++                let ideograph = (cjk(before) || cjk(current))
++                    && !before.is_whitespace()
++                    && !current.is_whitespace()
++                    && !"（([【《「『".contains(before)
++                    && !"，。！？：；、）)]】》」』,.!?;:".contains(current);
++                if space || ideograph {
++                    boundaries.push(index);
++                }
++            }
++            previous = Some(current);
++            has_content |= !current.is_whitespace();
++        }
++        boundaries
++    }
++
++    /// The width used to wrap the natural shaped layout.
++    pub fn wrap_width(&self) -> Option<Pixels> {
++        self.0.borrow().as_ref().and_then(|state| state.wrap_width)
++    }
++
++    /// Justifies soft-wrapped rows, preserving each hard line's final row.
++    /// Call after prepaint so selection and painting share the adjusted glyph positions.
++    pub fn justify_wrapped(&self, width: Pixels) {
++        self.set_justification(width, false);
++    }
++
++    /// Justifies one already-wrapped fragment without reshaping or changing its source indices.
++    pub fn justify_single_line(&self, width: Pixels) {
++        self.set_justification(width, true);
++    }
++
++    /// Restores the natural positions when a retained layout is used without justification.
++    pub fn clear_justification(&self) {
++        if let Some(state) = self.0.borrow_mut().as_mut() {
++            if let Some(lines) = state.natural_lines.take() {
++                state.lines = lines;
++            }
++            state.justification = None;
++        }
++    }
++
++    fn set_justification(&self, width: Pixels, include_last: bool) {
++        use crate::{LineLayout, WrappedLineLayout, px};
++        let mut state = self.0.borrow_mut();
++        let Some(state) = state.as_mut() else { return };
++        if state.justification == Some((width, include_last)) {
++            return;
++        }
++        if let Some(lines) = state.natural_lines.as_ref() {
++            state.lines = lines.clone();
++        } else {
++            state.natural_lines = Some(state.lines.clone());
++        }
++        state.justification = Some((width, include_last));
++        for line in &mut state.lines {
++            let natural = &line.layout.unwrapped_layout;
++            let glyphs = natural
++                .runs
++                .iter()
++                .flat_map(|run| &run.glyphs)
++                .collect::<Vec<_>>();
++            // Visual-order RTL runs must keep their platform layout.
++            if glyphs.windows(2).any(|pair| pair[0].index > pair[1].index) {
++                continue;
++            }
++            let mut rows = vec![0];
++            rows.extend(
++                line.wrap_boundaries
++                    .iter()
++                    .map(|boundary| natural.runs[boundary.run_ix].glyphs[boundary.glyph_ix].index),
++            );
++            rows.push(natural.len);
++            let mut expansions = Vec::new();
++            for (row_ix, row) in rows.windows(2).enumerate() {
++                if !include_last && row_ix + 2 == rows.len() {
++                    break;
++                }
++                let Some(text) = line.text.get(row[0]..row[1]) else {
++                    continue;
++                };
++                // InlineFlow has already reserved trailing whitespace in the
++                // fragment's advance. Trimming it here would expand it twice.
++                let trimmed_end = if include_last {
++                    row[1]
++                } else {
++                    row[0] + text.trim_end_matches(' ').len()
++                };
++                let row_width = natural.x_for_index(trimmed_end) - natural.x_for_index(row[0]);
++                let extra = width - row_width;
++                if extra <= px(0.5) {
++                    continue;
++                }
++                let boundaries = Self::justification_boundaries(text)
++                    .into_iter()
++                    .map(|index| index + row[0])
++                    .filter(|index| {
++                        *index < trimmed_end
++                            && glyphs
++                                .binary_search_by_key(index, |glyph| glyph.index)
++                                .is_ok()
++                    })
++                    .collect::<Vec<_>>();
++                if boundaries.is_empty() {
++                    continue;
++                }
++                let spacing = extra / boundaries.len() as f32;
++                expansions.extend(boundaries.into_iter().map(|index| (index, spacing)));
++            }
++            if expansions.is_empty() {
++                continue;
++            }
++            let mut runs = natural.runs.clone();
++            let mut expansion_ix = 0;
++            let mut offset = Pixels::ZERO;
++            for glyph in runs.iter_mut().flat_map(|run| &mut run.glyphs) {
++                while expansion_ix < expansions.len() && expansions[expansion_ix].0 <= glyph.index {
++                    offset += expansions[expansion_ix].1;
++                    expansion_ix += 1;
++                }
++                glyph.position.x += offset;
++            }
++            let layout = LineLayout {
++                font_size: natural.font_size,
++                width: natural.width + offset,
++                ascent: natural.ascent,
++                descent: natural.descent,
++                runs,
++                len: natural.len,
++            };
++            line.layout = Arc::new(WrappedLineLayout {
++                unwrapped_layout: Arc::new(layout),
++                wrap_boundaries: line.wrap_boundaries.clone(),
++                wrap_width: line.wrap_width,
++            });
++        }
++        if let Some(bounds) = &mut state.bounds {
++            bounds.size.width = bounds.size.width.max(width);
++        }
+     }
+ 
+     fn paint(&self, text: &str, window: &mut Window, cx: &mut App) {
+--- a/src/style.rs
++++ b/src/style.rs
+@@ -150,6 +150,8 @@
+     MinContent,
+     /// The column or row size can be determined by the max content
+     MaxContent,
++    /// Content-width tracks with the last track filling remaining space.
++    MaxContentStretchLast,
+ }
+ 
+ /// A simplified representation of the grid-template-* value
+--- a/src/styled.rs
++++ b/src/styled.rs
+@@ -776,6 +776,15 @@
+         self
+     }
+ 
++    /// Keeps content-width columns and fills surplus width with the last column.
++    fn grid_cols_max_content_stretch_last(mut self, cols: u16) -> Self {
++        self.style().grid_cols = Some(GridTemplate {
++            repeat: cols,
++            min_size: GridTemplateMinSize::MaxContentStretchLast,
++        });
++        self
++    }
++
+     /// Sets the grid rows of this element.
+     fn grid_rows(mut self, rows: u16) -> Self {
+         self.style().grid_rows = Some(GridTemplate {
+--- a/src/taffy.rs
++++ b/src/taffy.rs
+@@ -2,7 +2,7 @@
+     AbsoluteLength, App, Bounds, DefiniteLength, Edges, GridTemplate, Length, Pixels, Point, Size,
+     Style, Window, size,
+     util::{
+-        ceil_to_device_pixel, round_half_toward_zero, round_stroke_to_device_pixel,
++        ceil_to_device_pixel, round_position_to_device_pixel, round_stroke_to_device_pixel,
+         round_to_device_pixel,
+     },
+ };
+@@ -295,9 +295,12 @@
+     // by `scale_factor`, so that snapping targets physical pixels. Bounds
+     // are divided by `scale_factor` before being returned to GPUI.
+     //
+-    // Midpoints are rounded toward zero. This is a stylistic choice: a
++    // Length midpoints are rounded toward zero. This is a stylistic choice: a
+     // 1-logical-pixel line at 150% scale should render as 1 dp rather than
+-    // 2 dp.
++    // 2 dp. Coordinate midpoints are rounded toward positive infinity instead:
++    // toward-zero is not translation invariant, so a box straddling the window
++    // origin (e.g. a scrolled list row at y = -599.5) would snap its far edge
++    // 1 dp past the next box's near edge, letting that sibling cover it.
+     //
+     // Pixel snapping is done in two phases:
+     //
+@@ -380,8 +383,8 @@
+ 
+         let absolute_far = absolute_outer_origin + Point::from(Size::from(layout_size));
+         let snapped_bounds = Bounds::from_corners(
+-            absolute_outer_origin.map(round_half_toward_zero),
+-            absolute_far.map(round_half_toward_zero),
++            absolute_outer_origin.map(|c| round_position_to_device_pixel(c, 1.)),
++            absolute_far.map(|c| round_position_to_device_pixel(c, 1.)),
+         );
+ 
+         let bounds = (snapped_bounds / scale_factor).map(Pixels);
+@@ -478,6 +481,19 @@
+                             template.repeat,
+                             vec![minmax(min_content(), fr(1.0_f32))],
+                         )]
++                    }
++                    crate::GridTemplateMinSize::MaxContentStretchLast => {
++                        let mut tracks = Vec::new();
++                        if template.repeat > 1 {
++                            tracks.push(repeat(
++                                template.repeat - 1,
++                                vec![minmax(max_content(), max_content())],
++                            ));
++                        }
++                        if template.repeat > 0 {
++                            tracks.push(repeat(1, vec![minmax(max_content(), fr(1.0_f32))]));
++                        }
++                        tracks
+                     }
+                     // grid-template-*: repeat(<number>, minmax(0, max-content))
+                     crate::GridTemplateMinSize::MaxContent => {
+--- a/src/text_system/line.rs
++++ b/src/text_system/line.rs
+@@ -439,7 +439,7 @@
+ }
+ 
+ /// A line of text that has been shaped, decorated, and wrapped by the text layout system.
+-#[derive(Default, Debug, Deref, DerefMut)]
++#[derive(Default, Debug, Clone, Deref, DerefMut)]
+ pub struct WrappedLine {
+     #[deref]
+     #[deref_mut]
+--- a/src/text_system.rs
++++ b/src/text_system.rs
+@@ -391,6 +391,20 @@
+             .platform_text_system
+             .glyph_for_char(font_id, character)
+             .with_context(|| format!("glyph not found for character '{character}'"))?;
++        self.typographic_bounds_for_glyph(font_id, font_size, glyph_id)
++    }
++
++    /// Get the typographic bounds for a shaped glyph in its actual font and size.
++    ///
++    /// Unlike the character-based lookup, this also handles ligatures and fallback
++    /// glyphs returned by shaping. Callers measuring a line should retain the result
++    /// with their layout instead of querying every paint.
++    pub fn typographic_bounds_for_glyph(
++        &self,
++        font_id: FontId,
++        font_size: Pixels,
++        glyph_id: GlyphId,
++    ) -> Result<Bounds<Pixels>> {
+         let bounds = self
+             .platform_text_system
+             .typographic_bounds(font_id, glyph_id)?;
+--- a/src/util.rs
++++ b/src/util.rs
+@@ -141,6 +141,14 @@
+     round_half_toward_zero(logical * scale_factor)
+ }
+ 
++/// Rounds a coordinate (not a length) to a device pixel with 0.5 ties toward
++/// positive infinity. Unlike half-toward-zero, this commutes with integer
++/// translation, so an edge shared by boxes on opposite sides of zero snaps once.
++#[inline]
++pub(crate) fn round_position_to_device_pixel(logical: f32, scale_factor: f32) -> f32 {
++    (logical * scale_factor + 0.5).floor()
++}
++
+ #[inline]
+ pub(crate) fn round_stroke_to_device_pixel(logical: f32, scale_factor: f32) -> f32 {
+     if logical == 0.0 {
+@@ -217,6 +225,26 @@
+     }
+ 
+     #[test]
++    fn test_position_rounding_commutes_with_translation() {
++        for scale in [1.0, 1.5, 2.0] {
++            for origin in [-600.5, -599.5, -0.5, -0.25, 0.25, 0.5, 10.5] {
++                // Lengths that are whole device pixels at every tested scale.
++                for length in [2.0, 1070.0] {
++                    let near = round_position_to_device_pixel(origin, scale);
++                    let far = round_position_to_device_pixel(origin + length, scale);
++                    assert_eq!(
++                        far - near,
++                        length * scale,
++                        "origin {origin}, length {length}, scale {scale}"
++                    );
++                }
++            }
++        }
++        assert_eq!(round_position_to_device_pixel(-599.5, 1.0), -599.0);
++        assert_eq!(round_position_to_device_pixel(470.5, 1.0), 471.0);
++    }
++
++    #[test]
+     fn test_round_half_toward_zero_f64() {
+         assert_eq!(round_half_toward_zero_f64(0.5), 0.0);
+         assert_eq!(round_half_toward_zero_f64(-0.5), 0.0);
+--- a/src/window.rs
++++ b/src/window.rs
+@@ -77,7 +77,8 @@
+ use self::a11y::ROOT_NODE_ID;
+ use crate::util::{
+     atomic_incr_if_not_zero, ceil_to_device_pixel, floor_to_device_pixel, round_half_toward_zero,
+-    round_half_toward_zero_f64, round_stroke_to_device_pixel, round_to_device_pixel,
++    round_half_toward_zero_f64, round_position_to_device_pixel, round_stroke_to_device_pixel,
++    round_to_device_pixel,
+ };
+ pub use prompts::*;
+ 
+@@ -3434,7 +3435,7 @@
+             thickness
+         };
+         Bounds {
+-            origin: origin.map(|c| ScaledPixels(round_to_device_pixel(c.0, scale_factor))),
++            origin: origin.map(|c| ScaledPixels(round_position_to_device_pixel(c.0, scale_factor))),
+             size: size(self.snap_stroke(width), height),
+         }
+     }
+@@ -3514,10 +3515,10 @@
+     #[inline]
+     fn snap_bounds(&self, bounds: Bounds<Pixels>) -> Bounds<ScaledPixels> {
+         let scale_factor = self.scale_factor();
+-        let left = round_to_device_pixel(bounds.left().0, scale_factor);
+-        let top = round_to_device_pixel(bounds.top().0, scale_factor);
+-        let right = round_to_device_pixel(bounds.right().0, scale_factor).max(left);
+-        let bottom = round_to_device_pixel(bounds.bottom().0, scale_factor).max(top);
++        let left = round_position_to_device_pixel(bounds.left().0, scale_factor);
++        let top = round_position_to_device_pixel(bounds.top().0, scale_factor);
++        let right = round_position_to_device_pixel(bounds.right().0, scale_factor).max(left);
++        let bottom = round_position_to_device_pixel(bounds.bottom().0, scale_factor).max(top);
+         Bounds::from_corners(
+             point(ScaledPixels(left), ScaledPixels(top)),
+             point(ScaledPixels(right), ScaledPixels(bottom)),
+@@ -5021,7 +5022,7 @@
+         let scale_factor = self.scale_factor();
+         let height = style.thickness;
+         let bounds = Bounds {
+-            origin: origin.map(|c| ScaledPixels(round_to_device_pixel(c.0, scale_factor))),
++            origin: origin.map(|c| ScaledPixels(round_position_to_device_pixel(c.0, scale_factor))),
+             size: size(self.snap_stroke(width), self.snap_stroke(height)),
+         };
+         let opacity = self.element_opacity();
+@@ -5509,7 +5510,9 @@
+             .unwrap()
+             .layout_bounds(layout_id, scale_factor)
+             .map(Into::into);
+-        let snapped_offset = self.pixel_snap_point(self.element_offset());
++        let snapped_offset = self
++            .element_offset()
++            .map(|c| px(round_position_to_device_pixel(c.0, scale_factor) / scale_factor));
+         bounds.origin += snapped_offset;
+         bounds
+     }

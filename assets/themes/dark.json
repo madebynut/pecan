@@ -1,0 +1,58 @@
+{
+  "name": "Pecan Dark",
+  "appearance": "dark",
+  "style": {
+    "editor.background": "#242424",
+    "editor.foreground": "#eeeeee",
+    "editor.active_line.background": "#333333",
+    "editor.line_number": "#888888",
+    "syntax": {
+      "keyword": {
+        "color": "#c6a0f6",
+        "font_weight": 600
+      },
+      "comment": {
+        "color": "#9099a8",
+        "font_style": "italic"
+      },
+      "comment.doc": {
+        "color": "#9099a8",
+        "font_style": "italic"
+      },
+      "string": {
+        "color": "#a6da95"
+      },
+      "number": {
+        "color": "#8aadf4"
+      },
+      "function": {
+        "color": "#eed49f"
+      },
+      "type": {
+        "color": "#8bd5ca",
+        "font_weight": 600
+      },
+      "punctuation": {
+        "color": "#b8c0cc"
+      },
+      "constant": {
+        "color": "#8aadf4"
+      },
+      "property": {
+        "color": "#8aadf4"
+      },
+      "operator": {
+        "color": "#c6a0f6"
+      },
+      "variable": {
+        "color": "#eeeeee"
+      },
+      "tag": {
+        "color": "#8bd5ca"
+      },
+      "attribute": {
+        "color": "#eed49f"
+      }
+    }
+  }
+}

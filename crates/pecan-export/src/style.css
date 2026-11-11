@@ -1,0 +1,86 @@
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+html { background: #fff; color: #242424; }
+body { margin: 0 auto; padding: 48px 36px 72px; -webkit-font-smoothing: antialiased; }
+h1,h2,h3,h4,h5,h6 { font-weight: 650; line-height: 1.35; margin: 1.6em 0 .65em; break-after: avoid; }
+h1 { font-size: 2em; } h2 { font-size: 1.6em; } h3 { font-size: 1.3em; }
+h4 { font-size: 1.15em; } h5 { font-size: 1.05em; } h6 { font-size: 1em; color: #666; }
+body > :first-child { margin-top: 0; }
+p { margin: .75em 0; text-align: justify; overflow-wrap: anywhere; widows: 3; orphans: 3; }
+a { overflow-wrap: anywhere; color: #365d8b; text-decoration-thickness: 1px; text-underline-offset: 3px; cursor: pointer; }
+blockquote { color: #747474; background: #f7f7f7; border-left: 3px solid #d4d4d4; border-radius: 0 4px 4px 0; margin: 1.25em 0; padding: .55em 1.25em; }
+.pecan-highlight { color: #242424; background: #fff6e8; border: 1px solid #f0e0c0; border-radius: 4px; margin: 1.1em 0; padding: .8em 1.15em; }
+.pecan-highlight > :first-child { margin-top: 0; }
+.pecan-highlight > :last-child { margin-bottom: 0; }
+.pecan-highlight p { text-align: left; }
+/* A hanging symbol participates in the same baseline as text. Wrapped body
+   lines and subsequent blocks stay in one column without an artificial row. */
+.pecan-highlight:has(> .note-lead) > * { margin-left: 1.75em; }
+.note-lead > img.note-icon { margin-left: -1.75em; margin-right: .75em; }
+img.note-icon { width: 1em; height: 1em; max-width: none; }
+.note-heading { display: block; padding-left: 1.5em; }
+.note-heading > img.note-icon { margin-left: -1.5em; margin-right: .5em; }
+.note-heading-text { min-width: 0; }
+/* A note beginning with a non-text block retains a standalone gutter symbol. */
+.pecan-highlight > img.note-icon { float: left; margin-right: 12px; }
+.pecan-highlight > img.note-icon ~ * { margin-left: 1.75em; }
+.pecan-note, .pecan-info { background: #e8f2ff; border-color: #c5daf6; }
+.pecan-tip { background: #e7f6ee; border-color: #c6e6d2; }
+.pecan-important { background: #f4eaff; border-color: #e0c8f6; }
+.pecan-warning { background: #fff6e8; border-color: #f0e0c0; }
+.pecan-caution, .pecan-error { background: #fdecec; border-color: #f5c8c8; }
+code { background: #f3f3f3; border: 1px solid #dedede; border-radius: 3px; padding: .08em .3em; font-size: .88em; }
+.code-block { border: 1px solid #dedede; border-radius: 4px; margin: 1.25em 0; background: var(--code-body); }
+.code-language { color: #777; font: 11px/16px system-ui; min-height: 40px; padding: 12px 16px; background: var(--code-header); border-radius: 3px 3px 0 0; text-transform: uppercase; text-align: right; display: flex; justify-content: flex-end; align-items: center; gap: 6px; }
+img.language-logo { width: 16px; height: 16px; flex: 0 0 16px; }
+.code-language > span { min-width: 0; overflow-wrap: anywhere; }
+pre { margin: 0; padding: 10px 16px 14px; overflow-x: auto; white-space: pre; line-height: 1.65; tab-size: 4; }
+pre code { padding: 0; border: 0; background: none; border-radius: 0; font-size: inherit; }
+img { max-width: 100%; height: auto; vertical-align: middle; }
+.diagram { margin: 1.4em 0; padding: 20px; border: 1px solid #e5e5e5; border-radius: 4px; text-align: center; }
+.diagram img { display: block; margin: 0 auto; max-width: 100%; }
+img.formula { max-width: 100%; }
+.display-math { margin: 1.3em 0; text-align: center; }
+li { margin: .25em 0; } li > p { margin: .35em 0; }
+/* A native checkbox sits on the alphabetic baseline, above the list marker
+   that is centered on the line. Center the box on that same line. */
+li input[type="checkbox"] { vertical-align: middle; margin: 0 .25em 0 0; }
+table { display: block; overflow-x: auto; border-collapse: collapse; margin: 1.2em 0; max-width: 100%; font-size: .93em; }
+th, td { border: 1px solid #dedede; padding: 9px 14px; vertical-align: middle; white-space: nowrap; }
+th { background: #f5f5f5; font-weight: 600; }
+tbody tr:nth-child(even) { background: #fbfbfb; }
+/* A cell may hold paragraphs and lists. They follow the column and keep the row
+   compact; an ordered marker needs more room than a bullet. */
+td p, th p { margin: 0; text-align: inherit; }
+td > p + p, th > p + p { margin-top: .5em; }
+td ul, td ol, th ul, th ol { margin: .35em 0; padding-left: 1.5em; }
+td ol, th ol { padding-left: 2.2em; }
+td > :first-child, th > :first-child { margin-top: 0; }
+td > :last-child, th > :last-child { margin-bottom: 0; }
+/* Bullets count nesting from the cell, not from a list around the table. */
+td > ul, th > ul { list-style-type: disc; }
+/* A list fills the cell, so centering would move only its text and leave the
+   marker behind. Shrink it to the items and place that block with the column. */
+:is(td, th)[align="center"] > :is(ul, ol) { width: fit-content; margin-inline: auto; }
+:is(td, th)[align="right"] > :is(ul, ol) { width: fit-content; margin-left: auto; }
+:is(td, th) > :is(ul, ol) ul { list-style-type: circle; }
+:is(td, th) > :is(ul, ol) :is(ul, ol) ul { list-style-type: square; }
+hr { border: 0; border-top: 1px solid #e1e1e1; margin: 2em 0; }
+.footnote-definition { font-size: .88em; color: #666; }
+@media (max-width: 640px) { body { padding: 24px 18px 40px; } }
+@media print {
+  @page { size: A4; margin: 40pt 36pt; }
+  html, body { background: white; }
+  .code-block, .code-language { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  body { max-width: none; margin: 0; padding: 0; font-size: 11pt; }
+  a { overflow-wrap: anywhere; color: inherit; }
+  pre { white-space: pre-wrap; overflow: visible; overflow-wrap: anywhere; font-size: 9pt; }
+  table { display: table; width: 100%; overflow: visible; table-layout: auto; }
+  thead { display: table-header-group; }
+  /* break-word keeps whole words in the min-content width, so short identifiers
+     are not split while long values still wrap. */
+  th, td { white-space: normal; overflow-wrap: break-word; padding: 6px 9px; }
+  tr, img, .display-math, .diagram { break-inside: avoid; }
+  .diagram img, p > img { max-height: 230mm; object-fit: contain; }
+  .code-block { box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+}

@@ -1,0 +1,18 @@
+[package]
+name = "pecan-math"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Bounded native LaTeX and chemistry rendering for Pecan"
+
+[dependencies]
+async-lock.workspace = true
+mathra.workspace = true
+resvg.workspace = true
+lru.workspace = true
+blake3.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,16 @@
+[package]
+name = "pecan-document"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Immutable Markdown documents, bounded chunk indexing and search"
+
+[dependencies]
+html5ever.workspace = true
+pulldown-cmark.workspace = true
+regex.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

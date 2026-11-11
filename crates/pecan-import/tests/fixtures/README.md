@@ -1,0 +1,1 @@
+Validation fixtures from firecrawl/anydoc v0.2.4, commit e7178e099b6bf9171e2c52b832cbdb4134b69112, MIT licensed. Original license is preserved in vendor/anydoc/LICENSE and licenses/MIT-anydoc.txt. These are generated upstream fixtures, not user documents.

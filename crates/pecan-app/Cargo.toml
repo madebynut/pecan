@@ -1,0 +1,64 @@
+[package]
+name = "pecan-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Pecan native GPUI Markdown reader"
+
+[[bin]]
+name = "Pecan"
+path = "src/main.rs"
+
+[dependencies]
+pecan-config.workspace = true
+pecan-export.workspace = true
+pecan-code.workspace = true
+pecan-assets.workspace = true
+pecan-network.workspace = true
+pecan-format.workspace = true
+blake3.workspace = true
+regex.workspace = true
+anyhow.workspace = true
+pecan-import.workspace = true
+async-lock.workspace = true
+data-url.workspace = true
+# Already linked by GPUI with these codecs: `Frame` buffers, plus image sizes and
+# WebP-to-PNG conversion for Word export.
+image.workspace = true
+gpui-kit.workspace = true
+futures-lite.workspace = true
+lru.workspace = true
+pecan-document.workspace = true
+pecan-mermaid.workspace = true
+notify.workspace = true
+pulldown-cmark.workspace = true
+png.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+pecan-math.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+url.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2.workspace = true
+block2.workspace = true
+objc2-pdf-kit.workspace = true
+objc2-quick-look-ui.workspace = true
+objc2-app-kit.workspace = true
+objc2-foundation.workspace = true
+
+[dev-dependencies]
+gpui-platform = { package = "gpui-pre-platform", version = "0.3.11", features = ["test-support"] }
+markdown = "1"
+gpui = { package = "gpui-pre", version = "0.3.11", features = ["test-support"] }
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+gpui-apple = { package = "gpui-pre-apple", version = "0.3.11", features = ["font-kit"] }
+
+[target.'cfg(target_os = "windows")'.build-dependencies]
+winresource = "0.1"
+
+[lints]
+workspace = true

@@ -1,0 +1,39 @@
+--- a/src/text/layout.rs
++++ b/src/text/layout.rs
+@@ -899,6 +899,7 @@
+             font,
+             span.small_caps,
+             span.apply_kerning,
++            span,
+             resolver,
+             fontdb,
+         );
+@@ -1281,6 +1282,7 @@
+     font: Arc<ResolvedFont>,
+     small_caps: bool,
+     apply_kerning: bool,
++    span: &TextSpan,
+     resolver: &FontResolver,
+     fontdb: &mut Arc<fontdb::Database>,
+ ) -> Vec<Glyph> {
+@@ -1294,7 +1296,10 @@
+     'outer: loop {
+         let mut missing = None;
+         for glyph in &glyphs {
+-            if glyph.is_missing() {
++            // The whole chunk is shaped for bidi/cluster continuity, but missing
++            // glyphs outside this span belong to another font. Falling back for
++            // them can replace this span's valid glyphs with an unrelated face.
++            if glyph.is_missing() && span_contains(span, glyph.byte_idx) {
+                 missing = Some(glyph.byte_idx.char_from(text));
+                 break;
+             }
+@@ -1349,7 +1354,7 @@
+ 
+     // Warn about missing glyphs.
+     for glyph in &glyphs {
+-        if glyph.is_missing() {
++        if glyph.is_missing() && span_contains(span, glyph.byte_idx) {
+             let c = glyph.byte_idx.char_from(text);
+             // TODO: print a full grapheme
+             log::warn!(

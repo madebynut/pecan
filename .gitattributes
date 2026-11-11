@@ -1,0 +1,15 @@
+* text=auto eol=lf
+*.pdf binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.docx binary
+*.zip binary
+*.ttf binary
+*.otf binary
+# Keep upstream patch context and Markdown hard line breaks intact.
+*.diff -whitespace
+*.md -whitespace
+vendor/** -whitespace

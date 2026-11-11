@@ -1,0 +1,17 @@
+# Native text justification and content-width tables
+
+Upstream: gpui-pre 0.3.11 (GPUI snapshot), Apache-2.0. Source, build script, Windows resources, and the upstream license are preserved. Cargo.toml omits examples and benchmarks; the image referenced by an internal platform test is included.
+
+TextLayout adds opt-in wrapped-row and single-fragment justification. It expands ordinary word spaces and eligible CJK boundaries, only at existing glyph-cluster boundaries. Glyph IDs, font runs, UTF-8 indices, wrapping, and vertical metrics remain unchanged. Painting and native index-to-position mapping use the same adjusted layout. Final rows of hard lines stay natural in wrapped mode. RTL runs retain platform shaping.
+
+TextSystem exposes the existing typographic bounds lookup by shaped glyph ID as well as by character. This lets inline code measure ligatures and fallback glyphs in their actual fonts without reshaping, retaining the result with its existing flow layout.
+
+Natural layouts are saved only when justification is requested. A repeated width/mode reuses the adjusted layout; a changed width starts from natural positions, preventing cumulative expansion. Intrinsic size measurements remain natural. WrappedLine gains a cheap layout-sharing Clone implementation. The application keeps its existing bounded visible-row cache; no per-character elements, new dependency, background job, or rasterization is added.
+
+PECAN-PATCH.diff records the changes. Application regression covers wrapped CJK/English prose, inline code, hard breaks, and full selection/copy. The native position mappings serve selection and link hit testing, alongside the existing selection renderer. Remove the patch when upstream supports the equivalent alignment.
+
+Pixel snapping rounds coordinates (element offsets, post-layout absolute edges, quad edges, underline and strikethrough origins) with 0.5 ties toward positive infinity; lengths and strokes keep upstream half-toward-zero. Upstream used half-toward-zero for coordinates too, which is not translation invariant: a list row straddling the window origin at y = -599.5 snapped its top to -599 while the next row's origin 470.5 snapped to 470, so the next row's background covered the last device pixel of the row above. On 1x displays this hid the whole 1px bottom border of tall code blocks. Regression covers translation closure and the DocumentView code/next-row edge at eighth-pixel scroll offsets.
+
+GridTemplateMinSize adds an opt-in MaxContentStretchLast mode. Earlier columns use max-content tracks; the final max-content/1fr track fills available width while retaining horizontal overflow for long content. No parallel font measurement or column cache is introduced. Regression covers short and overflowing rich tables.
+
+TextLayout exposes first_line_ink for consumers that explicitly need visible text alignment. It reads the actual first wrapped row's glyph IDs, fallback faces, glyph offsets and baseline. Its baseline-relative ink extent is cached on that shaped layout; prepaint translates it into window coordinates. Empty first rows return None. Ordinary text does not trigger the measurement. This supports Pecan note symbols without changing native glyph positions or introducing separate text shaping.

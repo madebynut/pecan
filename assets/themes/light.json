@@ -1,0 +1,58 @@
+{
+  "name": "Pecan Light",
+  "appearance": "light",
+  "style": {
+    "editor.background": "#f7f7f7",
+    "editor.foreground": "#242424",
+    "editor.active_line.background": "#eeeeee",
+    "editor.line_number": "#888888",
+    "syntax": {
+      "keyword": {
+        "color": "#8250df",
+        "font_weight": 600
+      },
+      "comment": {
+        "color": "#6e7781",
+        "font_style": "italic"
+      },
+      "comment.doc": {
+        "color": "#6e7781",
+        "font_style": "italic"
+      },
+      "string": {
+        "color": "#0a6440"
+      },
+      "number": {
+        "color": "#0550ae"
+      },
+      "function": {
+        "color": "#953800"
+      },
+      "type": {
+        "color": "#116b80",
+        "font_weight": 600
+      },
+      "punctuation": {
+        "color": "#57606a"
+      },
+      "constant": {
+        "color": "#0550ae"
+      },
+      "property": {
+        "color": "#0550ae"
+      },
+      "operator": {
+        "color": "#8250df"
+      },
+      "variable": {
+        "color": "#242424"
+      },
+      "tag": {
+        "color": "#116b80"
+      },
+      "attribute": {
+        "color": "#953800"
+      }
+    }
+  }
+}

@@ -1,0 +1,342 @@
+[
+  {
+    "name": "rust",
+    "variant": "original",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/rust/rust-original.svg",
+    "sha256": "16c6c6a98e990944fc5e1cc64cc8fc7b8be3a662ec4ee7951b7995d2e52f5e12",
+    "bytes": 5897,
+    "fills": []
+  },
+  {
+    "name": "javascript",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/javascript/javascript-plain.svg",
+    "sha256": "7aeba12131be6a9c4bf781171d850939c0b1356d63b42f3d4a3b43e187f94e46",
+    "bytes": 1101,
+    "fills": [
+      "#F0DB4F"
+    ]
+  },
+  {
+    "name": "typescript",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/typescript/typescript-plain.svg",
+    "sha256": "dbdda8a49cf4f4eac68ebea33bd532644d1dfb94142a6ed3f2c7a619605b8116",
+    "bytes": 866,
+    "fills": [
+      "#007acc"
+    ]
+  },
+  {
+    "name": "python",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/python/python-plain.svg",
+    "sha256": "5b2abd125bf9cb2ac6b0b9f0cdbcc9c8005886fa974d26f2b3438b831b6d8365",
+    "bytes": 1052,
+    "fills": [
+      "#FFD845"
+    ]
+  },
+  {
+    "name": "bash",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/bash/bash-plain.svg",
+    "sha256": "2682e6473d914a5107c60f2265887ac44e55226b88898bdbe61c38aed08860df",
+    "bytes": 1772,
+    "fills": [
+      "#293138"
+    ]
+  },
+  {
+    "name": "yaml",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/yaml/yaml-plain.svg",
+    "sha256": "5b6096eafb1eb1462f3abdb1b349f9c5f28747cc0196f021ddb5f4813f7e0891",
+    "bytes": 548,
+    "fills": []
+  },
+  {
+    "name": "html5",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/html5/html5-plain.svg",
+    "sha256": "83f6ef40645815e902ad922303e47efa9dd1a2e3e30ee8832d21810307cbd525",
+    "bytes": 415,
+    "fills": [
+      "#E44D26"
+    ]
+  },
+  {
+    "name": "css3",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/css3/css3-plain.svg",
+    "sha256": "8a9931190c761e07ff9ed032cfa8cf5483e47455ef930da6096f5765bb48e515",
+    "bytes": 465,
+    "fills": [
+      "#1572B6"
+    ]
+  },
+  {
+    "name": "json",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/json/json-plain.svg",
+    "sha256": "ab1831a73d87d2a8aea17cd4de2c3646042d6b947317488e6e722cb0899e7a88",
+    "bytes": 873,
+    "fills": [
+      "#505050"
+    ]
+  },
+  {
+    "name": "c",
+    "variant": "line",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/c/c-line.svg",
+    "sha256": "e6a5fd2839161408d581e79a24b23a3c3ddbe4a6534af6b414ed185a85dc5fef",
+    "bytes": 1257,
+    "fills": [
+      "#a9bacd"
+    ]
+  },
+  {
+    "name": "cplusplus",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/cplusplus/cplusplus-plain.svg",
+    "sha256": "0277f8799d85db8f9b838cc6f86656f9fd92eb01191b46b9b777dd22827e8a4c",
+    "bytes": 1004,
+    "fills": [
+      "#004482"
+    ]
+  },
+  {
+    "name": "csharp",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/csharp/csharp-plain.svg",
+    "sha256": "ccb93dc80b4fbd7363158d520c948ba798f843eb77ece519d06ae1b92058a8b3",
+    "bytes": 751,
+    "fills": [
+      "#68217A"
+    ]
+  },
+  {
+    "name": "go",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/go/go-plain.svg",
+    "sha256": "c9a2ed5df4af306c751bd4652fc0c87106bfa73dc234dc60a5d2ac2491b17af9",
+    "bytes": 3140,
+    "fills": []
+  },
+  {
+    "name": "java",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/java/java-plain.svg",
+    "sha256": "7b05ebcc538e747d077ed3c3a2491122923d3ec755cccacb670be9372e4bbbc5",
+    "bytes": 1477,
+    "fills": [
+      "#EA2D2E"
+    ]
+  },
+  {
+    "name": "kotlin",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/kotlin/kotlin-plain.svg",
+    "sha256": "2ee1a71cacd67b1f6b6c5c319cac744c1597b7a5ea2afb7f82c350b9b282504a",
+    "bytes": 149,
+    "fills": [
+      "#c711e1"
+    ]
+  },
+  {
+    "name": "swift",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/swift/swift-plain.svg",
+    "sha256": "b653c8a3255d34cea4550e090cc928d3b095890093eea522f7f2917f21ea7f8b",
+    "bytes": 1263,
+    "fills": []
+  },
+  {
+    "name": "php",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/php/php-plain.svg",
+    "sha256": "4af2f7e8e00d9285e6fe2427c0bf4ec6e0b652390110cab6e7e931c0ee20b62c",
+    "bytes": 1286,
+    "fills": []
+  },
+  {
+    "name": "ruby",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/ruby/ruby-plain.svg",
+    "sha256": "5d68fd019984d3525ed667944b14efa8a37359cd21dcb8bf5e6969abdd48dd5f",
+    "bytes": 1905,
+    "fills": [
+      "#d91404"
+    ]
+  },
+  {
+    "name": "markdown",
+    "variant": "original",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/markdown/markdown-original.svg",
+    "sha256": "9d0c0aeff8d36500dd4023a50bf9bfd7152541402eab1ae8fcd7b86cdcb91853",
+    "bytes": 1244,
+    "fills": []
+  },
+  {
+    "name": "xml",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/xml/xml-plain.svg",
+    "sha256": "45be0e387168c1b003978764c5d460ca91cf51fa60f20c4f2f41bce9cb49779d",
+    "bytes": 3285,
+    "fills": [
+      "#005fad"
+    ]
+  },
+  {
+    "name": "toml",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/toml/toml-plain.svg",
+    "sha256": "02a675ad914c2383d610bf7ed93a7381991c94f656ec0f4cd6b2757b019f59dc",
+    "bytes": 250,
+    "fills": [
+      "#9c4221"
+    ]
+  },
+  {
+    "name": "docker",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/docker/docker-plain.svg",
+    "sha256": "d1a89aff773fa3e6bab3df98a3d9d685f5f9ddf4af9ec60ce5dc83ea8a83804a",
+    "bytes": 962,
+    "fills": [
+      "#019BC6"
+    ]
+  },
+  {
+    "name": "powershell",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/powershell/powershell-plain.svg",
+    "sha256": "7ec3ab9c6ce2e8f93b93bc727fa253c409d61a8311cfe85d4374d388bddad2ef",
+    "bytes": 819,
+    "fills": []
+  },
+  {
+    "name": "dart",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/dart/dart-plain.svg",
+    "sha256": "bcbd8ce617b6edb9307aa549369ea9a181f558d984c8c6d2f2756664a0749655",
+    "bytes": 602,
+    "fills": [
+      "#00A8E1"
+    ]
+  },
+  {
+    "name": "r",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/r/r-plain.svg",
+    "sha256": "d949dce55eac56ac17f1403559323453244ef780f41fdf1fdad466f457287e07",
+    "bytes": 1141,
+    "fills": [
+      "#1f65b7"
+    ]
+  },
+  {
+    "name": "scala",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/scala/scala-plain.svg",
+    "sha256": "0dc8eee576d3b25b9a3cc0f87b582c813acfda60b59bb35fd25801a3820fc52d",
+    "bytes": 895,
+    "fills": [
+      "#390d09"
+    ]
+  },
+  {
+    "name": "lua",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/lua/lua-plain.svg",
+    "sha256": "d04a08d8030efb6978df0e516a1247bb3f2092729a2131a90360e5646e99676f",
+    "bytes": 3121,
+    "fills": [
+      "#000080"
+    ]
+  },
+  {
+    "name": "objectivec",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/objectivec/objectivec-plain.svg",
+    "sha256": "8ef92e435763fc39f5b66d09d77267383550a22685ceec5ef2783ebb8f3101b6",
+    "bytes": 1948,
+    "fills": [
+      "#0b5a9d"
+    ]
+  },
+  {
+    "name": "perl",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/perl/perl-plain.svg",
+    "sha256": "4e9ddc7ee24e7bc2bac8be9b3a13a43fad78f046df7b1adda19ca8444de9a843",
+    "bytes": 3095,
+    "fills": [
+      "#000",
+      "none"
+    ]
+  },
+  {
+    "name": "azuresqldatabase",
+    "variant": "original",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/azuresqldatabase/azuresqldatabase-original.svg",
+    "sha256": "934ea232bcbb6f948610bed844cbc13190d7123819107469fe54c6f8507af1d1",
+    "bytes": 3435
+  },
+  {
+    "name": "mysql",
+    "variant": "original",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/mysql/mysql-original.svg",
+    "sha256": "f73fa5d6b9da33fbf540ff96f5360c24b6d29d883ecfe6fcaecf89a8d3456067",
+    "bytes": 2765
+  },
+  {
+    "name": "postgresql",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/postgresql/postgresql-plain.svg",
+    "sha256": "fde05f208551eff7f80b8b6d09997eb57e21a13bb9cf1624fce9c534abb781f7",
+    "bytes": 11441
+  },
+  {
+    "name": "sqlite",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/sqlite/sqlite-plain.svg",
+    "sha256": "d35b32f02f66b7c9b12ee6b9c0bfed06cdcc6a905a3666f1a1ece0c52d95de79",
+    "bytes": 1597
+  },
+  {
+    "name": "microsoftsqlserver",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/microsoftsqlserver/microsoftsqlserver-plain.svg",
+    "sha256": "b49115d6dc952690790cea30383a41a7cc8923cd8b7dd070b2e3fb71e1a04d8d",
+    "bytes": 10803
+  },
+  {
+    "name": "oracle",
+    "variant": "original",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/oracle/oracle-original.svg",
+    "sha256": "6afd3872d2ecb9a619fc10048b6a18bc3b948dfd7c97d1a694af26c6a7153cbf",
+    "bytes": 1244
+  },
+  {
+    "name": "mariadb",
+    "variant": "original",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/mariadb/mariadb-original.svg",
+    "sha256": "90f14c26b478447171ad800791535f5f5ab0f9abf80387edefb410b6fc85cbdc",
+    "bytes": 1831
+  },
+  {
+    "name": "mongodb",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/mongodb/mongodb-plain.svg",
+    "sha256": "5681087f81e0879d2cd1e59fde268f37a3e4cdb4965f51115d059852efae2f53",
+    "bytes": 1199
+  },
+  {
+    "name": "redis",
+    "variant": "plain",
+    "url": "https://raw.githubusercontent.com/devicons/devicon/v2.18.0/icons/redis/redis-plain.svg",
+    "sha256": "f7e4163363c6019d1ed6a52537454566c69993082bf671004c5fbfe2360a787b",
+    "bytes": 1146
+  }
+]

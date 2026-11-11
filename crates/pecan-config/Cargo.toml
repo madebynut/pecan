@@ -1,0 +1,17 @@
+[package]
+name = "pecan-config"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Portable preferences and recent-path persistence"
+[dependencies]
+thiserror.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+pecan-mermaid.workspace = true
+
+[lints]
+workspace = true

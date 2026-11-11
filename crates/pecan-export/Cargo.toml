@@ -1,0 +1,44 @@
+[package]
+name = "pecan-export"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Portable Markdown, HTML, DOCX and vector PDF exports"
+[dependencies]
+thiserror.workspace = true
+anyhow.workspace = true
+ammonia.workspace = true
+async-lock.workspace = true
+base64.workspace = true
+blake3.workspace = true
+data-url.workspace = true
+futures-lite.workspace = true
+gif.workspace = true
+http-client.workspace = true
+image.workspace = true
+krilla.workspace = true
+krilla-svg.workspace = true
+pecan-assets.workspace = true
+pecan-code.workspace = true
+pecan-config.workspace = true
+pecan-document.workspace = true
+pecan-format.workspace = true
+pecan-import.workspace = true
+pecan-math.workspace = true
+pecan-mermaid.workspace = true
+png.workspace = true
+pulldown-cmark.workspace = true
+regex.workspace = true
+rustybuzz.workspace = true
+tempfile.workspace = true
+ttf-parser.workspace = true
+unicode-linebreak.workspace = true
+url.workspace = true
+usvg.workspace = true
+zip.workspace = true
+[dev-dependencies]
+pecan-network.workspace = true
+roxmltree.workspace = true
+[lints]
+workspace = true

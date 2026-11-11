@@ -1,0 +1,119 @@
+[workspace]
+members = [
+    "crates/pecan-app",
+    "crates/pecan-assets",
+    "crates/pecan-code",
+    "crates/pecan-config",
+    "crates/pecan-document",
+    "crates/pecan-export",
+    "crates/pecan-format",
+    "crates/pecan-import",
+    "crates/pecan-math",
+    "crates/pecan-mermaid",
+    "crates/pecan-network",
+]
+exclude = ["vendor/anydoc", "vendor/mermaid-rs-renderer", "vendor/gpui-base", "vendor/usvg", "vendor/gpui-pre", "vendor/gpui-pre-apple", "vendor/krilla-svg", "vendor/gpui-component"]
+default-members = ["crates/pecan-app"]
+resolver = "3"
+
+[workspace.package]
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.98"
+license = "MIT"
+
+[workspace.dependencies]
+pecan-assets = { path = "crates/pecan-assets" }
+pecan-code = { path = "crates/pecan-code" }
+pecan-config = { path = "crates/pecan-config" }
+pecan-document = { path = "crates/pecan-document" }
+pecan-export = { path = "crates/pecan-export" }
+pecan-format = { path = "crates/pecan-format" }
+pecan-import = { path = "crates/pecan-import" }
+pecan-math = { path = "crates/pecan-math" }
+pecan-mermaid = { path = "crates/pecan-mermaid" }
+pecan-network = { path = "crates/pecan-network" }
+
+futures-lite = "2"
+gif = "0.14"
+http-client = { package = "gpui-pre-http-client", version = "0.3.11" }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"] }
+krilla = { version = "0.7", default-features = false, features = ["raster-images"] }
+krilla-svg = "0.7"
+reqwest = { package = "gpui-pre-reqwest", version = "=0.12.15", default-features = false, features = ["rustls-tls", "http2"] }
+roxmltree = "0.21"
+rustybuzz = "0.20"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time"] }
+ttf-parser = "0.25"
+unicode-linebreak = "0.1"
+usvg = { version = "0.46", default-features = false }
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+
+anyhow = "1"
+ammonia = "4"
+base64 = "0.22"
+anydoc = { path = "vendor/anydoc", version = "0.2.4" }
+async-lock = "3"
+block2 = "0.6"
+blake3 = "1"
+data-url = "0.3"
+html5ever = "0.27"
+gpui-kit = { version = "0.9.0", features = ["tree-sitter-languages"] }
+lru = "0.16"
+mathra = { version = "1.9.1", features = ["latin-modern"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+pretty_yaml = "0.6"
+taplo = { version = "0.14", default-features = false }
+yaml-rust2 = { version = "0.11", default-features = false }
+similar = "2"
+logos = "0.12"
+tempfile = "3"
+mermaid-rs-renderer = { path = "vendor/mermaid-rs-renderer", version = "0.3.1", default-features = false }
+notify = "8"
+objc2 = "0.6"
+objc2-pdf-kit = "0.3"
+objc2-quick-look-ui = { version = "0.3", default-features = false, features = ["std", "QLPreviewPanel", "QLPreviewItem", "objc2-app-kit"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["NSApplication", "NSCursor", "NSImage", "NSResponder", "NSView", "NSWindow", "NSColor", "NSEvent", "NSScreen", "NSGraphics"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["NSData", "NSGeometry", "NSObject", "NSURL", "NSNotification", "NSOperation", "block2"] }
+png = "0.18"
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+regex = "1"
+resvg = "0.46"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "warn"
+wildcard_imports = "warn"
+format_push_string = "warn"
+map_unwrap_or = "warn"
+
+[profile.dev]
+debug = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"
+
+
+[patch.crates-io]
+usvg = { path = "vendor/usvg" }
+gpui-base = { path = "vendor/gpui-base" }
+gpui-pre = { path = "vendor/gpui-pre" }
+
+gpui-pre-apple = { path = "vendor/gpui-pre-apple" }
+krilla-svg = { path = "vendor/krilla-svg" }
+
+gpui-component = { path = "vendor/gpui-component" }

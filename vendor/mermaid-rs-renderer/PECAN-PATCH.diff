@@ -1,0 +1,1308 @@
+--- a/src/edge_geometry.rs
++++ b/src/edge_geometry.rs
+@@ -5,15 +5,10 @@
+ /// This belongs in shared edge geometry instead of the SVG renderer because the
+ /// layout router must shorten routed paths before markers are painted, while the
+ /// renderer owns only the final marker definitions.
+-pub(crate) fn arrowhead_inset(kind: DiagramKind, arrow_kind: Option<EdgeArrowhead>) -> f32 {
+-    match kind {
+-        DiagramKind::Class => match arrow_kind {
+-            Some(EdgeArrowhead::OpenTriangle) => 17.0,
+-            Some(EdgeArrowhead::ClassDependency) => 5.0,
+-            None => 4.0,
+-        },
+-        _ => 0.0,
+-    }
++pub(crate) fn arrowhead_inset(_kind: DiagramKind, _arrow_kind: Option<EdgeArrowhead>) -> f32 {
++    // Marker references now include the outer painted tip. No route shortening
++    // is needed, including class inheritance and dependency arrowheads.
++    0.0
+ }
+ 
+ /// Apply start/end marker insets to an already routed path.
+--- a/src/layout/flowchart/aspect_fold.rs
++++ b/src/layout/flowchart/aspect_fold.rs
+@@ -123,15 +123,20 @@
+         crossings: straight_line_crossings(layout_edges, nodes),
+     };
+ 
+-    let mut best: Option<(FoldScore, usize, BTreeMap<String, NodeLayout>, HashMap<String, usize>)> =
+-        None;
++    let mut best: Option<(
++        FoldScore,
++        usize,
++        BTreeMap<String, NodeLayout>,
++        HashMap<String, usize>,
++    )> = None;
+     for band_count in candidate_band_counts(natural_ratio, goal, ranks.len()) {
+         let ranges = plan_band_ranges(&extents, band_count, &allowed_boundaries);
+         if ranges.len() != band_count {
+             continue;
+         }
+         let mut candidate_nodes = nodes.clone();
+-        let node_bands = apply_fold_to_nodes(&ranges, &extents, &ranks, &mut candidate_nodes, gutter);
++        let node_bands =
++            apply_fold_to_nodes(&ranges, &extents, &ranks, &mut candidate_nodes, gutter);
+         let Some(aspect_error) = layout_aspect_error(&candidate_nodes, goal) else {
+             continue;
+         };
+@@ -325,11 +330,7 @@
+         if min_rank == usize::MAX {
+             continue;
+         }
+-        for flag in allowed
+-            .iter_mut()
+-            .take(max_rank + 1)
+-            .skip(min_rank + 1)
+-        {
++        for flag in allowed.iter_mut().take(max_rank + 1).skip(min_rank + 1) {
+             *flag = false;
+         }
+     }
+@@ -727,10 +728,7 @@
+             .rev()
+             .find(|id| outcome.node_bands[**id] == 0)
+             .unwrap();
+-        let first_of_band1 = ids
+-            .iter()
+-            .find(|id| outcome.node_bands[**id] == 1)
+-            .unwrap();
++        let first_of_band1 = ids.iter().find(|id| outcome.node_bands[**id] == 1).unwrap();
+         let cx = |map: &BTreeMap<String, NodeLayout>, id: &str| {
+             let n = &map[id];
+             n.x + n.width / 2.0
+--- /dev/null
++++ b/src/layout/flowchart/connectors.rs
+@@ -0,0 +1,107 @@
++//! Simplify unobstructed forward connectors without replacing obstacle routing.
++use std::collections::BTreeMap;
++
++use crate::ir::{Direction, NodeShape};
++use crate::layout::{EdgeLayout, NodeLayout};
++
++pub(in crate::layout) fn simplify(
++    direction: Direction,
++    nodes: &BTreeMap<String, NodeLayout>,
++    edges: &mut [EdgeLayout],
++) {
++    let horizontal = matches!(direction, Direction::LeftRight | Direction::RightLeft);
++    // Preserve distinct ports and captions on parallel relationships.
++    let parallel: Vec<_> = {
++        let mut counts = BTreeMap::new();
++        for edge in edges.iter() {
++            *counts.entry((&edge.from, &edge.to)).or_insert(0) += 1;
++        }
++        edges
++            .iter()
++            .map(|edge| counts[&(&edge.from, &edge.to)] > 1)
++            .collect()
++    };
++    for (index, edge) in edges.iter_mut().enumerate() {
++        if parallel[index] {
++            continue;
++        }
++        let (Some(from), Some(to)) = (nodes.get(&edge.from), nodes.get(&edge.to)) else {
++            continue;
++        };
++        let supported = |node: &NodeLayout| {
++            !node.hidden
++                && node.anchor_subgraph.is_none()
++                && matches!(
++                    node.shape,
++                    NodeShape::Rectangle
++                        | NodeShape::RoundRect
++                        | NodeShape::Stadium
++                        | NodeShape::Diamond
++                        | NodeShape::Circle
++                        | NodeShape::Subroutine
++                        | NodeShape::Cylinder
++                )
++        };
++        if !supported(from)
++            || !supported(to)
++            || edge.start_decoration.is_some()
++            || edge.end_decoration.is_some()
++            || edge.start_label.is_some()
++            || edge.end_label.is_some()
++        {
++            continue;
++        }
++        let center = |n: &NodeLayout| (n.x + n.width * 0.5, n.y + n.height * 0.5);
++        let (mut start, mut end) = (center(from), center(to));
++        // RL/BT are mirrored by finalize after this canonical forward layout.
++        if horizontal {
++            start.0 += from.width * 0.5;
++            end.0 -= to.width * 0.5;
++        } else {
++            start.1 += from.height * 0.5;
++            end.1 -= to.height * 0.5;
++        }
++        let gap = if horizontal {
++            end.0 - start.0
++        } else {
++            end.1 - start.1
++        };
++        if gap < 24. {
++            continue;
++        }
++        let x1 = start.0.min(end.0);
++        let x2 = start.0.max(end.0);
++        let y1 = start.1.min(end.1);
++        let y2 = start.1.max(end.1);
++        // The full control hull must be empty, so smoothing cannot cut an obstacle.
++        if nodes.values().any(|n| {
++            !n.hidden
++                && n.id != from.id
++                && n.id != to.id
++                && n.x < x2 + 8.
++                && n.x + n.width > x1 - 8.
++                && n.y < y2 + 8.
++                && n.y + n.height > y1 - 8.
++        }) {
++            continue;
++        }
++        let middle = ((start.0 + end.0) * 0.5, (start.1 + end.1) * 0.5);
++        edge.points = if (horizontal && (start.1 - end.1).abs() < 0.01)
++            || (!horizontal && (start.0 - end.0).abs() < 0.01)
++        {
++            vec![start, end]
++        } else if horizontal {
++            vec![start, (middle.0, start.1), (middle.0, end.1), end]
++        } else {
++            vec![start, (start.0, middle.1), (end.0, middle.1), end]
++        };
++        // The existing final label-placement pass resolves collisions and expands bounds.
++        if let Some(label) = &edge.label {
++            edge.label_anchor = Some(if horizontal {
++                (middle.0, middle.1 - label.height * 0.5 - 8.)
++            } else {
++                (middle.0 + label.width * 0.5 + 8., middle.1)
++            });
++        }
++    }
++}
+--- a/src/layout/flowchart/mod.rs
++++ b/src/layout/flowchart/mod.rs
+@@ -1,5 +1,6 @@
+ pub(super) mod analysis;
+ pub(super) mod aspect_fold;
++pub(super) mod connectors;
+ pub(super) mod edge_pipeline;
+ pub(super) mod finalize;
+ pub(super) mod manual_layout;
+--- a/src/layout/flowchart/post_route.rs
++++ b/src/layout/flowchart/post_route.rs
+@@ -3,8 +3,8 @@
+ use crate::config::LayoutConfig;
+ use crate::ir::{DiagramKind, Graph};
+ 
++use super::super::types::SubgraphLayout;
+ use super::super::{EdgeLayout, NodeLayout, TextBlock, resolve_edge_style};
+-use super::super::types::SubgraphLayout;
+ use super::path_cleanup::{
+     deoverlap_flowchart_paths, detour_flowchart_paths_around_foreign_subgraphs,
+     detour_flowchart_paths_around_non_endpoint_nodes, reduce_orthogonal_path_crossings,
+--- a/src/layout/mod.rs
++++ b/src/layout/mod.rs
+@@ -706,7 +706,7 @@
+         flowchart::stage_validation::debug_assert_structural("node-placement", report);
+     }
+ 
+-    let edges = flowchart::edge_pipeline::build_routed_edges(
++    let mut edges = flowchart::edge_pipeline::build_routed_edges(
+         flowchart::edge_pipeline::RoutedEdgeBuildContext {
+             graph,
+             nodes: &nodes,
+@@ -722,6 +722,9 @@
+         },
+     );
+ 
++    if graph.kind == crate::ir::DiagramKind::Flowchart && subgraphs.is_empty() {
++        flowchart::connectors::simplify(graph.direction, &nodes, &mut edges);
++    }
+     flowchart::finalize::finalize_graph_layout(graph, nodes, edges, subgraphs, theme, config)
+ }
+ 
+--- a/src/layout/pie.rs
++++ b/src/layout/pie.rs
+@@ -37,7 +37,10 @@
+ /// Horizontal extent of an outside label measured from the pie center,
+ /// including the label background rect padding.
+ pub(crate) fn pie_outside_label_extent(radius: f32, font_size: f32, label_width: f32) -> f32 {
+-    radius + pie_outside_label_bump(font_size, radius) + label_width + pie_outside_label_pad_x(font_size)
++    radius
++        + pie_outside_label_bump(font_size, radius)
++        + label_width
++        + pie_outside_label_pad_x(font_size)
+ }
+ 
+ fn sanitize_pie_value(value: f32) -> f32 {
+@@ -202,11 +205,8 @@
+             if !outside {
+                 continue;
+             }
+-            let extent = pie_outside_label_extent(
+-                radius,
+-                theme.pie_section_text_size,
+-                slice.label.width,
+-            );
++            let extent =
++                pie_outside_label_extent(radius, theme.pie_section_text_size, slice.label.width);
+             let mid_angle = (slice.start_angle + slice.end_angle) / 2.0;
+             if mid_angle.cos() >= 0.0 {
+                 right_outside_extent = right_outside_extent.max(extent);
+@@ -222,14 +222,13 @@
+         .as_ref()
+         .map(|text| text.width / 2.0)
+         .unwrap_or(0.0);
+-    let left_needed = (left_outside_extent + pie_cfg.margin * 0.35)
+-        .max(title_half_width + pie_cfg.margin * 0.25);
++    let left_needed =
++        (left_outside_extent + pie_cfg.margin * 0.35).max(title_half_width + pie_cfg.margin * 0.25);
+     let left_shift = (left_needed - center_x).max(0.0);
+     center_x += left_shift;
+ 
+     let legend_x = center_x
+-        + (radius + pie_cfg.margin * 0.6)
+-            .max(right_outside_extent + pie_cfg.margin * 0.35);
++        + (radius + pie_cfg.margin * 0.6).max(right_outside_extent + pie_cfg.margin * 0.35);
+ 
+     for (idx, (label, color)) in legend_items.into_iter().enumerate() {
+         let vertical = idx as f32 * legend_item_height - legend_offset;
+--- a/src/layout/sequence.rs
++++ b/src/layout/sequence.rs
+@@ -39,6 +39,8 @@
+     note_padding_y: f32,
+     lane_side_pad_x: f32,
+     footbox_gap: f32,
++    self_loop_width: f32,
++    self_loop_depth: f32,
+ }
+ 
+ impl SequenceGeometry {
+@@ -51,19 +53,21 @@
+             lane_pitch: (font * 12.5).max(200.0),
+             min_lane_gap: (font * 3.125).max(50.0),
+             message_step: (font * 2.875).max(46.0),
+-            note_gap_y: (font * 0.625).max(10.0),
++            note_gap_y: (font * 1.5).max(24.0),
+             note_gap_x: (font * 1.5625).max(25.0),
+             note_padding_x: (font * 1.0).max(15.0),
+             note_padding_y: (font * 0.55).max(6.0),
+             lane_side_pad_x: (font * 1.5625).max(25.0),
+             footbox_gap: (font * 1.375).max(22.0),
++            self_loop_width: (font * 2.5).max(32.0),
++            self_loop_depth: (font * 1.4).max(18.0),
+         }
+     }
+ }
+ 
+ fn measure_sequence_text(text: &str, theme: &Theme, config: &LayoutConfig) -> TextBlock {
+     let mut sequence_config = config.clone();
+-    sequence_config.max_label_width_chars = sequence_config.max_label_width_chars.min(14);
++    sequence_config.max_label_width_chars = sequence_config.max_label_width_chars.min(28);
+     measure_label_with_font_size(
+         text,
+         theme.font_size.max(16.0),
+@@ -71,6 +75,81 @@
+         true,
+         theme.font_family.as_str(),
+     )
++}
++
++// Badge geometry stays uniform across digit counts and light/dark typography.
++const SEQUENCE_NUMBER_MIN_RADIUS: f32 = 10.0;
++const SEQUENCE_NUMBER_FONT_SIZE: f32 = 12.0;
++
++fn sequence_number_radius(theme: &Theme) -> f32 {
++    // Reserve enough room for every two-digit value at the same size as one digit.
++    // Width metrics are additive; repeating the widest digit covers mixed pairs.
++    let width = ["00", "11", "22", "33", "44", "55", "66", "77", "88", "99"]
++        .iter()
++        .filter_map(|label| {
++            crate::text_metrics::measure_text_width(
++                label,
++                SEQUENCE_NUMBER_FONT_SIZE,
++                &theme.font_family,
++            )
++        })
++        .fold(SEQUENCE_NUMBER_FONT_SIZE * 2.0 * 0.65, f32::max);
++    // Allow for bold glyphs, with a compact inset for double-digit numbers.
++    ((width * 1.1).hypot(SEQUENCE_NUMBER_FONT_SIZE) / 2.0 + 0.25)
++        .ceil()
++        .max(SEQUENCE_NUMBER_MIN_RADIUS)
++}
++
++fn sequence_number_font_size(value: usize, theme: &Theme, radius: f32) -> f32 {
++    if value < 100 {
++        return SEQUENCE_NUMBER_FONT_SIZE;
++    }
++    let label = value.to_string();
++    let font_size = SEQUENCE_NUMBER_FONT_SIZE;
++    let width = crate::text_metrics::measure_text_width(&label, font_size, &theme.font_family)
++        .unwrap_or(label.len() as f32 * font_size * 0.65);
++    // Metrics use the regular face; reserve width for the rendered bold digits.
++    let diagonal = (width * 1.1).hypot(font_size);
++    font_size * (2.0 * (radius - 0.5) / diagonal).min(1.0)
++}
++
++fn place_sequence_center_labels(
++    edges: &mut [EdgeLayout],
++    numbers: &[SequenceNumberLayout],
++    theme: &Theme,
++) {
++    for (index, edge) in edges.iter_mut().enumerate() {
++        let start = edge.points.first().copied().unwrap_or_default();
++        let end = edge.points.last().copied().unwrap_or(start);
++        if let Some(label) = &edge.label {
++            let x = if edge.from == edge.to {
++                start.0 + theme.font_size * 0.75 + label.width / 2.0
++            } else {
++                (start.0 + end.0) / 2.0
++            };
++            let radius = numbers.get(index).map_or(0.0, |number| number.radius);
++            let gap = radius.max(theme.font_size * 0.5) + 3.0;
++            edge.label_anchor = Some((x, start.1 - gap - label.height / 2.0));
++        }
++    }
++}
++
++// A frame header gets a separate band from its first message and sequence number.
++fn sequence_header_height(
++    label: Option<&str>,
++    first: bool,
++    theme: &Theme,
++    config: &LayoutConfig,
++) -> f32 {
++    let condition = label.map_or(0.0, |label| {
++        measure_sequence_text(&format!("[{label}]"), theme, config).height
++    });
++    let tag = if first {
++        (theme.font_size * 1.5).max(24.0)
++    } else {
++        0.0
++    };
++    tag + condition + theme.font_size
+ }
+ 
+ fn sequence_lane_center(node: &NodeLayout) -> f32 {
+@@ -122,6 +201,13 @@
+ 
+         let left_idx = from_idx.min(to_idx);
+         let right_idx = from_idx.max(to_idx);
++        if right_idx == left_idx {
++            if let (Some(pitch), Some(label)) = (pitches.get_mut(left_idx), edge.label.as_ref()) {
++                let block = measure_sequence_text(label, theme, config);
++                *pitch = pitch.max(block.width + theme.font_size * 4.0);
++            }
++            continue;
++        }
+         if right_idx != left_idx + 1 {
+             continue;
+         }
+@@ -172,6 +258,9 @@
+     }
+ 
+     let geometry = SequenceGeometry::from_theme(theme);
++    let number_radius = graph
++        .sequence_autonumber
++        .map_or(0.0, |_| sequence_number_radius(theme));
+     let mut label_blocks: HashMap<String, TextBlock> = HashMap::new();
+     let mut participant_widths: HashMap<String, f32> = HashMap::new();
+     let mut max_label_height = 0.0f32;
+@@ -180,7 +269,9 @@
+         let node = graph.nodes.get(id).expect("participant missing");
+         let label = measure_sequence_text(&node.label, theme, config);
+         max_label_height = max_label_height.max(label.height);
+-        let width = geometry.actor_min_width;
++        let width = geometry
++            .actor_min_width
++            .max(label.width + theme.font_size * 2.0);
+         participant_widths.insert(id.clone(), width);
+         label_blocks.insert(id.clone(), label);
+     }
+@@ -231,7 +322,8 @@
+     let message_row_spacing: Vec<f32> = graph
+         .edges
+         .iter()
+-        .map(|edge| {
++        .enumerate()
++        .map(|(index, edge)| {
+             let mut row_h = 0.0f32;
+             if let Some(label) = &edge.label {
+                 row_h = row_h.max(measure_sequence_text(label, theme, config).height);
+@@ -242,7 +334,17 @@
+             if let Some(label) = &edge.end_label {
+                 row_h = row_h.max(measure_sequence_text(label, theme, config).height);
+             }
+-            base_spacing.max(row_h + theme.font_size * 1.25)
++            let previous_loop = index
++                .checked_sub(1)
++                .and_then(|index| graph.edges.get(index))
++                .filter(|previous| previous.from == previous.to)
++                .map_or(0.0, |_| geometry.self_loop_depth);
++            let number_space = graph
++                .sequence_autonumber
++                .map_or(0.0, |_| number_radius * 2.0 + theme.font_size * 0.375 + 8.0);
++            base_spacing
++                .max(row_h + theme.font_size * 2.0 + previous_loop)
++                .max(number_space + previous_loop)
+         })
+         .collect();
+ 
+@@ -250,11 +352,17 @@
+     let frame_end_pad = base_spacing * 0.25;
+     for frame in &graph.sequence_frames {
+         if frame.start_idx < extra_before.len() {
+-            extra_before[frame.start_idx] += base_spacing;
++            extra_before[frame.start_idx] += sequence_header_height(
++                frame.sections.first().and_then(|s| s.label.as_deref()),
++                true,
++                theme,
++                config,
++            );
+         }
+         for section in frame.sections.iter().skip(1) {
+             if section.start_idx < extra_before.len() {
+-                extra_before[section.start_idx] += base_spacing;
++                extra_before[section.start_idx] +=
++                    sequence_header_height(section.label.as_deref(), false, theme, config);
+             }
+         }
+         if frame.end_idx < extra_before.len() {
+@@ -273,6 +381,10 @@
+     let mut sequence_notes = Vec::new();
+     for idx in 0..=graph.edges.len() {
+         if let Some(bucket) = notes_by_index.get(idx) {
++            if !bucket.is_empty() && idx > 0 && graph.edges[idx - 1].from == graph.edges[idx - 1].to
++            {
++                message_cursor += geometry.self_loop_depth;
++            }
+             for note in bucket {
+                 message_cursor += geometry.note_gap_y;
+                 let label = measure_sequence_text(&note.label, theme, config);
+@@ -342,9 +454,15 @@
+             .map(|l| measure_sequence_text(l, theme, config));
+ 
+         let points = if edge.from == edge.to {
+-            let pad = geometry.note_gap_x * 1.4;
++            let depth = geometry.self_loop_depth;
++            let width = geometry.self_loop_width;
+             let x = sequence_lane_center(from);
+-            vec![(x, y), (x + pad, y), (x + pad, y + pad), (x, y + pad)]
++            vec![
++                (x, y),
++                (x + width, y),
++                (x + width, y + depth),
++                (x, y + depth),
++            ]
+         } else {
+             vec![
+                 (sequence_lane_center(from), y),
+@@ -378,6 +496,27 @@
+         });
+     }
+ 
++    let mut sequence_numbers = Vec::new();
++    if let Some(start) = graph.sequence_autonumber {
++        let mut value = start;
++        for edge in &edges {
++            if let Some(&(x, y)) = edge.points.first() {
++                sequence_numbers.push(SequenceNumberLayout {
++                    x,
++                    y,
++                    value,
++                    radius: number_radius,
++                    font_size: sequence_number_font_size(value, theme, number_radius),
++                });
++                value = value.saturating_add(1);
++            }
++        }
++    }
++
++    if graph.kind == crate::ir::DiagramKind::Sequence {
++        place_sequence_center_labels(&mut edges, &sequence_numbers, theme);
++    }
++
+     let mut sequence_frames = Vec::new();
+     if !graph.sequence_frames.is_empty() && !message_ys.is_empty() {
+         let mut frames = graph.sequence_frames.clone();
+@@ -421,9 +560,35 @@
+                 continue;
+             }
+ 
+-            let frame_pad_x = (theme.font_size * 0.7).max(11.0);
++            for edge in &edges[frame.start_idx..frame.end_idx.min(edges.len())] {
++                for &(x, _) in &edge.points {
++                    min_center_x = min_center_x.min(x);
++                    max_center_x = max_center_x.max(x);
++                }
++                if let (Some(label), Some((x, _))) = (&edge.label, edge.label_anchor) {
++                    min_center_x = min_center_x.min(x - label.width / 2.0);
++                    max_center_x = max_center_x.max(x + label.width / 2.0);
++                }
++            }
++            for number in sequence_numbers
++                .iter()
++                .skip(frame.start_idx)
++                .take(frame.end_idx.saturating_sub(frame.start_idx))
++            {
++                min_center_x = min_center_x.min(number.x - number.radius);
++                max_center_x = max_center_x.max(number.x + number.radius);
++            }
++            let frame_pad_x = theme.font_size * 1.5;
+             let frame_x = min_center_x - frame_pad_x;
+-            let frame_width = (max_center_x - min_center_x) + frame_pad_x + theme.font_size * 1.05;
++            let condition_width = frame
++                .sections
++                .iter()
++                .filter_map(|section| section.label.as_ref())
++                .map(|label| measure_sequence_text(&format!("[{label}]"), theme, config).width)
++                .fold(0.0, f32::max);
++            let frame_width = ((max_center_x - min_center_x) + frame_pad_x * 2.0)
++                .max(condition_width + frame_pad_x * 2.0)
++                .max(theme.font_size * 8.0);
+ 
+             let first_y = message_ys
+                 .get(frame.start_idx)
+@@ -434,14 +599,39 @@
+                 .copied()
+                 .unwrap_or(first_y);
+             let mut min_y = first_y;
+-            let mut max_y = last_y;
++            let mut max_y = edges
++                .get(frame.end_idx.saturating_sub(1))
++                .map_or(last_y, |edge| {
++                    edge.points
++                        .iter()
++                        .map(|point| point.1)
++                        .fold(last_y, f32::max)
++                });
++            for number in sequence_numbers
++                .iter()
++                .skip(frame.start_idx)
++                .take(frame.end_idx.saturating_sub(frame.start_idx))
++            {
++                max_y = max_y.max(number.y + number.radius);
++            }
+             for note in &sequence_notes {
+-                if note.index >= frame.start_idx && note.index <= frame.end_idx {
++                if note.index >= frame.start_idx && note.index < frame.end_idx {
+                     min_y = min_y.min(note.y);
+                     max_y = max_y.max(note.y + note.height);
+                 }
+             }
+-            let top_offset = (base_spacing * 1.8).max(theme.font_size * 3.9);
++            let first_label_height = edges[frame.start_idx]
++                .label
++                .as_ref()
++                .map_or(0.0, |label| label.height);
++            let top_offset = first_label_height
++                + theme.font_size
++                + sequence_header_height(
++                    frame.sections.first().and_then(|s| s.label.as_deref()),
++                    true,
++                    theme,
++                    config,
++                );
+             let bottom_offset = (theme.font_size * 0.85).max(12.0);
+             let frame_y = min_y - top_offset;
+             let frame_height = (max_y - min_y).max(0.0) + top_offset + bottom_offset;
+@@ -458,7 +648,7 @@
+             let label_block = measure_sequence_text(frame_label_text, theme, config);
+             let label_box_w =
+                 (label_block.width + theme.font_size * 1.2).max(theme.font_size * 3.1);
+-            let label_box_h = (theme.font_size * 1.25).max(20.0);
++            let label_box_h = (theme.font_size * 1.5).max(24.0);
+             let label_box_x = frame_x;
+             let label_box_y = frame_y;
+             let label = SequenceLabel {
+@@ -468,53 +658,32 @@
+             };
+ 
+             let mut dividers = Vec::new();
+-            let divider_offset = theme.font_size * 0.9;
+-            for window in frame.sections.windows(2) {
+-                let prev_end = window[0].end_idx;
+-                let base_y = message_ys
+-                    .get(prev_end.saturating_sub(1))
+-                    .copied()
+-                    .unwrap_or(first_y);
+-                dividers.push(base_y + divider_offset);
++            for section in frame.sections.iter().skip(1) {
++                let next_y = message_ys.get(section.start_idx).copied().unwrap_or(last_y);
++                let message_height = edges
++                    .get(section.start_idx)
++                    .and_then(|edge| edge.label.as_ref())
++                    .map_or(0.0, |label| label.height);
++                dividers.push(
++                    next_y
++                        - message_height
++                        - theme.font_size
++                        - sequence_header_height(section.label.as_deref(), false, theme, config),
++                );
+             }
+ 
+             let mut section_labels = Vec::new();
+-            let label_offset = theme.font_size * 0.7;
+             for (section_idx, section) in frame.sections.iter().enumerate() {
+                 if let Some(label) = &section.label {
+                     let display = format!("[{}]", label);
+                     let block = measure_sequence_text(&display, theme, config);
+-                    let label_y = if section_idx == 0 {
+-                        frame_y + label_box_h - theme.font_size * 0.15
++                    let header_y = if section_idx == 0 {
++                        frame_y + label_box_h
+                     } else {
+-                        dividers
+-                            .get(section_idx - 1)
+-                            .copied()
+-                            .unwrap_or(frame_y + label_offset)
+-                            + theme.font_size * 0.9
++                        dividers.get(section_idx - 1).copied().unwrap_or(frame_y)
+                     };
+-                    let side_pad = theme.font_size * 0.45;
+-                    let frame_center_x = frame_x + frame_width / 2.0;
+-                    let clamp_or_midpoint = |preferred: f32, min_x: f32, max_x: f32| {
+-                        if min_x <= max_x {
+-                            preferred.clamp(min_x, max_x)
+-                        } else {
+-                            (min_x + max_x) / 2.0
+-                        }
+-                    };
+-                    let label_x = if section_idx == 0 {
+-                        let preferred =
+-                            frame_x + label_box_w + theme.font_size * 3.0 + block.width / 2.0;
+-                        let min_x = frame_x + block.width / 2.0 + theme.font_size * 0.4;
+-                        let max_x =
+-                            frame_x + frame_width - block.width / 2.0 - theme.font_size * 0.4;
+-                        clamp_or_midpoint(preferred, min_x, max_x)
+-                    } else {
+-                        let preferred = frame_center_x;
+-                        let min_x = frame_x + block.width / 2.0 + side_pad;
+-                        let max_x = frame_x + frame_width - block.width / 2.0 - side_pad;
+-                        clamp_or_midpoint(preferred, min_x, max_x)
+-                    };
++                    let label_y = header_y + theme.font_size * 0.5 + block.height / 2.0;
++                    let label_x = frame_x + frame_pad_x + block.width / 2.0;
+                     section_labels.push(SequenceLabel {
+                         x: label_x,
+                         y: label_y,
+@@ -690,28 +859,6 @@
+         }
+     }
+ 
+-    let mut sequence_numbers = Vec::new();
+-    if let Some(start) = graph.sequence_autonumber {
+-        let mut value = start;
+-        for (idx, edge) in graph.edges.iter().enumerate() {
+-            if let (Some(from), Some(y)) = (nodes.get(&edge.from), message_ys.get(idx).copied()) {
+-                let from_x = sequence_lane_center(from);
+-                let to_x = nodes
+-                    .get(&edge.to)
+-                    .map(sequence_lane_center)
+-                    .unwrap_or(from_x);
+-                let offset = if to_x >= from_x { 16.0 } else { -16.0 };
+-                let number_y = y - (theme.font_size * 0.85).max(10.0);
+-                sequence_numbers.push(SequenceNumberLayout {
+-                    x: from_x + offset,
+-                    y: number_y,
+-                    value,
+-                });
+-                value += 1;
+-            }
+-        }
+-    }
+-
+     let mut layout = Layout {
+         kind: graph.kind,
+         nodes,
+@@ -735,6 +882,7 @@
+ 
+ pub(super) fn resolve_sequence_label_positions(layout: &mut Layout, theme: &Theme) {
+     let Layout {
++        kind,
+         nodes,
+         edges,
+         diagram,
+@@ -743,6 +891,10 @@
+     let DiagramData::Sequence(seq) = diagram else {
+         return;
+     };
++    if *kind == crate::ir::DiagramKind::Sequence {
++        place_sequence_center_labels(edges, &seq.numbers, theme);
++        return;
++    }
+     place_sequence_label_anchors(
+         edges,
+         nodes,
+@@ -838,8 +990,8 @@
+             activation.height,
+         ));
+     }
+-    let number_r = (theme.font_size * 0.45).max(6.0);
+     for number in numbers {
++        let number_r = number.radius;
+         occupied.push((
+             number.x - number_r,
+             number.y - number_r,
+@@ -1481,7 +1633,14 @@
+     }
+     for number in &seq.numbers {
+         extend_bounds(
+-            &mut min_x, &mut min_y, &mut max_x, &mut max_y, number.x, number.y, 0.0, 0.0,
++            &mut min_x,
++            &mut min_y,
++            &mut max_x,
++            &mut max_y,
++            number.x - number.radius - 0.5,
++            number.y - number.radius - 0.5,
++            number.radius * 2.0 + 1.0,
++            number.radius * 2.0 + 1.0,
+         );
+     }
+     for edge in &layout.edges {
+--- a/src/layout/types.rs
++++ b/src/layout/types.rs
+@@ -136,6 +136,8 @@
+     pub x: f32,
+     pub y: f32,
+     pub value: usize,
++    pub radius: f32,
++    pub font_size: f32,
+ }
+ 
+ #[derive(Debug, Clone)]
+--- a/src/parser.rs
++++ b/src/parser.rs
+@@ -5300,9 +5300,10 @@
+     // subgraph node sets overlap and their boxes are forced to overlap.
+     // Membership in the current stack chain (ancestors) is fine: that is how
+     // nested subgraphs are represented here.
+-    let claimed_elsewhere = graph.subgraphs.iter().enumerate().any(|(idx, sub)| {
+-        !subgraph_stack.contains(&idx) && sub.nodes.iter().any(|n| n == node_id)
+-    });
++    let claimed_elsewhere =
++        graph.subgraphs.iter().enumerate().any(|(idx, sub)| {
++            !subgraph_stack.contains(&idx) && sub.nodes.iter().any(|n| n == node_id)
++        });
+     if claimed_elsewhere {
+         return;
+     }
+--- a/src/render.rs
++++ b/src/render.rs
+@@ -5,13 +5,14 @@
+     edge_endpoint_label_position, edge_label_padding, endpoint_label_padding,
+ };
+ use crate::layout::{
+-    C4BoundaryLayout, C4Layout, C4RelLayout, C4ShapeLayout, DiagramData, ErrorLayout,
++    C4BoundaryLayout, C4Layout, C4RelLayout, C4ShapeLayout, DiagramData, EdgeLayout, ErrorLayout,
+     GitGraphLayout, JourneyLayout, Layout, PieData, SankeyLayout, TextBlock,
+ };
+ use crate::text_metrics;
+ use crate::theme::{Theme, adjust_color, parse_color_to_hsl};
+ use anyhow::Result;
+ use serde::Serialize;
++use std::borrow::Cow;
+ use std::cmp::Ordering;
+ use std::collections::HashMap;
+ use std::path::Path;
+@@ -335,47 +336,45 @@
+     for color in &colors {
+         let idx = color_ids.get(color).copied().unwrap_or(0);
+         svg.push_str(&format!(
+-            "<marker id=\"arrow-{idx}\" viewBox=\"0 0 10 10\" refX=\"5\" refY=\"5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\"><path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
+-            color, color
++            "<marker id=\"arrow-{idx}\" viewBox=\"0 0 10 10\" refX=\"10\" refY=\"5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\"><path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"{}\"/></marker>",
++            color
+         ));
+         svg.push_str(&format!(
+-            "<marker id=\"arrow-start-{idx}\" viewBox=\"0 0 10 10\" refX=\"4.5\" refY=\"5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\"><path d=\"M 0 5 L 10 10 L 10 0 z\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
+-            color, color
++            "<marker id=\"arrow-start-{idx}\" viewBox=\"0 0 10 10\" refX=\"0\" refY=\"5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\"><path d=\"M 0 5 L 10 10 L 10 0 z\" fill=\"{}\"/></marker>",
++            color
+         ));
+         if is_sequence {
+             svg.push_str(&format!(
+-                "<marker id=\"arrow-seq-{idx}\" viewBox=\"-1 0 12 10\" refX=\"7.9\" refY=\"5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"12\" markerHeight=\"12\" orient=\"auto-start-reverse\"><path d=\"M -1 0 L 10 5 L 0 10 z\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
+-                color,
++                "<marker id=\"arrow-seq-{idx}\" viewBox=\"-1 0 12 10\" refX=\"10\" refY=\"5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"12\" markerHeight=\"12\" orient=\"auto-start-reverse\"><path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"{}\"/></marker>",
+                 color
+             ));
+             svg.push_str(&format!(
+-                "<marker id=\"arrow-start-seq-{idx}\" viewBox=\"-1 0 12 10\" refX=\"2.1\" refY=\"5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"12\" markerHeight=\"12\" orient=\"auto\"><path d=\"M 11 0 L 0 5 L 11 10 z\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
+-                color,
++                "<marker id=\"arrow-start-seq-{idx}\" viewBox=\"-1 0 12 10\" refX=\"0\" refY=\"5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"12\" markerHeight=\"12\" orient=\"auto\"><path d=\"M 11 0 L 0 5 L 11 10 z\" fill=\"{}\"/></marker>",
+                 color
+             ));
+         }
+         if is_state {
+             svg.push_str(&format!(
+-                "<marker id=\"arrow-state-{idx}\" viewBox=\"0 0 20 14\" refX=\"19\" refY=\"7\" markerUnits=\"userSpaceOnUse\" markerWidth=\"20\" markerHeight=\"14\" orient=\"auto\"><path d=\"M 19 7 L 9 13 L 14 7 L 9 1 Z\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
+-                color, color
++                "<marker id=\"arrow-state-{idx}\" viewBox=\"0 0 20 14\" refX=\"19\" refY=\"7\" markerUnits=\"userSpaceOnUse\" markerWidth=\"20\" markerHeight=\"14\" orient=\"auto-start-reverse\"><path d=\"M 19 7 L 9 13 L 14 7 L 9 1 Z\" fill=\"{}\"/></marker>",
++                color
+             ));
+         }
+         if is_class {
+             svg.push_str(&format!(
+-                "<marker id=\"arrow-class-open-{idx}\" viewBox=\"0 0 20 14\" refX=\"1\" refY=\"7\" markerUnits=\"userSpaceOnUse\" markerWidth=\"20\" markerHeight=\"14\" orient=\"auto\"><path d=\"M 1 7 L 18 13 V 1 Z\" fill=\"none\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
++                "<marker id=\"arrow-class-open-{idx}\" viewBox=\"0 0 20 14\" refX=\"18.5\" refY=\"7\" markerUnits=\"userSpaceOnUse\" markerWidth=\"20\" markerHeight=\"14\" orient=\"auto\"><path d=\"M 18 7 L 1 13 V 1 Z\" fill=\"none\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
+                 color
+             ));
+             svg.push_str(&format!(
+-                "<marker id=\"arrow-class-open-start-{idx}\" viewBox=\"0 0 20 14\" refX=\"18\" refY=\"7\" markerUnits=\"userSpaceOnUse\" markerWidth=\"20\" markerHeight=\"14\" orient=\"auto\"><path d=\"M 1 7 L 18 13 V 1 Z\" fill=\"none\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
++                "<marker id=\"arrow-class-open-start-{idx}\" viewBox=\"0 0 20 14\" refX=\"0.5\" refY=\"7\" markerUnits=\"userSpaceOnUse\" markerWidth=\"20\" markerHeight=\"14\" orient=\"auto\"><path d=\"M 1 7 L 18 13 V 1 Z\" fill=\"none\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
+                 color
+             ));
+             svg.push_str(&format!(
+-                "<marker id=\"arrow-class-dep-{idx}\" viewBox=\"0 0 20 14\" refX=\"13\" refY=\"7\" markerUnits=\"userSpaceOnUse\" markerWidth=\"20\" markerHeight=\"14\" orient=\"auto\"><path d=\"M 18 7 L 9 13 L 14 7 L 9 1 Z\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
+-                color, color
++                "<marker id=\"arrow-class-dep-{idx}\" viewBox=\"0 0 20 14\" refX=\"18\" refY=\"7\" markerUnits=\"userSpaceOnUse\" markerWidth=\"20\" markerHeight=\"14\" orient=\"auto\"><path d=\"M 18 7 L 9 13 L 14 7 L 9 1 Z\" fill=\"{}\"/></marker>",
++                color
+             ));
+             svg.push_str(&format!(
+-                "<marker id=\"arrow-class-dep-start-{idx}\" viewBox=\"0 0 20 14\" refX=\"6\" refY=\"7\" markerUnits=\"userSpaceOnUse\" markerWidth=\"20\" markerHeight=\"14\" orient=\"auto\"><path d=\"M 5 7 L 9 13 L 1 7 L 9 1 Z\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
+-                color, color
++                "<marker id=\"arrow-class-dep-start-{idx}\" viewBox=\"0 0 20 14\" refX=\"1\" refY=\"7\" markerUnits=\"userSpaceOnUse\" markerWidth=\"20\" markerHeight=\"14\" orient=\"auto\"><path d=\"M 5 7 L 9 13 L 1 7 L 9 1 Z\" fill=\"{}\"/></marker>",
++                color
+             ));
+         }
+     }
+@@ -631,60 +630,9 @@
+         }
+     }
+ 
+-    for frame in seq_data.map(|s| s.frames.as_slice()).unwrap_or_default() {
+-        let stroke = theme.primary_border_color.as_str();
+-        svg.push_str(&format!(
+-            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"none\" stroke=\"{}\" stroke-width=\"2.0\" stroke-dasharray=\"2 2\"/>",
+-            frame.x, frame.y, frame.width, frame.height, stroke
+-        ));
+-        for divider_y in &frame.dividers {
+-            svg.push_str(&format!(
+-                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"2.0\" stroke-dasharray=\"3 3\"/>",
+-                frame.x,
+-                divider_y,
+-                frame.x + frame.width,
+-                divider_y,
+-                stroke
+-            ));
+-        }
+-        let (box_x, box_y, box_w, box_h) = frame.label_box;
+-        let notch_x = box_x + box_w * 0.8;
+-        let notch_y = box_y + box_h;
+-        let mid_y = box_y + box_h * 0.65;
+-        svg.push_str(&format!(
+-            "<polygon points=\"{box_x:.2},{box_y:.2} {end_x:.2},{box_y:.2} {end_x:.2},{mid_y:.2} {notch_x:.2},{notch_y:.2} {box_x:.2},{notch_y:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.1\"/>",
+-            theme.primary_color,
+-            stroke,
+-            end_x = box_x + box_w,
+-            mid_y = mid_y,
+-            notch_x = notch_x,
+-            notch_y = notch_y
+-        ));
+-        svg.push_str(&text_block_svg(
+-            frame.label.x,
+-            frame.label.y,
+-            &frame.label.text,
+-            theme,
+-            config,
+-            false,
+-            Some(theme.primary_text_color.as_str()),
+-        ));
+-        for label in &frame.section_labels {
+-            svg.push_str(&text_block_svg(
+-                label.x,
+-                label.y,
+-                &label.text,
+-                theme,
+-                config,
+-                false,
+-                None,
+-            ));
+-        }
+-    }
+-
+     for lifeline in seq_data.map(|s| s.lifelines.as_slice()).unwrap_or_default() {
+         svg.push_str(&format!(
+-            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"0.5\"/>",
++            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"1.5\"/>",
+             lifeline.x,
+             lifeline.y1,
+             lifeline.x,
+@@ -776,7 +724,7 @@
+ 
+     if is_sequence {
+         for (edge_idx, edge) in layout.edges.iter().enumerate() {
+-            let d = points_to_path(&edge.points);
++            let d = sequence_message_path(&edge.points, edge.from == edge.to);
+             let mut stroke = theme.line_color.clone();
+             let edge_id = edge_dom_id(edge_idx);
+             if let Some(color) = &edge.override_style.stroke {
+@@ -806,10 +754,25 @@
+                 dash = format!("stroke-dasharray=\"{}\"", dash_override);
+             }
+             let stroke_width = edge.override_style.stroke_width.unwrap_or(1.5);
++            // The filled marker keeps the exact endpoint. Only the visible
++            // stroke stops inside it, avoiding a flat line protruding through
++            // the tapered tip at high zoom levels.
++            let shaft = crate::edge_geometry::apply_endpoint_insets(
++                edge.points.clone(),
++                if edge.arrow_start { 8.0 } else { 0.0 },
++                if edge.arrow_end { 8.0 } else { 0.0 },
++            );
++            let shaft_d = sequence_message_path(&shaft, edge.from == edge.to);
+             svg.push_str(&format!(
+-                "<path id=\"{edge_id}\" class=\"edgePath\" data-edge-id=\"{edge_id}\" d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\" {} {} {} stroke-linecap=\"round\" stroke-linejoin=\"round\" />",
+-                d, stroke, stroke_width, marker_end, marker_start, dash
++                "<path id=\"{edge_id}\" class=\"edgePath\" data-edge-id=\"{edge_id}\" d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\" {} stroke-linecap=\"butt\" stroke-linejoin=\"round\" />",
++                shaft_d, stroke, stroke_width, dash
+             ));
++
++            if edge.arrow_end || edge.arrow_start {
++                svg.push_str(&format!(
++                    "<path class=\"edgeMarkers\" data-edge-id=\"{edge_id}\" d=\"{}\" fill=\"none\" stroke=\"none\" {} {}/>",
++                    d, marker_end, marker_start));
++            }
+ 
+             if let Some(point) = edge.points.first().copied()
+                 && let Some(decoration) = edge.start_decoration
+@@ -1005,24 +968,27 @@
+         }
+ 
+         for number in seq_data.map(|s| s.numbers.as_slice()).unwrap_or_default() {
+-            let r = (theme.font_size * 0.45).max(6.0);
++            let r = number.radius;
+             svg.push_str(&format!(
+                 "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>",
+                 number.x,
+                 number.y,
+                 r,
+-                theme.sequence_activation_fill,
+-                theme.sequence_activation_border
++                theme.primary_text_color,
++                theme.primary_text_color
+             ));
+             let label = number.value.to_string();
+-            svg.push_str(&text_line_svg(
++            svg.push_str("<g class=\"sequenceNumber\" font-weight=\"700\">");
++            svg.push_str(&text_line_svg_with_font_size(
+                 number.x,
+-                number.y + theme.font_size * 0.35,
++                number.y + number.font_size * 0.35,
+                 label.as_str(),
+                 theme,
+-                theme.primary_text_color.as_str(),
++                number.font_size,
++                theme.primary_color.as_str(),
+                 "middle",
+             ));
++            svg.push_str("</g>");
+         }
+     } else {
+         let base_edge_width = match layout.kind {
+@@ -1032,13 +998,6 @@
+             _ => 2.0,
+         };
+         for (edge_idx, edge) in layout.edges.iter().enumerate() {
+-            let d = if layout.kind == crate::ir::DiagramKind::Flowchart && edge.points.len() > 2 {
+-                rounded_polyline_path(&edge.points, 10.0)
+-            } else if layout.kind == crate::ir::DiagramKind::Mindmap && edge.points.len() > 2 {
+-                basis_curve_path(&edge.points)
+-            } else {
+-                points_to_path(&edge.points)
+-            };
+             let mut stroke = theme.line_color.clone();
+             let edge_id = edge_dom_id(edge_idx);
+             let (mut dash, mut stroke_width) = match edge.style {
+@@ -1097,8 +1056,55 @@
+             if let Some(dash_override) = &edge.override_style.dasharray {
+                 dash = format!("stroke-dasharray=\"{}\"", dash_override);
+             }
++            // Line ink stops inside filled arrowheads; tips stay at the original ports.
++            let arrow_size = (stroke_width * 1.5 + 4.5).clamp(5.5, 10.0);
++            let shaft = if overlay_flowchart {
++                Cow::Owned(crate::edge_geometry::apply_endpoint_insets(
++                    edge.points.clone(),
++                    if edge.arrow_start {
++                        arrow_size * 0.8
++                    } else {
++                        0.0
++                    },
++                    if edge.arrow_end {
++                        arrow_size * 0.8
++                    } else {
++                        0.0
++                    },
++                ))
++            } else {
++                Cow::Borrowed(edge.points.as_slice())
++            };
++            let d = if overlay_flowchart
++                && shaft.len() == 4
++                && (((shaft[0].1 - shaft[1].1).abs() < 0.01
++                    && (shaft[1].0 - shaft[2].0).abs() < 0.01
++                    && (shaft[2].1 - shaft[3].1).abs() < 0.01)
++                    || ((shaft[0].0 - shaft[1].0).abs() < 0.01
++                        && (shaft[1].1 - shaft[2].1).abs() < 0.01
++                        && (shaft[2].0 - shaft[3].0).abs() < 0.01))
++                && control_hull_is_clear(edge, layout)
++            {
++                format!(
++                    "M {:.3},{:.3} C {:.3},{:.3} {:.3},{:.3} {:.3},{:.3}",
++                    shaft[0].0,
++                    shaft[0].1,
++                    shaft[1].0,
++                    shaft[1].1,
++                    shaft[2].0,
++                    shaft[2].1,
++                    shaft[3].0,
++                    shaft[3].1
++                )
++            } else if overlay_flowchart && shaft.len() > 2 {
++                rounded_polyline_path(&shaft, 10.0)
++            } else if layout.kind == crate::ir::DiagramKind::Mindmap && shaft.len() > 2 {
++                basis_curve_path(&shaft)
++            } else {
++                points_to_path(&shaft)
++            };
+             svg.push_str(&format!(
+-                "<path id=\"{edge_id}\" class=\"edgePath\" data-edge-id=\"{edge_id}\" d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\" {} {} {} stroke-linecap=\"round\" stroke-linejoin=\"round\" />",
++                "<path id=\"{edge_id}\" class=\"edgePath\" data-edge-id=\"{edge_id}\" d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\" {} {} {} stroke-linecap=\"butt\" stroke-linejoin=\"round\" />",
+                 d, stroke, stroke_width, marker_end, marker_start, dash
+             ));
+ 
+@@ -1609,6 +1615,58 @@
+         }
+     }
+ 
++    // Keep frame borders and opaque label plates above the diagram contents.
++    for frame in seq_data.map(|s| s.frames.as_slice()).unwrap_or_default() {
++        let stroke = theme.primary_border_color.as_str();
++        svg.push_str(&format!(
++            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"none\" stroke=\"{}\" stroke-width=\"2.0\" stroke-dasharray=\"6 4\"/>",
++            frame.x, frame.y, frame.width, frame.height, stroke
++        ));
++        for divider_y in &frame.dividers {
++            svg.push_str(&format!(
++                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"2.0\" stroke-dasharray=\"6 4\"/>",
++                frame.x,
++                divider_y,
++                frame.x + frame.width,
++                divider_y,
++                stroke
++            ));
++        }
++        let (box_x, box_y, box_w, box_h) = frame.label_box;
++        let notch_x = box_x + box_w * 0.8;
++        let notch_y = box_y + box_h;
++        let mid_y = box_y + box_h * 0.65;
++        svg.push_str(&format!(
++            "<polygon points=\"{box_x:.2},{box_y:.2} {end_x:.2},{box_y:.2} {end_x:.2},{mid_y:.2} {notch_x:.2},{notch_y:.2} {box_x:.2},{notch_y:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.1\"/>",
++            theme.primary_color,
++            stroke,
++            end_x = box_x + box_w,
++            mid_y = mid_y,
++            notch_x = notch_x,
++            notch_y = notch_y
++        ));
++        svg.push_str(&text_block_svg(
++            frame.label.x,
++            frame.label.y,
++            &frame.label.text,
++            theme,
++            config,
++            false,
++            Some(theme.primary_text_color.as_str()),
++        ));
++        for label in &frame.section_labels {
++            svg.push_str(&text_block_svg(
++                label.x,
++                label.y,
++                &label.text,
++                theme,
++                config,
++                false,
++                None,
++            ));
++        }
++    }
++
+     svg.push_str("</svg>");
+     svg
+ }
+@@ -1626,6 +1684,27 @@
+         d.push_str(&format!(" L {:.3},{:.3}", x, y));
+     }
+     d
++}
++
++/// A cubic stays in its control hull; only smooth monotonic routes with empty hulls.
++fn control_hull_is_clear(edge: &EdgeLayout, layout: &Layout) -> bool {
++    if !layout.subgraphs.is_empty() {
++        return false;
++    }
++    let (start, end) = (edge.points[0], edge.points[edge.points.len() - 1]);
++    let (left, right) = (start.0.min(end.0), start.0.max(end.0));
++    let (top, bottom) = (start.1.min(end.1), start.1.max(end.1));
++    edge.points.iter().all(|&(x, y)| {
++        x >= left - 0.01 && x <= right + 0.01 && y >= top - 0.01 && y <= bottom + 0.01
++    }) && !layout.nodes.values().any(|node| {
++        !node.hidden
++            && node.id != edge.from
++            && node.id != edge.to
++            && node.x < right + 8.0
++            && node.x + node.width > left - 8.0
++            && node.y < bottom + 8.0
++            && node.y + node.height > top - 8.0
++    })
+ }
+ 
+ /// Render a routed polyline with rounded interior corners.
+@@ -2214,7 +2293,7 @@
+     if normalized.is_empty() {
+         "sans-serif".to_string()
+     } else {
+-        normalized
++        escape_xml(&normalized)
+     }
+ }
+ 
+@@ -4596,8 +4675,8 @@
+         svg.push_str(&render_c4_boundary(boundary, conf));
+     }
+ 
+-    svg.push_str("<defs><marker id=\"arrowhead\" refX=\"9\" refY=\"5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"12\" markerHeight=\"12\" orient=\"auto\"><path d=\"M 0 0 L 10 5 L 0 10 z\"/></marker></defs>");
+-    svg.push_str("<defs><marker id=\"arrowend\" refX=\"1\" refY=\"5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"12\" markerHeight=\"12\" orient=\"auto\"><path d=\"M 10 0 L 0 5 L 10 10 z\"/></marker></defs>");
++    svg.push_str("<defs><marker id=\"arrowhead\" refX=\"10\" refY=\"5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"12\" markerHeight=\"12\" orient=\"auto\"><path d=\"M 0 0 L 10 5 L 0 10 z\"/></marker></defs>");
++    svg.push_str("<defs><marker id=\"arrowend\" refX=\"0\" refY=\"5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"12\" markerHeight=\"12\" orient=\"auto\"><path d=\"M 10 0 L 0 5 L 10 10 z\"/></marker></defs>");
+     svg.push_str("<defs><marker id=\"crosshead\" markerWidth=\"15\" markerHeight=\"8\" orient=\"auto\" refX=\"16\" refY=\"4\"><path fill=\"black\" stroke=\"#000000\" stroke-width=\"1px\" d=\"M 9,2 V 6 L16,4 Z\" style=\"stroke-dasharray: 0, 0;\"/><path fill=\"none\" stroke=\"#000000\" stroke-width=\"1px\" d=\"M 0,1 L 6,7 M 6,1 L 0,7\" style=\"stroke-dasharray: 0, 0;\"/></marker></defs>");
+     svg.push_str("<defs><marker id=\"filled-head\" refX=\"18\" refY=\"7\" markerWidth=\"20\" markerHeight=\"28\" orient=\"auto\"><path d=\"M 18,7 L9,13 L14,7 L9,1 Z\"/></marker></defs>");
+ 
+@@ -5961,13 +6040,25 @@
+     format!("<g transform=\"translate({x:.2} {y:.2}) rotate({angle:.2})\">{shape}</g>")
+ }
+ 
++fn sequence_message_path(points: &[(f32, f32)], self_call: bool) -> String {
++    if self_call && points.len() == 4 {
++        let (x, y) = points[0];
++        let (end_x, end_y) = points[3];
++        let control_x = x + (points[1].0 - x) * (4.0 / 3.0);
++        format!(
++            "M{x:.2},{y:.2} C{control_x:.2},{y:.2} {control_x:.2},{end_y:.2} {end_x:.2},{end_y:.2}"
++        )
++    } else {
++        points_to_path(points)
++    }
++}
++
+ fn arrowhead_svg(point: (f32, f32), angle_deg: f32, stroke: &str, stroke_width: f32) -> String {
+     let size = (stroke_width * 1.5 + 4.5).clamp(5.5, 10.0);
+     let half = size * 0.52;
+     let (x, y) = point;
+-    let join = " stroke-linejoin=\"round\" stroke-linecap=\"round\"";
+     format!(
+-        "<g transform=\"translate({x:.2} {y:.2}) rotate({angle_deg:.2})\"><polygon points=\"0,0 {neg_size:.2},{half:.2} {neg_size:.2},{neg_half:.2}\" fill=\"{stroke}\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"{join}/></g>",
++        "<g transform=\"translate({x:.2} {y:.2}) rotate({angle_deg:.2})\"><polygon points=\"0,0 {neg_size:.2},{half:.2} {neg_size:.2},{neg_half:.2}\" fill=\"{stroke}\"/></g>",
+         neg_size = -size,
+         half = half,
+         neg_half = -half,
+--- a/src/theme.rs
++++ b/src/theme.rs
+@@ -190,19 +190,17 @@
+         // theme-dark.js overrides cScale1..12 with a fixed dark palette and
+         // maps pie1..pie12 straight onto it.
+         let pie_colors = [
+-            "#0b0000", "#4d1037", "#3f5258", "#4f2f1b", "#6e0a0a", "#3b0048", "#995a01",
+-            "#154706", "#161722", "#00296f", "#01629c", "#010029",
++            "#0b0000", "#4d1037", "#3f5258", "#4f2f1b", "#6e0a0a", "#3b0048", "#995a01", "#154706",
++            "#161722", "#00296f", "#01629c", "#010029",
+         ]
+         .map(|value| value.to_string());
+         let git_colors = [
+             // git0 = lighten(secondary, 20); git1..7 = lighten(cScale2.., 10-20)
+-            "#797d7d", "#a12273", "#6a8993", "#9b5c35", "#cc1212", "#65007b", "#cc7801",
+-            "#31a50e",
++            "#797d7d", "#a12273", "#6a8993", "#9b5c35", "#cc1212", "#65007b", "#cc7801", "#31a50e",
+         ]
+         .map(|value| value.to_string());
+         let git_inv_colors = [
+-            "#868282", "#5edd8c", "#95766c", "#64a3ca", "#33eded", "#9aff84", "#3387fe",
+-            "#ce5af1",
++            "#868282", "#5edd8c", "#95766c", "#64a3ca", "#33eded", "#9aff84", "#3387fe", "#ce5af1",
+         ]
+         .map(|value| value.to_string());
+         Self {
+@@ -271,19 +269,17 @@
+         let tertiary_color = "#e1efc0".to_string();
+         // theme-forest.js pie1..pie12 derivation (adjust h/l on base colors).
+         let pie_colors = [
+-            "#cde498", "#cdffb2", "#e1efc0", "#8cb42f", "#6aff19", "#33b52e", "#70d990",
+-            "#d99070", "#98cde4", "#1a6330", "#63301a", "#1a4d63",
++            "#cde498", "#cdffb2", "#e1efc0", "#8cb42f", "#6aff19", "#33b52e", "#70d990", "#d99070",
++            "#98cde4", "#1a6330", "#63301a", "#1a4d63",
+         ]
+         .map(|value| value.to_string());
+         // git0..7 = darken(adjusted primary/secondary/tertiary, 25)
+         let git_colors = [
+-            "#9bc834", "#7aff33", "#b1d55a", "#c8ab34", "#c86134", "#c83452", "#34c861",
+-            "#349bc8",
++            "#9bc834", "#7aff33", "#b1d55a", "#c8ab34", "#c86134", "#c83452", "#34c861", "#349bc8",
+         ]
+         .map(|value| value.to_string());
+         let git_inv_colors = [
+-            "#6437cb", "#8500cc", "#4e2aa5", "#3754cb", "#379ecb", "#37cbad", "#cb379e",
+-            "#cb6437",
++            "#6437cb", "#8500cc", "#4e2aa5", "#3754cb", "#379ecb", "#37cbad", "#cb379e", "#cb6437",
+         ]
+         .map(|value| value.to_string());
+         Self {
+@@ -351,19 +347,17 @@
+         // theme-neutral.js maps pie1..pie11 onto its fixed grey cScale1..11
+         // and wraps pie12 back to cScale0 (#555).
+         let pie_colors = [
+-            "#f4f4f4", "#555555", "#bbbbbb", "#777777", "#999999", "#dddddd", "#ffffff",
+-            "#dddddd", "#bbbbbb", "#999999", "#777777", "#555555",
++            "#f4f4f4", "#555555", "#bbbbbb", "#777777", "#999999", "#dddddd", "#ffffff", "#dddddd",
++            "#bbbbbb", "#999999", "#777777", "#555555",
+         ]
+         .map(|value| value.to_string());
+         // git0 = darken(pie1, 25), git1..7 = pie2..8
+         let git_colors = [
+-            "#b4b4b4", "#555555", "#bbbbbb", "#777777", "#999999", "#dddddd", "#ffffff",
+-            "#dddddd",
++            "#b4b4b4", "#555555", "#bbbbbb", "#777777", "#999999", "#dddddd", "#ffffff", "#dddddd",
+         ]
+         .map(|value| value.to_string());
+         let git_inv_colors = [
+-            "#4b4b4b", "#aaaaaa", "#444444", "#888888", "#666666", "#222222", "#000000",
+-            "#222222",
++            "#4b4b4b", "#aaaaaa", "#444444", "#888888", "#666666", "#222222", "#000000", "#222222",
+         ]
+         .map(|value| value.to_string());
+         Self {
+@@ -575,10 +569,7 @@
+     #[test]
+     fn theme_from_name_resolves_builtin_presets() {
+         assert_eq!(Theme::from_name("dark").unwrap().background, "#333333");
+-        assert_eq!(
+-            Theme::from_name("forest").unwrap().primary_color,
+-            "#cde498"
+-        );
++        assert_eq!(Theme::from_name("forest").unwrap().primary_color, "#cde498");
+         assert_eq!(
+             Theme::from_name("neutral").unwrap().primary_color,
+             "#eeeeee"
+--- a/src/validator.rs
++++ b/src/validator.rs
+@@ -628,8 +628,7 @@
+ 
+     #[test]
+     fn block_beta_named_group_end_passes() {
+-        let input =
+-            "block-beta\ncolumns 3\na b c\nblock:group1[\"Group One\"]\nd\ne\nend\nf\ngroup1 --> f\n";
++        let input = "block-beta\ncolumns 3\na b c\nblock:group1[\"Group One\"]\nd\ne\nend\nf\ngroup1 --> f\n";
+         assert!(validate(input).is_ok(), "got {:?}", validate(input).err());
+     }
+ 

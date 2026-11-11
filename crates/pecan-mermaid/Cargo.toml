@@ -1,0 +1,21 @@
+[package]
+name = "pecan-mermaid"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Bounded native Mermaid rendering and reusable SVG rasterization"
+
+[dependencies]
+async-lock.workspace = true
+blake3.workspace = true
+lru.workspace = true
+mermaid-rs-renderer.workspace = true
+png.workspace = true
+resvg.workspace = true
+roxmltree.workspace = true
+quick-xml = "0.41"
+thiserror.workspace = true
+
+[lints]
+workspace = true

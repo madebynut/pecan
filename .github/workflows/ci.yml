@@ -1,0 +1,102 @@
+name: Release
+
+# Branch pushes and pull requests deliberately do not build the application.
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macOS-arm64
+            os: macos-15
+            target: aarch64-apple-darwin
+          - platform: macOS-x86_64
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+          - platform: Windows-x64
+            os: windows-2022
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate version
+        run: python scripts/release-version.py
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          targets: ${{ matrix.target }}
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+          cache-on-failure: true
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --locked --workspace --all-targets --all-features --target ${{ matrix.target }} -- -D warnings
+      # GPUI schedulers share a formatting semaphore, so tests run serially.
+      - name: Tests
+        run: cargo test --locked --workspace --all-features --target ${{ matrix.target }} -- --test-threads=1
+      - name: Documentation
+        run: cargo doc --locked --workspace --all-features --no-deps --target ${{ matrix.target }}
+        env:
+          RUSTDOCFLAGS: -D warnings
+      - name: Export smoke test
+        run: cargo run --locked --target ${{ matrix.target }} -p pecan-export --example export_document -- samples/acceptance.md target/export-smoke
+      - name: Package macOS
+        if: runner.os == 'macOS'
+        run: sh scripts/bundle-macos.sh ${{ matrix.target }}
+      - name: Package Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/bundle-windows.ps1 -Target '${{ matrix.target }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pecan-${{ matrix.platform }}
+          path: dist/Pecan-*.zip
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: build
+    # Non-version tags can verify builds without creating a public release.
+    if: startsWith(github.ref_name, 'v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum Pecan-*.zip > SHA256SUMS.txt
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" dist/* --verify-tag --title "Pecan ${RELEASE_TAG#v}" --generate-notes
