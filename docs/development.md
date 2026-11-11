@@ -21,7 +21,7 @@ cargo doc --locked --workspace --all-features --no-deps
 cargo run --locked -p pecan-export --example export_document -- samples/acceptance.md target/export-smoke
 ```
 
-完整测试在本地执行，GPUI 测试共享格式化信号量，须串行运行。标记为 ignored 的测试需要图形环境或外部验收文档。macOS 和 Windows CI 使用固定提交和 SHA-256 校验的 Noto CJK 字体保证导出 smoke test 的中文覆盖；字体仅安装在临时 runner 的用户字体目录，不打包进应用。本地若缺少中文宋体／黑体，可运行 `python scripts/install-ci-fonts.py` 准备同一字体环境。自动构建与本地测试不等同于 Windows 实机的高 DPI、驱动、输入法及 Office 显示验收；这些仍需按 [验收指南](../samples/acceptance-guide.md) 检查。
+本地与 tag 发布 CI 均执行全工作区、全特性测试，GPUI 测试共享格式化信号量，须使用 `--test-threads=1` 串行运行。标记为 ignored 的测试需要图形环境或外部验收文档，应单独验收。macOS 和 Windows CI 使用固定提交和 SHA-256 校验的 Noto CJK 字体保证测试及导出 smoke test 的中文覆盖；字体仅安装在临时 runner 的用户字体目录，不打包进应用。本地若缺少中文宋体／黑体，可运行 `python scripts/install-ci-fonts.py` 准备同一字体环境。自动构建与本地测试不等同于 Windows 实机的高 DPI、驱动、输入法及 Office 显示验收；这些仍需按 [验收指南](../samples/acceptance-guide.md) 检查。
 
 ## 打包
 
@@ -41,7 +41,7 @@ sh scripts/bundle-macos.sh
 
 **仅 `push.tags` 触发**，普通分支 push、pull request 均不运行构建，无定时或手动触发入口。
 
-每个 tag 执行 macOS arm64、macOS x86_64、Windows x64 构建矩阵；所有平台先执行格式检查、Clippy、rustdoc 和离线导出 smoke test，再打包上传 Actions artifacts。CI 不再执行 `cargo test`，完整测试须在本地通过后再打 tag；Clippy 保留 `--all-targets`，继续检查测试代码能否在目标平台编译。
+每个 tag 执行 macOS arm64、macOS x86_64、Windows x64 构建矩阵；所有平台先执行格式检查、Clippy、全工作区全特性测试、rustdoc 和离线导出 smoke test，再打包上传 Actions artifacts。测试使用各平台原生目标和 `--test-threads=1`，任何测试失败都会阻止该平台打包及最终发布；其他平台继续完成检查，便于一次收集问题。标记为 ignored 的环境专项不自动运行，须单独验收。
 
 正式发行步骤：
 

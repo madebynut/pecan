@@ -116,6 +116,6 @@ end > 0 && offset < spans[end - 1].source.end
 - Rustfmt、严格全目标全特性 Clippy、Windows MSVC 交叉 Clippy、warnings-as-errors rustdoc 通过。
 - actionlint、打包脚本 shellcheck、diff 空白检查通过。
 - `samples/acceptance.md` 的 HTML / PDF / Word 与修改前逐字节相同；Markdown 仅临时资源目录名称不同，正文及对应图片字节相同。DOCX ZIP 完整性和 XML 解析通过。
-- 原生 CI：前一轮 macOS ARM 完整通过；Intel 测试通过但冷构建超时；Windows 测试暴露的平台假设已修正。按最新发布策略，CI 移除 `cargo test`，完整测试由本地承担；CI 保留全目标 Clippy、rustdoc、导出 smoke test 和三平台打包。不能将本地测试或旧提交的 CI 结果表述为最新提交的三平台原生测试通过。
+- 原生 CI：前一轮 macOS ARM 完整通过；Intel 测试通过但冷构建超时；Windows 测试暴露的平台假设已修正。该轮曾暂时移除 CI 的 `cargo test`；现已恢复 tag 发布时三平台的全工作区、全特性串行测试，并保留全目标 Clippy、rustdoc、导出 smoke test 和三平台打包。环境专项仍需单独验收，不能将本地测试或旧提交的 CI 结果表述为最新提交的三平台原生测试通过。
 
 本地 QA：`2026-11-11/pecan-production-review/`，包含四格式导出、逐项比较 JSON、基准与检查日志。
