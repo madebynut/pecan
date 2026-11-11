@@ -175,10 +175,25 @@ fn independent_fonts_change_actual_glyphs_and_partition_the_cache() {
     use pecan_mermaid::DiagramFonts;
     let renderer = Renderer::new();
     let source = "sequenceDiagram\n autonumber\n participant A as Reader 阅读器\n participant B as Worker 任务\n A->>B: Request 请求\n B-->>A: Result 结果\n";
+    let database = pecan_mermaid::system_fonts();
+    let installed = |candidates: &[&str]| {
+        candidates
+            .iter()
+            .find(|name| {
+                database
+                    .faces()
+                    .any(|face| face.families.iter().any(|(family, _)| family == *name))
+            })
+            .expect("font regression needs installed CJK sans, CJK serif and monospace families")
+            .to_string()
+    };
+    let sans = installed(&["PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC"]);
+    let serif = installed(&["Songti SC", "SimSun", "Noto Serif CJK SC"]);
+    let mono = installed(&["Menlo", "Consolas", "DejaVu Sans Mono"]);
     let fonts = [
-        DiagramFonts::new("PingFang SC", "PingFang SC"),
-        DiagramFonts::new("PingFang SC", "Songti SC"),
-        DiagramFonts::new("Menlo", "Songti SC"),
+        DiagramFonts::new(&sans, &sans),
+        DiagramFonts::new(&sans, &serif),
+        DiagramFonts::new(&mono, &serif),
     ];
     for appearance in [Appearance::Light, Appearance::Dark] {
         let mut previous = None;

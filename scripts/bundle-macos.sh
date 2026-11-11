@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+project_root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$project_root"
 target=${1:-$(rustc -vV | sed -n 's/^host: //p')}
 version=$(python3 scripts/release-version.py)
