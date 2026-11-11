@@ -59,7 +59,7 @@ jobs:
       - name: Install CJK export fonts
         run: python scripts/install-ci-fonts.py
       - name: Tests
-        run: cargo test --locked --workspace --all-features --target ${{ matrix.target }} -- --test-threads=1
+        run: cargo test --locked --workspace --all-features --no-fail-fast --target ${{ matrix.target }} -- --test-threads=1
       - name: Documentation
         run: cargo doc --locked --workspace --all-features --no-deps --target ${{ matrix.target }}
         env:

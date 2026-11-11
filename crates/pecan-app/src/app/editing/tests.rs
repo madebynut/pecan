@@ -81,7 +81,12 @@ fn editing_preview_saving_and_reopening_preserve_exact_markdown(cx: &mut TestApp
     });
     super::super::tests::settle(&visual.cx);
     visual.update(|window, cx| {
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), source);
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            source,
+            "{}",
+            reader.read(cx).status
+        );
         let state = reader.read(cx);
         assert!(!state.tabs[state.active].protected());
         reader.update(cx, |reader, cx| reader.toggle_source(window, cx));
@@ -120,7 +125,12 @@ fn top_toolbar_tracks_real_save_success_and_reload_keeps_the_unsaved_guard(
     click(&mut visual, "source-save");
     super::super::tests::settle(&visual.cx);
     visual.update(|window, cx| window.draw(cx).clear(cx));
-    assert_eq!(std::fs::read_to_string(&path).unwrap(), "# Edited");
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "# Edited",
+        "{}",
+        reader.read_with(&visual.cx, |reader, _| reader.status.clone())
+    );
     let saved = visual.debug_bounds("source-saved").unwrap();
     assert!(toolbar.contains(&saved.center()));
     assert!(visual.debug_bounds("source-save").is_none());
@@ -205,7 +215,12 @@ fn source_reload_preserves_editor_mode_and_refreshes_the_save_baseline(cx: &mut 
     })
     .unwrap();
     super::super::tests::settle(cx);
-    assert_eq!(std::fs::read_to_string(&path).unwrap(), "# After reload");
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "# After reload",
+        "{}",
+        reader.read_with(cx, |reader, _| reader.status.clone())
+    );
     reader.read_with(cx, |state, _| {
         assert!(
             state.tabs[state.active]
@@ -281,7 +296,12 @@ fn source_reload_save_choice_and_reading_mode_are_preserved(cx: &mut TestAppCont
     .unwrap();
     cx.simulate_prompt_answer("保存");
     super::super::tests::settle(cx);
-    assert_eq!(std::fs::read_to_string(&path).unwrap(), "# Saved draft");
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "# Saved draft",
+        "{}",
+        reader.read_with(cx, |reader, _| reader.status.clone())
+    );
     reader.read_with(cx, |state, cx| {
         assert!(state.tabs[state.active].source_mode());
         assert!(!state.tabs[state.active].protected());
@@ -493,7 +513,9 @@ fn close_cancel_preserves_draft_and_save_closes_only_after_success(cx: &mut Test
     .unwrap();
     cx.simulate_prompt_answer("保存");
     super::super::tests::settle(cx);
-    reader.read_with(cx, |state, _| assert_eq!(state.tabs.len(), 1));
+    reader.read_with(cx, |state, _| {
+        assert_eq!(state.tabs.len(), 1, "{}", state.status)
+    });
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "# 保存后关闭");
 }
 

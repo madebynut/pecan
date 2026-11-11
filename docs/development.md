@@ -41,7 +41,7 @@ sh scripts/bundle-macos.sh
 
 **仅 `push.tags` 触发**，普通分支 push、pull request 均不运行构建，无定时或手动触发入口。
 
-每个 tag 执行 macOS arm64、macOS x86_64、Windows x64 构建矩阵；所有平台先执行格式检查、Clippy、全工作区全特性测试、rustdoc 和离线导出 smoke test，再打包上传 Actions artifacts。测试使用各平台原生目标和 `--test-threads=1`，任何测试失败都会阻止该平台打包及最终发布；其他平台继续完成检查，便于一次收集问题。标记为 ignored 的环境专项不自动运行，须单独验收。
+每个 tag 执行 macOS arm64、macOS x86_64、Windows x64 构建矩阵；所有平台先执行格式检查、Clippy、全工作区全特性测试、rustdoc 和离线导出 smoke test，再打包上传 Actions artifacts。测试使用各平台原生目标、`--no-fail-fast` 和 `--test-threads=1`，一个 crate 失败后继续运行其他 crate，以收集完整结果；任何测试失败仍会阻止该平台打包及最终发布。其他平台也继续完成检查。标记为 ignored 的环境专项不自动运行，须单独验收。
 
 正式发行步骤：
 

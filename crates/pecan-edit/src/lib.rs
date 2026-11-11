@@ -63,6 +63,8 @@ pub fn save(path: &Path, previous: &str, source: &str) -> Result<PathBuf, SaveEr
         length += count;
         current.update(&buffer[..count]);
     }
+    // Windows replacement can fail while the destination still has an open read handle.
+    drop(input);
     if length != previous.len() || current.finalize() != blake3::hash(previous.as_bytes()) {
         return Err(SaveError::Conflict);
     }
