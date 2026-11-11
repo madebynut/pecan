@@ -39,9 +39,15 @@ sh scripts/bundle-macos.sh
 
 ## GitHub Actions
 
-**仅 `push.tags` 触发**，普通分支 push、pull request 均不运行构建，无定时或手动触发入口。
+**仅 tag push 自动触发构建**，普通分支 push、pull request 均不运行构建，无定时任务。另提供默认分支上的手动运行入口，用于预热后续 tag 可读取的共享缓存。
 
 每个 tag 执行 macOS arm64、macOS x86_64、Windows x64 构建矩阵；所有平台先执行格式检查、Clippy、全工作区全特性测试、rustdoc 和离线导出 smoke test，再打包上传 Actions artifacts。测试使用各平台原生目标、`--no-fail-fast` 和 `--test-threads=1`，一个 crate 失败后继续运行其他 crate，以收集完整结果；任何测试失败仍会阻止该平台打包及最终发布。其他平台也继续完成检查。标记为 ignored 的环境专项不自动运行，须单独验收。
+
+`build/` 开头的临时 tag 共用一个并发组，新试跑自动取消旧试跑，避免多套相同的构建同时占用 runner。正式版本 tag 使用独立并发组，不会被后续试跑取消。
+
+GitHub 缓存受 ref 范围约束，不同 tag 的缓存不能直接互相复用。首次发布或工具链、依赖更新后，可在 Actions 的 **Release → Run workflow** 中选择默认分支 `main`，手动运行一次完整流程；也可执行 `gh workflow run ci.yml --ref main`。它执行相同的检查、测试和打包，生成默认分支缓存与构建产物，不创建 GitHub Release。只有默认分支写入共享缓存，后续 tag 读取该缓存，避免每个试跑 tag 各存一份并挤占缓存额度；`Cache status` 输出是否精确命中，缓存失效仍按正常流程构建。为避免同时占用多套 runner，请在当前试跑结束后再预热。
+
+ARM runner 的容量排队属于 GitHub 托管资源供应问题，缓存和并发控制只能减少占用时间，不能保证立即分配机器。此类失败可重跑对应失败作业；只有日志显示 OOM、磁盘不足或构建超时，才针对性调整编译并发和资源配置。持续有发布时效要求时，应考虑专用 runner。
 
 正式发行步骤：
 
