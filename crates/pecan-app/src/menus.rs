@@ -112,10 +112,12 @@ pub(crate) fn refresh(cx: &mut App) {
         ]),
         Menu::new("帮助").items([MenuItem::action("碧果使用指南", Help)]),
     ];
+    cx.set_menus(menus);
     #[cfg(not(target_os = "macos"))]
     {
         use gpui_kit::component::{GlobalState, menu::AppMenuBar};
-        GlobalState::global_mut(cx).set_app_menus(menus.iter().cloned().map(Menu::owned).collect());
+        let menus = cx.get_menus().unwrap_or_default();
+        GlobalState::global_mut(cx).set_app_menus(menus);
         if let Some(menu) = cx.try_global::<DesktopMenu>().map(|menu| menu.0.clone()) {
             menu.update(cx, |menu, cx| menu.reload(cx));
         } else {
@@ -123,7 +125,6 @@ pub(crate) fn refresh(cx: &mut App) {
             cx.set_global(DesktopMenu(menu));
         }
     }
-    cx.set_menus(menus);
 }
 
 fn application_menu() -> Menu {

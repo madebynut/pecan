@@ -646,6 +646,7 @@ impl Render for ImageViewer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "macos")]
     use gpui_kit::ImgResourceLoader;
     use gpui_kit::{
         Bounds, Entity, KeyBinding, TestAppContext, VisualTestContext, WindowBounds, WindowOptions,

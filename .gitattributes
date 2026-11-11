@@ -13,3 +13,4 @@
 *.diff -whitespace
 *.md -whitespace
 vendor/** -whitespace
+licenses/** -text -whitespace
