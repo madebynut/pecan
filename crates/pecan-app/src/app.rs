@@ -922,6 +922,7 @@ impl Reader {
                                         Button::new("toggle-sidebar")
                                             .small()
                                             .ghost()
+                                            .cursor_pointer()
                                             .child(crate::ui::icon(
                                                 if self.sidebar && !self.focus_mode {
                                                     IconName::PanelLeftClose
@@ -943,6 +944,7 @@ impl Reader {
                                 Button::new("open-file")
                                     .small()
                                     .ghost()
+                                    .cursor_pointer()
                                     .child(crate::ui::icon(IconName::FileText))
                                     .tooltip(crate::platform::choose(
                                         "打开文档 · ⌘O",
@@ -956,6 +958,7 @@ impl Reader {
                                 Button::new("open-folder")
                                     .small()
                                     .ghost()
+                                    .cursor_pointer()
                                     .child(crate::ui::icon(IconName::FolderOpen))
                                     .tooltip(crate::platform::choose(
                                         "打开文件夹 · ⇧⌘O",
@@ -969,6 +972,7 @@ impl Reader {
                                 Button::new("find")
                                     .small()
                                     .ghost()
+                                    .cursor_pointer()
                                     .child(crate::ui::icon(IconName::Search))
                                     .tooltip(crate::platform::choose("搜索 · ⌘F", "搜索 · Ctrl+F"))
                                     .on_click(cx.listener(|reader, _, window, cx| {
@@ -980,6 +984,7 @@ impl Reader {
                                     .debug_selector(|| "titlebar-reload".into())
                                     .small()
                                     .ghost()
+                                    .cursor_pointer()
                                     .child(crate::ui::icon(IconName::RefreshCw))
                                     .tooltip(crate::platform::choose(
                                         "重新加载 · ⌘R",
@@ -994,6 +999,7 @@ impl Reader {
                                 Button::new("reading-focus")
                                     .small()
                                     .ghost()
+                                    .cursor_pointer()
                                     .child(crate::ui::icon(IconName::BookOpen))
                                     .tooltip(crate::platform::choose(
                                         "专注阅读 · ⇧⌘F",
@@ -1008,6 +1014,7 @@ impl Reader {
                                 Button::new("text-smaller")
                                     .small()
                                     .ghost()
+                                    .cursor_pointer()
                                     .child(crate::ui::icon(IconName::Minus))
                                     .tooltip(crate::platform::choose(
                                         "减小正文字号 · ⌘−",
@@ -1021,6 +1028,7 @@ impl Reader {
                                 Button::new("text-larger")
                                     .small()
                                     .ghost()
+                                    .cursor_pointer()
                                     .child(crate::ui::icon(IconName::Plus))
                                     .tooltip(crate::platform::choose(
                                         "增大正文字号 · ⌘+",
@@ -1034,6 +1042,7 @@ impl Reader {
                                 Button::new("theme")
                                     .small()
                                     .ghost()
+                                    .cursor_pointer()
                                     .child(crate::ui::icon(if cx.theme().is_dark() {
                                         IconName::Sun
                                     } else {
@@ -1048,6 +1057,7 @@ impl Reader {
                                 Button::new("fullscreen")
                                     .small()
                                     .ghost()
+                                    .cursor_pointer()
                                     .child(crate::ui::icon(IconName::Maximize))
                                     .tooltip(crate::platform::choose("全屏 · ⌃⌘F", "全屏 · F11"))
                                     .on_click(|_, window, cx| {
@@ -1058,6 +1068,7 @@ impl Reader {
                                 Button::new("settings")
                                     .small()
                                     .ghost()
+                                    .cursor_pointer()
                                     .child(crate::ui::icon(IconName::Settings))
                                     .tooltip(crate::platform::choose("设置 · ⌘,", "设置 · Ctrl+,"))
                                     .on_click(|_, window, cx| {
@@ -1068,6 +1079,7 @@ impl Reader {
                                 Button::new("toggle-outline")
                                     .small()
                                     .ghost()
+                                    .cursor_pointer()
                                     .child(crate::ui::icon(if self.outline && !self.focus_mode {
                                         IconName::PanelRightClose
                                     } else {
@@ -1331,7 +1343,7 @@ impl Render for Reader {
                 .child(
                     div()
                         .debug_selector(|| "empty-logo".into())
-                        .opacity(0.45)
+                        .opacity(0.4)
                         .child(gpui_kit::img(crate::brand::icon(cx)).size(px(100.))),
                 )
                 .into_any_element()
@@ -1666,7 +1678,7 @@ mod tests {
                     image.get_pixel(x, y).0[..3]
                         .iter()
                         .zip(background)
-                        .any(|(&channel, background)| channel.abs_diff(background) > 90)
+                        .any(|(&channel, background)| channel.abs_diff(background) > 60)
                 })
                 .count();
             assert!(

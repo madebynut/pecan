@@ -1,4 +1,5 @@
 //! Source sessions, asynchronous preview/save, and one shared unsaved-changes guard.
+mod reload;
 mod save;
 #[cfg(test)]
 mod tests;
@@ -523,16 +524,8 @@ impl Reader {
                 cx.defer(request_quit);
             }
             Finish::Reload => {
-                if let Some(index) = self
-                    .tabs
-                    .iter()
-                    .position(|tab| plan.ids.contains(&tab.view.entity_id()))
-                {
-                    let tab = &mut self.tabs[index];
-                    if let Some(path) = tab.path.clone() {
-                        tab.edit = None;
-                        self.load(path, super::LoadMode::Replace, cx);
-                    }
+                if let Some(id) = plan.ids.first() {
+                    self.reload_source(*id, window, cx);
                 }
             }
         }

@@ -51,9 +51,7 @@ impl Reader {
                     .disabled(self.edit_job.is_some())
                     .debug_selector(|| "source-save".into())
                     .when(saved, |button| {
-                        button
-                            .debug_selector(|| "source-saved".into())
-                            .cursor_default()
+                        button.debug_selector(|| "source-saved".into())
                     })
                     .when(!saved, |button| {
                         button.on_click(cx.listener(|reader, _, window, cx| {

@@ -156,6 +156,213 @@ fn top_toolbar_tracks_real_save_success_and_reload_keeps_the_unsaved_guard(
 }
 
 #[gpui_kit::test]
+fn source_reload_preserves_editor_mode_and_refreshes_the_save_baseline(cx: &mut TestAppContext) {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("reload.md");
+    std::fs::write(&path, "# Original").unwrap();
+    let (handle, reader) = open(cx, Some(path.clone()));
+    let (id, editor) = cx
+        .update_window(handle, |_, window, cx| {
+            reader.update(cx, |reader, cx| reader.toggle_source(window, cx));
+            let state = reader.read(cx);
+            let tab = &state.tabs[state.active];
+            (
+                tab.view.entity_id(),
+                tab.edit.as_ref().unwrap().editor.clone(),
+            )
+        })
+        .unwrap();
+    // Reload must clamp the old caret to a UTF-8 boundary in a shorter document.
+    editor.update(cx, |editor, cx| editor.set_selected_range(4..4, cx));
+    std::fs::write(&path, "中文").unwrap();
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.reload_action(window, cx));
+    })
+    .unwrap();
+    super::super::tests::settle(cx);
+    reader.read_with(cx, |state, cx| {
+        let tab = &state.tabs[state.active];
+        assert!(tab.source_mode(), "reload must stay in the source editor");
+        assert_eq!(tab.view.entity_id(), id);
+        let edit = tab.edit.as_ref().unwrap();
+        assert_eq!(edit.editor, editor);
+        assert_eq!(edit.editor.read(cx).selected_range(), 3..3);
+        assert_eq!(text(&reader, cx), "中文");
+        assert_eq!(tab.view.read(cx).document.source(), "中文");
+        assert!(!tab.protected());
+        assert!(!edit.preview_pending());
+        assert!(!edit.save_confirmed());
+    });
+    cx.update_window(handle, |_, window, cx| {
+        replace(&reader, "# After reload", window, cx)
+    })
+    .unwrap();
+    super::super::tests::settle(cx);
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| {
+            reader.save_active(SaveMode::Existing, window, cx)
+        });
+    })
+    .unwrap();
+    super::super::tests::settle(cx);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "# After reload");
+    reader.read_with(cx, |state, _| {
+        assert!(
+            state.tabs[state.active]
+                .edit
+                .as_ref()
+                .unwrap()
+                .save_confirmed()
+        );
+    });
+}
+
+#[gpui_kit::test]
+fn source_reload_discard_failure_preserves_draft_and_success_resets_it(cx: &mut TestAppContext) {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("reload.md");
+    std::fs::write(&path, "# Original").unwrap();
+    let (handle, reader) = open(cx, Some(path.clone()));
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.toggle_source(window, cx));
+        replace(&reader, "# Draft", window, cx);
+    })
+    .unwrap();
+    super::super::tests::settle(cx);
+    for invalid in [true, false] {
+        if invalid {
+            std::fs::write(&path, [0xff, 0xfe]).unwrap();
+        } else {
+            std::fs::write(&path, "# External").unwrap();
+        }
+        cx.update_window(handle, |_, window, cx| {
+            reader.update(cx, |reader, cx| reader.reload_action(window, cx));
+        })
+        .unwrap();
+        assert!(cx.has_pending_prompt());
+        cx.simulate_prompt_answer("不保存");
+        super::super::tests::settle(cx);
+        reader.read_with(cx, |state, cx| {
+            let tab = &state.tabs[state.active];
+            assert!(tab.source_mode());
+            let edit = tab.edit.as_ref().unwrap();
+            assert!(!edit.busy);
+            assert_eq!(edit.dirty, invalid);
+            assert_eq!(
+                text(&reader, cx),
+                if invalid { "# Draft" } else { "# External" }
+            );
+            assert_eq!(
+                edit.saved.source(),
+                if invalid { "# Original" } else { "# External" }
+            );
+            if invalid {
+                assert!(state.status.contains("读取失败"), "{}", state.status);
+            }
+        });
+    }
+}
+
+#[gpui_kit::test]
+fn source_reload_save_choice_and_reading_mode_are_preserved(cx: &mut TestAppContext) {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("reload.md");
+    std::fs::write(&path, "# Original").unwrap();
+    let (handle, reader) = open(cx, Some(path.clone()));
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.toggle_source(window, cx));
+        replace(&reader, "# Saved draft", window, cx);
+    })
+    .unwrap();
+    super::super::tests::settle(cx);
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.reload_action(window, cx));
+    })
+    .unwrap();
+    cx.simulate_prompt_answer("保存");
+    super::super::tests::settle(cx);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "# Saved draft");
+    reader.read_with(cx, |state, cx| {
+        assert!(state.tabs[state.active].source_mode());
+        assert!(!state.tabs[state.active].protected());
+        assert_eq!(text(&reader, cx), "# Saved draft");
+    });
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.toggle_source(window, cx));
+    })
+    .unwrap();
+    std::fs::write(&path, "# Reading refresh").unwrap();
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.reload_action(window, cx));
+    })
+    .unwrap();
+    super::super::tests::settle(cx);
+    reader.read_with(cx, |state, cx| {
+        let tab = &state.tabs[state.active];
+        assert!(!tab.source_mode(), "reading mode must also stay unchanged");
+        assert_eq!(tab.view.read(cx).document.source(), "# Reading refresh");
+        assert_eq!(text(&reader, cx), "# Reading refresh");
+    });
+}
+
+#[gpui_kit::test]
+fn source_reload_completion_does_not_activate_a_background_tab(cx: &mut TestAppContext) {
+    let directory = tempfile::tempdir().unwrap();
+    let a = directory.path().join("a.md");
+    let b = directory.path().join("b.md");
+    std::fs::write(&a, "# Original A").unwrap();
+    std::fs::write(&b, "# B").unwrap();
+    let (handle, reader) = open(cx, Some(b.clone()));
+    reader.update(cx, |reader, cx| reader.open_file(a.clone(), cx));
+    super::super::tests::settle(cx);
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.toggle_source(window, cx));
+    })
+    .unwrap();
+    std::fs::write(&a, "# Updated A").unwrap();
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| {
+            reader.reload_action(window, cx);
+            assert!(reader.tabs[reader.active].edit.as_ref().unwrap().busy);
+            let index = reader
+                .tabs
+                .iter()
+                .position(|tab| tab.path.as_ref() == Some(&b))
+                .unwrap();
+            reader.activate(index, cx);
+            reader.focus_document(window, cx);
+        });
+    })
+    .unwrap();
+    super::super::tests::settle(cx);
+    cx.update_window(handle, |_, window, cx| {
+        let state = reader.read(cx);
+        assert_eq!(state.tabs[state.active].path.as_ref(), Some(&b));
+        assert_eq!(state.watcher.as_ref().map(|w| &w.0), Some(&b));
+        assert!(state.focus.is_focused(window));
+        let tab = state
+            .tabs
+            .iter()
+            .find(|tab| tab.path.as_ref() == Some(&a))
+            .unwrap();
+        assert!(tab.source_mode());
+        assert!(!tab.protected());
+        assert_eq!(
+            tab.edit
+                .as_ref()
+                .unwrap()
+                .editor
+                .read(cx)
+                .text()
+                .to_string(),
+            "# Updated A"
+        );
+        assert_eq!(tab.view.read(cx).document.source(), "# Updated A");
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
 fn source_outline_uses_current_offsets_and_reports_deleted_headings(cx: &mut TestAppContext) {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("outline.md");
