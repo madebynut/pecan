@@ -95,6 +95,8 @@ end > 0 && offset < spans[end - 1].source.end
 
 使用实际安装的 CJK 无衬线/衬线和等宽字体，继续比较实际预览像素；路径断言采用平台规范化后的路径；全屏验证分别遵循平台窗体边距；最近文件测试初始化完整 GPUI 菜单环境。没有通过跳过这些测试消除失败。Intel 原生测试已通过，但首次冷构建在 release 编译时触及原来的 60 分钟作业限制，调整为 120 分钟，保留 LTO 和全部质量检查。构建触发仍仅限 tag push。
 
+三平台 CI 安装同一固定提交、SHA-256 校验的 Noto CJK 测试字体，避免托管 macOS/Windows 镜像缺失可选中文字体；下载校验通过后才原子替换。导入生命周期测试从入口就使用平台绝对路径，覆盖 Windows 规范化后查找和关闭标签的行为。字体安装只准备测试环境，不改变应用默认字体或打包内容。
+
 ## 需要持续跟进
 
 依赖审计更新后没有 vulnerability、unsound 或 yanked 命中，但默认 `cargo deny check advisories` 仍因 9 类停止维护公告返回失败：instant、paste、rustls-pemfile、rustybuzz、smartstring、ttf-parser，以及 Linux 依赖链的 zbus_names、zvariant、zvariant_derive。没有增加忽略规则，也没有将此项报告为通过。后续应配合 GPUI、resvg、krilla 和相关上游升级；本轮不贸然迁移整形引擎、字体解析和宏依赖，以保护现有版式与跨平台行为。

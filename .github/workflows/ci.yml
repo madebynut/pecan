@@ -57,9 +57,7 @@ jobs:
       - name: Clippy
         run: cargo clippy --locked --workspace --all-targets --all-features --target ${{ matrix.target }} -- -D warnings
       - name: Install CJK test fonts
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: ./scripts/install-ci-fonts.ps1
+        run: python scripts/install-ci-fonts.py
       # GPUI schedulers share a formatting semaphore, so tests run serially.
       - name: Tests
         run: cargo test --locked --workspace --all-features --target ${{ matrix.target }} -- --test-threads=1

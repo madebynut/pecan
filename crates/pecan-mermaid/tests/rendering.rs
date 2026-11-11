@@ -184,7 +184,7 @@ fn independent_fonts_change_actual_glyphs_and_partition_the_cache() {
                     .faces()
                     .any(|face| face.families.iter().any(|(family, _)| family == *name))
             })
-            .expect("font regression needs installed CJK sans, CJK serif and monospace families")
+            .unwrap_or_else(|| panic!("font regression needs one of {candidates:?}"))
             .to_string()
     };
     let sans = installed(&["PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC"]);

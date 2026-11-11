@@ -2140,8 +2140,10 @@ mod tests {
     fn imported_tabs_retain_assets_and_keep_pdf_modes_within_the_document_column(
         cx: &mut TestAppContext,
     ) {
-        let fixtures =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../pecan-import/tests/fixtures");
+        let fixtures = std::path::absolute(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../pecan-import/tests/fixtures"),
+        )
+        .unwrap();
         let office = fixtures.join("rich.docx");
         let (handle, reader) = cx.update(|cx| {
             gpui_kit::init(cx);
@@ -2173,10 +2175,7 @@ mod tests {
             let reader = reader.read(cx);
             assert_eq!(
                 reader.root.as_deref(),
-                std::path::absolute(office.parent().unwrap())
-                    .unwrap()
-                    .as_path()
-                    .into(),
+                office.parent(),
                 "workspace uses the source folder"
             );
             let tab = &reader.tabs[reader.active];

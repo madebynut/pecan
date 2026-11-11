@@ -1557,7 +1557,7 @@ mod tests {
                         .faces()
                         .any(|face| face.families.iter().any(|(family, _)| family == *name))
                 })
-                .expect("preview regression needs installed sans, serif and monospace faces")
+                .unwrap_or_else(|| panic!("preview regression needs one of {candidates:?}"))
                 .to_string()
         };
         let sans = installed(&["PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC"]);
