@@ -676,26 +676,21 @@ impl Reader {
                     )),
             )
             .child(
-                Button::new("previous-match")
-                    .small()
-                    .ghost()
-                    .label("上一处")
-                    .on_click(cx.listener(|reader, _, _, cx| reader.step_match(true, cx))),
+                crate::ui::tool_button(
+                    "previous-match",
+                    IconName::ChevronUp,
+                    "上一处 · Shift+Enter",
+                )
+                .on_click(cx.listener(|reader, _, _, cx| reader.step_match(true, cx))),
             )
             .child(
-                Button::new("next-match")
-                    .small()
-                    .ghost()
-                    .label("下一处")
+                crate::ui::tool_button("next-match", IconName::ChevronDown, "下一处 · Enter")
                     .on_click(cx.listener(|reader, _, _, cx| reader.step_match(false, cx))),
             )
             .child(div().flex_1())
             .child(
-                Button::new("close-search")
-                    .small()
-                    .ghost()
-                    .label("关闭搜索")
-                    .on_click(cx.listener(|reader, _, _, cx| {
+                crate::ui::tool_button("close-search", IconName::Close, "关闭搜索").on_click(
+                    cx.listener(|reader, _, _, cx| {
                         reader.search_open = false;
                         reader.matches = Arc::default();
                         reader.search_revision += 1;
@@ -705,7 +700,8 @@ impl Reader {
                                 .update(cx, |view, cx| view.search(Arc::default(), cx));
                         }
                         cx.notify();
-                    })),
+                    }),
+                ),
             )
     }
     fn search_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
