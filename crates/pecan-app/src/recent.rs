@@ -133,7 +133,10 @@ mod tests {
     fn immediate_shutdown_flushes_history_before_the_debounce(cx: &mut TestAppContext) {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("recent.json");
-        let recent = cx.update(|cx| Recent::install(Some(path.clone()), cx));
+        let recent = cx.update(|cx| {
+            gpui_kit::init(cx);
+            Recent::install(Some(path.clone()), cx)
+        });
         let file = entry(directory.path(), "last.md", Kind::File);
         cx.update(|cx| recent.update(cx, |recent, cx| recent.record(file.clone(), cx)));
         cx.update(|cx| cx.shutdown());
@@ -148,7 +151,10 @@ mod tests {
     fn debounce_clear_and_restart_keep_the_latest_history(cx: &mut TestAppContext) {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("Pecan/recent.json");
-        let recent = cx.update(|cx| Recent::install(Some(path.clone()), cx));
+        let recent = cx.update(|cx| {
+            gpui_kit::init(cx);
+            Recent::install(Some(path.clone()), cx)
+        });
         let file = entry(directory.path(), "first.md", Kind::File);
         cx.update(|cx| recent.update(cx, |recent, cx| recent.record(file.clone(), cx)));
         cx.run_until_parked();

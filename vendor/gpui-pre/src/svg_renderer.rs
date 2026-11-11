@@ -188,7 +188,68 @@ impl SvgRenderer {
 
     /// Parses SVG data into a [`ParsedSvg`] that can be rasterized at any scale.
     pub fn parse_svg(&self, bytes: &[u8]) -> Result<ParsedSvg, usvg::Error> {
-        usvg::Tree::from_data(bytes, &self.usvg_options).map(ParsedSvg)
+        if crate::image_decode::check_source(bytes).is_err() {
+            return Err(usvg::Error::ElementsLimitReached);
+        }
+        // The options are shared, while this budget belongs to one parse. Preserve
+        // normal data/file resolution, but never read an unbounded local image.
+        let failed = std::sync::atomic::AtomicBool::new(false);
+        let remaining = std::sync::Mutex::new(crate::image_decode::MAX_IMAGE_BYTES);
+        let original = &self.usvg_options;
+        let options = usvg::Options {
+            fontdb: original.fontdb.clone(),
+            font_resolver: usvg::FontResolver {
+                select_font: Box::new(|font, db| (original.font_resolver.select_font)(font, db)),
+                select_fallback: Box::new(|ch, fonts, db| {
+                    (original.font_resolver.select_fallback)(ch, fonts, db)
+                }),
+            },
+            image_href_resolver: usvg::ImageHrefResolver {
+                resolve_data: Box::new(|mime, data, options| {
+                    let mut remaining = remaining.lock().expect("SVG image budget poisoned");
+                    if data.len() > *remaining {
+                        failed.store(true, std::sync::atomic::Ordering::Relaxed);
+                        return None;
+                    }
+                    *remaining -= data.len();
+                    drop(remaining);
+                    usvg::ImageHrefResolver::default_data_resolver()(mime, data, options)
+                }),
+                resolve_string: Box::new(|href, options| {
+                    let path = options.get_abs_path(std::path::Path::new(href));
+                    // Missing/unsupported references keep the upstream omission behavior.
+                    if !path.is_file() {
+                        return None;
+                    }
+                    let mut remaining = remaining.lock().expect("SVG image budget poisoned");
+                    if path.metadata().ok()?.len() > *remaining as u64 {
+                        failed.store(true, std::sync::atomic::Ordering::Relaxed);
+                        return None;
+                    }
+                    let data = match crate::image_decode::read_file(&path) {
+                        Ok(data) if data.len() <= *remaining => data,
+                        _ => {
+                            failed.store(true, std::sync::atomic::Ordering::Relaxed);
+                            return None;
+                        }
+                    };
+                    *remaining -= data.len();
+                    drop(remaining);
+                    usvg::ImageHrefResolver::default_data_resolver()(
+                        "text/plain",
+                        Arc::new(data),
+                        options,
+                    )
+                }),
+            },
+            ..Default::default()
+        };
+        let tree = usvg::Tree::from_data(bytes, &options)?;
+        if failed.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(usvg::Error::ElementsLimitReached);
+        }
+        check_embedded_images(tree.root(), &mut 0)?;
+        Ok(ParsedSvg(tree))
     }
 
     /// Rasterizes a previously parsed SVG into an image buffer.
@@ -262,8 +323,8 @@ impl SvgRenderer {
     }
 
     fn render_pixmap(&self, bytes: &[u8], size: SvgSize) -> Result<Pixmap, usvg::Error> {
-        let tree = usvg::Tree::from_data(bytes, &self.usvg_options)?;
-        rasterize_tree(&tree, size)
+        let tree = self.parse_svg(bytes)?;
+        rasterize_tree(&tree.0, size)
     }
 }
 
@@ -293,6 +354,13 @@ fn rasterize_tree(tree: &usvg::Tree, size: SvgSize) -> Result<Pixmap, usvg::Erro
     height *= scale;
 
     // Render the SVG to a pixmap with the specified width and height.
+    if !width.is_finite()
+        || !height.is_finite()
+        || f64::from(width) * f64::from(height) * 4.0
+            > crate::image_decode::MAX_DECODED_BYTES as f64
+    {
+        return Err(usvg::Error::InvalidSize);
+    }
     let mut pixmap = resvg::tiny_skia::Pixmap::new(width as u32, height as u32)
         .ok_or(usvg::Error::InvalidSize)?;
 
@@ -522,4 +590,34 @@ mod tests {
             face.families
         );
     }
+}
+
+fn check_embedded_images(group: &usvg::Group, total: &mut u64) -> Result<(), usvg::Error> {
+    for node in group.children() {
+        match node {
+            usvg::Node::Group(group) => check_embedded_images(group, total)?,
+            usvg::Node::Image(image) => match image.kind() {
+                usvg::ImageKind::SVG(_) => {}
+                usvg::ImageKind::JPEG(data)
+                | usvg::ImageKind::PNG(data)
+                | usvg::ImageKind::GIF(data)
+                | usvg::ImageKind::WEBP(data) => {
+                    *total += crate::image_decode::raster_size(data)
+                        .map_err(|_| usvg::Error::InvalidSize)?;
+                    if *total > crate::image_decode::MAX_DECODED_BYTES {
+                        return Err(usvg::Error::InvalidSize);
+                    }
+                }
+            },
+            _ => {}
+        }
+        let mut result = Ok(());
+        node.subroots(|group| {
+            if result.is_ok() {
+                result = check_embedded_images(group, total);
+            }
+        });
+        result?;
+    }
+    Ok(())
 }

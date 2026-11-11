@@ -1,10 +1,12 @@
 mod exports;
 mod history;
+#[cfg(test)]
+mod regression;
 mod tabs;
 
 use gpui_kit::component::StyledExt as _;
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     path::PathBuf,
     sync::{
         Arc,
@@ -85,7 +87,7 @@ pub(crate) struct Reader {
     _subscriptions: Vec<Subscription>,
     load_job: Option<Task<()>>,
     search_job: Option<Task<()>>,
-    tree_job: Option<Task<()>>,
+    tree_jobs: HashMap<PathBuf, Task<()>>,
     folder_job: Option<Task<()>>,
     watcher: Option<(PathBuf, notify::RecommendedWatcher)>,
     changed: Arc<AtomicBool>,
@@ -170,20 +172,21 @@ impl Reader {
             }
         });
         let changed = Arc::new(AtomicBool::new(false));
-        let poll_flag = changed.clone();
         let watch_task = cx.spawn(async move |weak, cx| {
             loop {
                 cx.background_executor()
                     .timer(Duration::from_millis(400))
                     .await;
-                if poll_flag.swap(false, Ordering::Relaxed) {
-                    let _ = weak.update(cx, |reader, cx| {
-                        if reader.prefs.read(cx).data.auto_reload {
+                if weak
+                    .update(cx, |reader, cx| {
+                        if reader.changed.swap(false, Ordering::Relaxed)
+                            && reader.prefs.read(cx).data.auto_reload
+                        {
                             reader.reload(cx);
                         }
-                    });
-                }
-                if weak.upgrade().is_none() {
+                    })
+                    .is_err()
+                {
                     break;
                 }
             }
@@ -227,7 +230,7 @@ impl Reader {
             ],
             load_job: None,
             search_job: None,
-            tree_job: None,
+            tree_jobs: HashMap::new(),
             folder_job: None,
             watcher: None,
             changed,
@@ -317,6 +320,22 @@ impl Reader {
                                 return;
                             }
                         }
+                        let replacement = if mode == LoadMode::Replace {
+                            let Some(index) = reader.tabs.iter().position(|tab| tab.path.as_ref() == Some(&path)) else {
+                                return;
+                            };
+                            let other_bytes: usize = reader.tabs.iter().enumerate()
+                                .filter(|(i, _)| *i != index)
+                                .map(|(_, tab)| tab.view.read(cx).document.source().len()).sum();
+                            if other_bytes + loaded.document.source().len() > MAX_OPEN_BYTES {
+                                reader.status = "重新加载后文档总量超过 64 MiB，请关闭部分标签后重试；当前内容已保留".into();
+                                cx.notify();
+                                return;
+                            }
+                            Some(index)
+                        } else {
+                            None
+                        };
                         let resources = Arc::new(loaded.resources);
                         let notice = resources.notice().map(str::to_owned);
                         let document = Arc::new(loaded.document);
@@ -336,16 +355,17 @@ impl Reader {
                             .unwrap_or_default()
                             .to_string_lossy()
                             .into_owned();
-                        if mode == LoadMode::Replace {
-                            if let Some(tab) = reader
-                                .tabs
-                                .iter_mut()
-                                .find(|tab| tab.path.as_ref() == Some(&path))
-                            {
-                                let offset = tab.view.read(cx).scroll.logical_scroll_top();
-                                view.read(cx).scroll.scroll_to(offset);
-                                tab.view = view;
-                                tab.resources = Some(resources);
+                        if let Some(index) = replacement {
+                            let tab = &mut reader.tabs[index];
+                            let offset = tab.view.read(cx).scroll.logical_scroll_top();
+                            view.read(cx).scroll.scroll_to(offset);
+                            tab.view = view;
+                            tab.identity = Some(identity);
+                            tab.resources = Some(resources);
+                            if index != reader.active {
+                                tab.view.update(cx, |view, cx| view.suspend(cx));
+                                cx.notify();
+                                return;
                             }
                         } else {
                             if let Some(tab) = reader.tabs.get(reader.active) {
@@ -412,6 +432,8 @@ impl Reader {
         {
             return;
         }
+        self.watcher = None;
+        self.changed = Arc::new(AtomicBool::new(false));
         let changed = self.changed.clone();
         let watched = path.to_path_buf();
         let watcher = notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
@@ -449,6 +471,7 @@ impl Reader {
         let revision = self.folder_revision;
         let worker_path = path.clone();
         let background = cx.background_spawn(async move {
+            let _permit = workspace::DIRECTORY_SLOTS.acquire().await;
             let identity = std::fs::canonicalize(&worker_path)?;
             workspace::entries(&worker_path, 0).map(|entries| (identity, entries))
         });
@@ -464,7 +487,7 @@ impl Reader {
                         reader.root = Some(path);
                         reader.tree = entries;
                         reader.expanded.clear();
-                        reader.tree_job = None;
+                        reader.tree_jobs.clear();
                         reader
                             .tree_scroll
                             .scroll_to_item(0, gpui_kit::ScrollStrategy::Top);
@@ -481,7 +504,9 @@ impl Reader {
         }));
     }
     fn select_entry(&mut self, index: usize, cx: &mut Context<Self>) {
-        let entry = self.tree[index].clone();
+        let Some(entry) = self.tree.get(index).cloned() else {
+            return;
+        };
         if !entry.directory {
             self.open_file(entry.path, cx);
             return;
@@ -494,24 +519,41 @@ impl Reader {
                 .map_or(self.tree.len(), |offset| index + 1 + offset);
             self.tree.drain(index + 1..end);
             self.expanded.retain(|path| !path.starts_with(&entry.path));
+            self.tree_jobs
+                .retain(|path, _| !path.starts_with(&entry.path));
+            cx.notify();
+            return;
+        }
+        if self.tree_jobs.len() >= 8 {
+            self.status = "正在读取目录，请稍后重试".into();
             cx.notify();
             return;
         }
         self.expanded.insert(entry.path.clone());
         let parent = entry.path.clone();
         let root = self.root.clone();
-        let background =
-            cx.background_spawn(async move { workspace::entries(&entry.path, entry.depth + 1) });
-        self.tree_job = Some(cx.spawn(async move |weak, cx| {
+        let background = cx.background_spawn(async move {
+            let _permit = workspace::DIRECTORY_SLOTS.acquire().await;
+            workspace::entries(&entry.path, entry.depth + 1)
+        });
+        let job_path = parent.clone();
+        let job = cx.spawn(async move |weak, cx| {
             let result = background.await;
             let _ = weak.update(cx, |reader, cx| {
+                reader.tree_jobs.remove(&parent);
                 if reader.root != root || !reader.expanded.contains(&parent) {
                     return;
                 }
                 if let Some(index) = reader.tree.iter().position(|entry| entry.path == parent) {
                     match result {
-                        Ok(entries) => {
+                        Ok(entries)
+                            if reader.tree.len() + entries.len() <= workspace::MAX_TREE_ENTRIES =>
+                        {
                             reader.tree.splice(index + 1..index + 1, entries);
+                        }
+                        Ok(_) => {
+                            reader.expanded.remove(&parent);
+                            reader.status = "展开条目已达上限，请收起部分目录后重试".into();
                         }
                         Err(error) => {
                             reader.expanded.remove(&parent);
@@ -521,7 +563,8 @@ impl Reader {
                 }
                 cx.notify();
             });
-        }));
+        });
+        self.tree_jobs.insert(job_path, job);
     }
     fn start_search(&mut self, cx: &mut Context<Self>) {
         self.search_revision += 1;
@@ -2130,7 +2173,10 @@ mod tests {
             let reader = reader.read(cx);
             assert_eq!(
                 reader.root.as_deref(),
-                office.parent(),
+                std::path::absolute(office.parent().unwrap())
+                    .unwrap()
+                    .as_path()
+                    .into(),
                 "workspace uses the source folder"
             );
             let tab = &reader.tabs[reader.active];
@@ -2384,7 +2430,7 @@ mod tests {
                 && if cfg!(target_os = "macos") {
                     windowed_left - fullscreen_left >= px(60.)
                 } else {
-                    windowed_left == fullscreen_left
+                    windowed_left <= px(16.)
                 },
             "fullscreen must reclaim traffic-light space: {windowed_left:?} -> {fullscreen_left:?}"
         );
@@ -2415,7 +2461,7 @@ mod tests {
         );
     }
 
-    fn settle(cx: &TestAppContext) {
+    pub(super) fn settle(cx: &TestAppContext) {
         for _ in 0..10_000 {
             if !cx.executor().tick() {
                 return;

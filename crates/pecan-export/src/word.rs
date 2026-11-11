@@ -1910,6 +1910,7 @@ mod tests {
                     .by_index(index)
                     .unwrap()
                     .name()
+                    .unwrap()
                     .starts_with("word/media/")
             })
             .count();
@@ -2990,6 +2991,7 @@ mod tests {
                     .by_index(index)
                     .unwrap()
                     .name()
+                    .unwrap()
                     .starts_with("word/media/")
             })
             .count();
@@ -3081,7 +3083,7 @@ mod tests {
         let mut media = 0;
         for index in 0..archive.len() {
             let mut file = archive.by_index(index).unwrap();
-            let name = file.name().to_owned();
+            let name = file.name().unwrap().into_owned();
             let mut contents = Vec::new();
             file.read_to_end(&mut contents).unwrap();
             if name.ends_with(".xml") || name.ends_with(".rels") {

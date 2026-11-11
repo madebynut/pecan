@@ -11,6 +11,10 @@ use pecan_import::LoadedDocument;
 const IGNORED: &[&str] = &["target", "node_modules", ".git", ".idea", ".vscode"];
 
 /// Share two conversion slots across reader windows without blocking the UI thread.
+pub(crate) const MAX_TREE_ENTRIES: usize = 20_000;
+/// Bound concurrent directory scans across windows.
+pub(crate) static DIRECTORY_SLOTS: async_lock::Semaphore = async_lock::Semaphore::new(2);
+
 pub(crate) static CONVERSION_SLOTS: async_lock::Semaphore = async_lock::Semaphore::new(2);
 
 #[derive(Debug, Clone)]

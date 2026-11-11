@@ -230,6 +230,148 @@
  
  [dependencies.accesskit]
  version = "0.24.0"
+--- a/src/elements/img.rs
++++ b/src/elements/img.rs
+@@ -2,22 +2,16 @@
+     AnyElement, AnyImageCache, App, Asset, AssetLogger, Bounds, DefiniteLength, Element, ElementId,
+     Entity, GlobalElementId, Hitbox, Image, ImageCache, InspectorElementId, InteractiveElement,
+     Interactivity, IntoElement, LayoutId, Length, ObjectFit, Pixels, RenderImage, Resource,
+-    SharedString, SharedUri, StyleRefinement, Styled, Task, Window, decode_static_image,
+-    decode_static_image_from_decoder, px,
++    SharedString, SharedUri, StyleRefinement, Styled, Task, Window, px,
+ };
+ use anyhow::Result;
+ 
+ use futures::Future;
+ use gpui_util::ResultExt;
+-use image::{
+-    AnimationDecoder, ImageError, ImageFormat, Rgba,
+-    codecs::{gif::GifDecoder, webp::WebPDecoder},
+-};
++use image::ImageError;
+ use scheduler::Instant;
+-use smallvec::SmallVec;
+ use std::{
+-    fs,
+-    io::{self, Cursor},
++    io,
+     ops::{Deref, DerefMut},
+     path::{Path, PathBuf},
+     str::FromStr,
+@@ -631,7 +625,7 @@
+         let asset_source = cx.asset_source().clone();
+         async move {
+             let bytes = match source.clone() {
+-                Resource::Path(uri) => fs::read(uri.as_ref())?,
++                Resource::Path(uri) => crate::image_decode::read_file(uri.as_ref())?,
+                 Resource::Uri(uri) => {
+                     use anyhow::Context as _;
+                     use futures::AsyncReadExt as _;
+@@ -641,7 +635,12 @@
+                         .await
+                         .with_context(|| format!("loading image asset from {uri:?}"))?;
+                     let mut body = Vec::new();
+-                    response.body_mut().read_to_end(&mut body).await?;
++                    response
++                        .body_mut()
++                        .take(crate::image_decode::MAX_IMAGE_BYTES as u64 + 1)
++                        .read_to_end(&mut body)
++                        .await?;
++                    crate::image_decode::check_source(&body)?;
+                     if !response.status().is_success() {
+                         let mut body = String::from_utf8_lossy(&body).into_owned();
+                         let first_line = body.lines().next().unwrap_or("").trim_end();
+@@ -657,6 +656,7 @@
+                 Resource::Embedded(path) => {
+                     let data = asset_source.load(&path).ok().flatten();
+                     if let Some(data) = data {
++                        crate::image_decode::check_source(&data)?;
+                         data.to_vec()
+                     } else {
+                         return Err(ImageCacheError::Asset(
+@@ -667,73 +667,7 @@
+             };
+ 
+             if let Ok(format) = image::guess_format(&bytes) {
+-                let data = match format {
+-                    ImageFormat::Gif => {
+-                        let decoder = GifDecoder::new(Cursor::new(&bytes))?;
+-                        let mut frames = SmallVec::new();
+-
+-                        for frame in decoder.into_frames() {
+-                            match frame {
+-                                Ok(mut frame) => {
+-                                    // Convert from RGBA to BGRA.
+-                                    for pixel in frame.buffer_mut().chunks_exact_mut(4) {
+-                                        pixel.swap(0, 2);
+-                                    }
+-                                    frames.push(frame);
+-                                }
+-                                Err(err) => {
+-                                    log::debug!(
+-                                        "Skipping GIF frame in {source:?} due to decode error: {err}"
+-                                    );
+-                                }
+-                            }
+-                        }
+-
+-                        if frames.is_empty() {
+-                            return Err(ImageCacheError::Other(Arc::new(anyhow::anyhow!(
+-                                "GIF could not be decoded: all frames failed ({source:?})"
+-                            ))));
+-                        }
+-
+-                        frames
+-                    }
+-                    ImageFormat::WebP => {
+-                        let mut decoder = WebPDecoder::new(Cursor::new(&bytes))?;
+-
+-                        if decoder.has_animation() {
+-                            let _ = decoder.set_background_color(Rgba([0, 0, 0, 0]));
+-                            let mut frames = SmallVec::new();
+-
+-                            for frame in decoder.into_frames() {
+-                                match frame {
+-                                    Ok(mut frame) => {
+-                                        // Convert from RGBA to BGRA.
+-                                        for pixel in frame.buffer_mut().chunks_exact_mut(4) {
+-                                            pixel.swap(0, 2);
+-                                        }
+-                                        frames.push(frame);
+-                                    }
+-                                    Err(err) => {
+-                                        log::debug!(
+-                                            "Skipping WebP frame in {source:?} due to decode error: {err}"
+-                                        );
+-                                    }
+-                                }
+-                            }
+-
+-                            if frames.is_empty() {
+-                                return Err(ImageCacheError::Other(Arc::new(anyhow::anyhow!(
+-                                    "WebP could not be decoded: all frames failed ({source:?})"
+-                                ))));
+-                            }
+-
+-                            frames
+-                        } else {
+-                            decode_static_image_from_decoder(decoder)?
+-                        }
+-                    }
+-                    _ => decode_static_image(&bytes, format)?,
+-                };
++                let data = crate::image_decode::decode(&bytes, format)?;
+ 
+                 Ok(Arc::new(RenderImage::new(data)))
+             } else {
+@@ -804,6 +738,7 @@
+     use super::*;
+     use crate::{ParentElement as _, TestAppContext, canvas, div, point, px, size};
+     use image::{Frame, ImageBuffer, Rgba};
++    use smallvec::SmallVec;
+ 
+     const TEST_IMG_ID: &str = "test-img";
+ 
 --- a/src/elements/text.rs
 +++ b/src/elements/text.rs
 @@ -3,7 +3,7 @@
@@ -489,6 +631,290 @@
      }
  
      fn paint(&self, text: &str, window: &mut Window, cx: &mut App) {
+--- a/src/gpui.rs
++++ b/src/gpui.rs
+@@ -38,6 +38,7 @@
+ mod geometry;
+ mod gestures;
+ mod global;
++mod image_decode;
+ mod input;
+ mod inspector;
+ mod interactive;
+--- a/src/image_decode.rs
++++ b/src/image_decode.rs
+@@ -0,0 +1,134 @@
++//! Shared limits for resource images, clipboard images and generated raster bytes.
++use anyhow::{Context as _, Result, ensure};
++use image::{
++    AnimationDecoder as _, DynamicImage, Frame, ImageDecoder, ImageFormat, Rgba,
++    codecs::{gif::GifDecoder, webp::WebPDecoder},
++};
++use smallvec::SmallVec;
++use std::{
++    io::{Cursor, Read as _},
++    path::Path,
++};
++
++pub(crate) const MAX_IMAGE_BYTES: usize = 16 * 1024 * 1024;
++pub(crate) const MAX_DECODED_BYTES: u64 = 128 * 1024 * 1024;
++const MAX_FRAMES: usize = 4096;
++
++pub(crate) fn check_source(bytes: &[u8]) -> Result<()> {
++    ensure!(
++        bytes.len() <= MAX_IMAGE_BYTES,
++        "image source exceeds 16 MiB"
++    );
++    Ok(())
++}
++
++pub(crate) fn read_file(path: &Path) -> Result<Vec<u8>> {
++    let file = std::fs::File::open(path)?;
++    ensure!(
++        file.metadata()?.len() <= MAX_IMAGE_BYTES as u64,
++        "image source exceeds 16 MiB"
++    );
++    let mut bytes = Vec::new();
++    file.take(MAX_IMAGE_BYTES as u64 + 1)
++        .read_to_end(&mut bytes)?;
++    check_source(&bytes)?;
++    Ok(bytes)
++}
++
++fn limits() -> image::Limits {
++    let mut limits = image::Limits::default();
++    limits.max_alloc = Some(MAX_DECODED_BYTES);
++    limits
++}
++
++fn check_decoder(decoder: &mut impl ImageDecoder) -> Result<u64> {
++    decoder.set_limits(limits())?;
++    let (width, height) = decoder.dimensions();
++    let rgba_bytes = u64::from(width)
++        .checked_mul(u64::from(height))
++        .and_then(|pixels| pixels.checked_mul(4))
++        .context("image dimensions overflow")?;
++    ensure!(
++        rgba_bytes <= MAX_DECODED_BYTES && decoder.total_bytes() <= MAX_DECODED_BYTES,
++        "decoded image exceeds 128 MiB"
++    );
++    Ok(rgba_bytes)
++}
++
++pub(crate) fn decode(bytes: &[u8], format: ImageFormat) -> Result<SmallVec<[Frame; 1]>> {
++    check_source(bytes)?;
++    match format {
++        ImageFormat::Gif => {
++            let mut decoder = GifDecoder::new(Cursor::new(bytes))?;
++            let frame_bytes = check_decoder(&mut decoder)?;
++            animation(decoder.into_frames(), frame_bytes)
++        }
++        ImageFormat::WebP => {
++            let mut decoder = WebPDecoder::new(Cursor::new(bytes))?;
++            let frame_bytes = check_decoder(&mut decoder)?;
++            if decoder.has_animation() {
++                let _ = decoder.set_background_color(Rgba([0, 0, 0, 0]));
++                animation(decoder.into_frames(), frame_bytes)
++            } else {
++                decode_static(decoder)
++            }
++        }
++        _ => {
++            let mut reader = image::ImageReader::with_format(Cursor::new(bytes), format);
++            reader.limits(limits());
++            decode_static(reader.into_decoder().context("creating image decoder")?)
++        }
++    }
++}
++
++fn decode_static(mut decoder: impl ImageDecoder) -> Result<SmallVec<[Frame; 1]>> {
++    check_decoder(&mut decoder)?;
++    let orientation = decoder.orientation().context("reading image orientation")?;
++    let mut image = DynamicImage::from_decoder(decoder).context("decoding image")?;
++    image.apply_orientation(orientation);
++    let mut frame = Frame::new(image.into_rgba8());
++    bgra(&mut frame);
++    Ok(SmallVec::from_elem(frame, 1))
++}
++
++fn animation(frames: image::Frames<'_>, frame_bytes: u64) -> Result<SmallVec<[Frame; 1]>> {
++    let mut output = SmallVec::new();
++    let mut decoded = 0u64;
++    for (index, frame) in frames.enumerate() {
++        // The decoder holds at most one additional frame when the total is exceeded.
++        // Never silently truncate an animation or suppress a decoder's limit error.
++        ensure!(index < MAX_FRAMES, "animation exceeds 4096 frames");
++        let mut frame = match frame {
++            Ok(frame) => frame,
++            Err(error @ image::ImageError::Limits(_)) => return Err(error.into()),
++            Err(error) => {
++                log::debug!("Skipping damaged animation frame: {error}");
++                continue;
++            }
++        };
++        decoded += frame_bytes.max(frame.buffer().len() as u64);
++        ensure!(
++            decoded <= MAX_DECODED_BYTES,
++            "decoded animation exceeds 128 MiB"
++        );
++        bgra(&mut frame);
++        output.push(frame);
++    }
++    ensure!(!output.is_empty(), "animation contains no frames");
++    Ok(output)
++}
++
++fn bgra(frame: &mut Frame) {
++    for pixel in frame.buffer_mut().chunks_exact_mut(4) {
++        pixel.swap(0, 2);
++    }
++}
++
++// Embedded SVG rasters are decoded by resvg later. Validate their advertised
++// allocation without decoding a second copy on the loading thread.
++pub(crate) fn raster_size(bytes: &[u8]) -> Result<u64> {
++    check_source(bytes)?;
++    let mut reader = image::ImageReader::new(Cursor::new(bytes)).with_guessed_format()?;
++    reader.limits(limits());
++    check_decoder(&mut reader.into_decoder()?)
++}
+--- a/src/platform.rs
++++ b/src/platform.rs
+@@ -45,16 +45,14 @@
+     ShapedRun, SharedString, Size, SvgRenderer, SystemWindowTab, Task, Window, WindowControlArea,
+     hash, point, px, size,
+ };
++use anyhow::Result;
+ #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+ use anyhow::bail;
+-use anyhow::{Context as _, Result};
+ use async_task::Runnable;
+ use collections::FxHashMap;
+ use futures::channel::oneshot;
+ #[cfg(any(test, feature = "test-support", feature = "bench-support"))]
+ use image::RgbaImage;
+-use image::codecs::gif::GifDecoder;
+-use image::{AnimationDecoder as _, DynamicImage, Frame};
+ use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+ use scheduler::Instant;
+ pub use scheduler::RunnableMeta;
+@@ -65,7 +63,6 @@
+ use std::borrow::Cow;
+ use std::collections::hash_map::Entry;
+ use std::hash::{Hash, Hasher};
+-use std::io::Cursor;
+ use std::ops;
+ use std::time::Duration;
+ use std::{
+@@ -3360,33 +3357,6 @@
+     pub id: u64,
+ }
+ 
+-pub(crate) fn decode_static_image(
+-    bytes: &[u8],
+-    format: image::ImageFormat,
+-) -> Result<SmallVec<[Frame; 1]>> {
+-    let decoder = image::ImageReader::with_format(Cursor::new(bytes), format)
+-        .into_decoder()
+-        .context("creating image decoder")?;
+-    decode_static_image_from_decoder(decoder)
+-}
+-
+-pub(crate) fn decode_static_image_from_decoder(
+-    mut decoder: impl image::ImageDecoder,
+-) -> Result<SmallVec<[Frame; 1]>> {
+-    let orientation = decoder
+-        .orientation()
+-        .context("reading decoder's orientation")?;
+-    let mut image = DynamicImage::from_decoder(decoder).context("decoding image")?;
+-    image.apply_orientation(orientation);
+-
+-    let mut data = image.into_rgba8();
+-    for pixel in data.chunks_exact_mut(4) {
+-        pixel.swap(0, 2);
+-    }
+-
+-    Ok(SmallVec::from_elem(Frame::new(data), 1))
+-}
+-
+ impl Hash for Image {
+     fn hash<H: Hasher>(&self, state: &mut H) {
+         state.write_u64(self.id);
+@@ -3424,6 +3394,15 @@
+             .and_then(|result| result.ok())
+     }
+ 
++    /// Loads pixels while preserving decoder errors for a visible fallback.
++    pub fn use_render_image_result(
++        self: Arc<Self>,
++        window: &mut Window,
++        cx: &mut App,
++    ) -> Option<Result<Arc<RenderImage>, crate::ImageCacheError>> {
++        ImageSource::Image(self).use_data(None, window, cx)
++    }
++
+     /// Use the GPUI `get_asset` API to make this image renderable
+     pub fn get_render_image(
+         self: Arc<Self>,
+@@ -3449,44 +3428,27 @@
+ 
+     /// Convert the clipboard image to an `ImageData` object.
+     pub fn to_image_data(&self, svg_renderer: SvgRenderer) -> Result<Arc<RenderImage>> {
++        crate::image_decode::check_source(&self.bytes)?;
+         let frames = match self.format {
+-            ImageFormat::Gif => {
+-                let decoder = GifDecoder::new(Cursor::new(&self.bytes))?;
+-                let mut frames = SmallVec::new();
+-
+-                for frame in decoder.into_frames() {
+-                    match frame {
+-                        Ok(mut frame) => {
+-                            // Convert from RGBA to BGRA.
+-                            for pixel in frame.buffer_mut().chunks_exact_mut(4) {
+-                                pixel.swap(0, 2);
+-                            }
+-                            frames.push(frame);
+-                        }
+-                        Err(err) => {
+-                            log::debug!("Skipping GIF frame due to decode error: {err}");
+-                        }
+-                    }
+-                }
+-
+-                if frames.is_empty() {
+-                    anyhow::bail!("GIF could not be decoded: all frames failed");
+-                }
+-
+-                frames
++            ImageFormat::Gif => crate::image_decode::decode(&self.bytes, image::ImageFormat::Gif)?,
++            ImageFormat::Png => crate::image_decode::decode(&self.bytes, image::ImageFormat::Png)?,
++            ImageFormat::Jpeg => {
++                crate::image_decode::decode(&self.bytes, image::ImageFormat::Jpeg)?
+             }
+-            ImageFormat::Png => decode_static_image(&self.bytes, image::ImageFormat::Png)?,
+-            ImageFormat::Jpeg => decode_static_image(&self.bytes, image::ImageFormat::Jpeg)?,
+-            ImageFormat::Webp => decode_static_image(&self.bytes, image::ImageFormat::WebP)?,
+-            ImageFormat::Bmp => decode_static_image(&self.bytes, image::ImageFormat::Bmp)?,
+-            ImageFormat::Tiff => decode_static_image(&self.bytes, image::ImageFormat::Tiff)?,
+-            ImageFormat::Ico => decode_static_image(&self.bytes, image::ImageFormat::Ico)?,
++            ImageFormat::Webp => {
++                crate::image_decode::decode(&self.bytes, image::ImageFormat::WebP)?
++            }
++            ImageFormat::Bmp => crate::image_decode::decode(&self.bytes, image::ImageFormat::Bmp)?,
++            ImageFormat::Tiff => {
++                crate::image_decode::decode(&self.bytes, image::ImageFormat::Tiff)?
++            }
++            ImageFormat::Ico => crate::image_decode::decode(&self.bytes, image::ImageFormat::Ico)?,
+             ImageFormat::Svg => {
+                 return svg_renderer
+                     .render_single_frame(&self.bytes, 1.0)
+                     .map_err(Into::into);
+             }
+-            ImageFormat::Pnm => decode_static_image(&self.bytes, image::ImageFormat::Pnm)?,
++            ImageFormat::Pnm => crate::image_decode::decode(&self.bytes, image::ImageFormat::Pnm)?,
+         };
+ 
+         Ok(Arc::new(RenderImage::new(frames)))
 --- a/src/style.rs
 +++ b/src/style.rs
 @@ -150,6 +150,8 @@
@@ -518,6 +944,137 @@
      /// Sets the grid rows of this element.
      fn grid_rows(mut self, rows: u16) -> Self {
          self.style().grid_rows = Some(GridTemplate {
+--- a/src/svg_renderer.rs
++++ b/src/svg_renderer.rs
+@@ -188,7 +188,68 @@
+ 
+     /// Parses SVG data into a [`ParsedSvg`] that can be rasterized at any scale.
+     pub fn parse_svg(&self, bytes: &[u8]) -> Result<ParsedSvg, usvg::Error> {
+-        usvg::Tree::from_data(bytes, &self.usvg_options).map(ParsedSvg)
++        if crate::image_decode::check_source(bytes).is_err() {
++            return Err(usvg::Error::ElementsLimitReached);
++        }
++        // The options are shared, while this budget belongs to one parse. Preserve
++        // normal data/file resolution, but never read an unbounded local image.
++        let failed = std::sync::atomic::AtomicBool::new(false);
++        let remaining = std::sync::Mutex::new(crate::image_decode::MAX_IMAGE_BYTES);
++        let original = &self.usvg_options;
++        let options = usvg::Options {
++            fontdb: original.fontdb.clone(),
++            font_resolver: usvg::FontResolver {
++                select_font: Box::new(|font, db| (original.font_resolver.select_font)(font, db)),
++                select_fallback: Box::new(|ch, fonts, db| {
++                    (original.font_resolver.select_fallback)(ch, fonts, db)
++                }),
++            },
++            image_href_resolver: usvg::ImageHrefResolver {
++                resolve_data: Box::new(|mime, data, options| {
++                    let mut remaining = remaining.lock().expect("SVG image budget poisoned");
++                    if data.len() > *remaining {
++                        failed.store(true, std::sync::atomic::Ordering::Relaxed);
++                        return None;
++                    }
++                    *remaining -= data.len();
++                    drop(remaining);
++                    usvg::ImageHrefResolver::default_data_resolver()(mime, data, options)
++                }),
++                resolve_string: Box::new(|href, options| {
++                    let path = options.get_abs_path(std::path::Path::new(href));
++                    // Missing/unsupported references keep the upstream omission behavior.
++                    if !path.is_file() {
++                        return None;
++                    }
++                    let mut remaining = remaining.lock().expect("SVG image budget poisoned");
++                    if path.metadata().ok()?.len() > *remaining as u64 {
++                        failed.store(true, std::sync::atomic::Ordering::Relaxed);
++                        return None;
++                    }
++                    let data = match crate::image_decode::read_file(&path) {
++                        Ok(data) if data.len() <= *remaining => data,
++                        _ => {
++                            failed.store(true, std::sync::atomic::Ordering::Relaxed);
++                            return None;
++                        }
++                    };
++                    *remaining -= data.len();
++                    drop(remaining);
++                    usvg::ImageHrefResolver::default_data_resolver()(
++                        "text/plain",
++                        Arc::new(data),
++                        options,
++                    )
++                }),
++            },
++            ..Default::default()
++        };
++        let tree = usvg::Tree::from_data(bytes, &options)?;
++        if failed.load(std::sync::atomic::Ordering::Relaxed) {
++            return Err(usvg::Error::ElementsLimitReached);
++        }
++        check_embedded_images(tree.root(), &mut 0)?;
++        Ok(ParsedSvg(tree))
+     }
+ 
+     /// Rasterizes a previously parsed SVG into an image buffer.
+@@ -262,8 +323,8 @@
+     }
+ 
+     fn render_pixmap(&self, bytes: &[u8], size: SvgSize) -> Result<Pixmap, usvg::Error> {
+-        let tree = usvg::Tree::from_data(bytes, &self.usvg_options)?;
+-        rasterize_tree(&tree, size)
++        let tree = self.parse_svg(bytes)?;
++        rasterize_tree(&tree.0, size)
+     }
+ }
+ 
+@@ -293,6 +354,13 @@
+     height *= scale;
+ 
+     // Render the SVG to a pixmap with the specified width and height.
++    if !width.is_finite()
++        || !height.is_finite()
++        || f64::from(width) * f64::from(height) * 4.0
++            > crate::image_decode::MAX_DECODED_BYTES as f64
++    {
++        return Err(usvg::Error::InvalidSize);
++    }
+     let mut pixmap = resvg::tiny_skia::Pixmap::new(width as u32, height as u32)
+         .ok_or(usvg::Error::InvalidSize)?;
+ 
+@@ -523,3 +591,33 @@
+         );
+     }
+ }
++
++fn check_embedded_images(group: &usvg::Group, total: &mut u64) -> Result<(), usvg::Error> {
++    for node in group.children() {
++        match node {
++            usvg::Node::Group(group) => check_embedded_images(group, total)?,
++            usvg::Node::Image(image) => match image.kind() {
++                usvg::ImageKind::SVG(_) => {}
++                usvg::ImageKind::JPEG(data)
++                | usvg::ImageKind::PNG(data)
++                | usvg::ImageKind::GIF(data)
++                | usvg::ImageKind::WEBP(data) => {
++                    *total += crate::image_decode::raster_size(data)
++                        .map_err(|_| usvg::Error::InvalidSize)?;
++                    if *total > crate::image_decode::MAX_DECODED_BYTES {
++                        return Err(usvg::Error::InvalidSize);
++                    }
++                }
++            },
++            _ => {}
++        }
++        let mut result = Ok(());
++        node.subroots(|group| {
++            if result.is_ok() {
++                result = check_embedded_images(group, total);
++            }
++        });
++        result?;
++    }
++    Ok(())
++}
 --- a/src/taffy.rs
 +++ b/src/taffy.rs
 @@ -2,7 +2,7 @@
@@ -575,17 +1132,6 @@
                      }
                      // grid-template-*: repeat(<number>, minmax(0, max-content))
                      crate::GridTemplateMinSize::MaxContent => {
---- a/src/text_system/line.rs
-+++ b/src/text_system/line.rs
-@@ -439,7 +439,7 @@
- }
- 
- /// A line of text that has been shaped, decorated, and wrapped by the text layout system.
--#[derive(Default, Debug, Deref, DerefMut)]
-+#[derive(Default, Debug, Clone, Deref, DerefMut)]
- pub struct WrappedLine {
-     #[deref]
-     #[deref_mut]
 --- a/src/text_system.rs
 +++ b/src/text_system.rs
 @@ -391,6 +391,20 @@
@@ -609,6 +1155,17 @@
          let bounds = self
              .platform_text_system
              .typographic_bounds(font_id, glyph_id)?;
+--- a/src/text_system/line.rs
++++ b/src/text_system/line.rs
+@@ -439,7 +439,7 @@
+ }
+ 
+ /// A line of text that has been shaped, decorated, and wrapped by the text layout system.
+-#[derive(Default, Debug, Deref, DerefMut)]
++#[derive(Default, Debug, Clone, Deref, DerefMut)]
+ pub struct WrappedLine {
+     #[deref]
+     #[deref_mut]
 --- a/src/util.rs
 +++ b/src/util.rs
 @@ -141,6 +141,14 @@

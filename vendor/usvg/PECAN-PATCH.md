@@ -19,3 +19,6 @@ both themes, using platform defaults and installed custom families.
 
 `PECAN-PATCH.diff` records the runtime change and is checked against the registry
 source. Remove this vendor copy when an equivalent fix is available upstream.
+
+
+SVGZ decompression stops after 16 MiB + 1 and returns ElementsLimitReached rather than allocating an unbounded expanded XML buffer. Ordinary SVGZ parsing and uncompressed SVG behavior remain unchanged. The application regression fixture contains a 16 KiB gzip stream expanding just past the budget; it is used only in tests.

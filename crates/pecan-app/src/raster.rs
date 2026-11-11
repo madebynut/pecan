@@ -1,10 +1,10 @@
 //! Tie generated image decoding and GPU resources to visible element state.
-use gpui_kit::{App, Image, RenderImage, Window};
+use gpui_kit::{App, Image, ImageCacheError, RenderImage, Window};
 use std::sync::Arc;
 
 struct Raster {
     image: Arc<Image>,
-    pixels: Option<Arc<RenderImage>>,
+    pixels: Option<Result<Arc<RenderImage>, ImageCacheError>>,
 }
 
 pub(crate) fn visible(
@@ -12,10 +12,18 @@ pub(crate) fn visible(
     window: &mut Window,
     cx: &mut App,
 ) -> Option<Arc<RenderImage>> {
+    visible_result(image, window, cx).and_then(Result::ok)
+}
+
+pub(crate) fn visible_result(
+    image: &Arc<Image>,
+    window: &mut Window,
+    cx: &mut App,
+) -> Option<Result<Arc<RenderImage>, ImageCacheError>> {
     let raster = window.use_keyed_state(("generated-raster", image.id()), cx, |_, cx| {
         cx.on_release(|raster: &mut Raster, cx| {
             raster.image.clone().remove_asset(cx);
-            if let Some(pixels) = raster.pixels.take() {
+            if let Some(Ok(pixels)) = raster.pixels.take() {
                 cx.drop_image(pixels, None);
             }
         })
@@ -27,7 +35,7 @@ pub(crate) fn visible(
     });
     raster.update(cx, |raster, cx| {
         if raster.pixels.is_none() {
-            raster.pixels = raster.image.clone().use_render_image(window, cx);
+            raster.pixels = raster.image.clone().use_render_image_result(window, cx);
         }
         raster.pixels.clone()
     })

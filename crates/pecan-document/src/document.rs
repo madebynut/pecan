@@ -11,6 +11,10 @@ const MAX_RICH_BLOCK_BYTES: usize = 64 * 1024;
 const SOURCE_PAGE_BYTES: usize = 16 * 1024;
 /// Outline labels are repeatedly shaped on the UI thread; source remains unmodified.
 const MAX_HEADING_LABEL_BYTES: usize = 512;
+/// Bound semantic parser input separately from long fenced source, which is paged.
+const MAX_MARKDOWN_LINES: usize = 500_000;
+/// Includes spare vector capacity and owned labels; source has its separate limit.
+const MAX_INDEX_BYTES: usize = 64 * 1024 * 1024;
 
 /// A document read or indexing failure.
 #[derive(Debug, Error)]
@@ -22,6 +26,11 @@ pub enum ParseDocumentError {
         /// Actual UTF-8 length.
         size: usize,
     },
+    /// Dense Markdown would exceed the semantic indexing budget.
+    #[error(
+        "document structure exceeds the reading budget (500,000 nonempty Markdown lines or 64 MiB index)"
+    )]
+    TooComplex,
 }
 
 /// A native Markdown chunk or a separately rendered Mermaid diagram.
@@ -122,11 +131,13 @@ impl Document {
     /// Index a UTF-8 document without creating any UI objects.
     ///
     /// # Errors
-    /// Rejects source larger than [`MAX_DOCUMENT_BYTES`].
+    /// Rejects source larger than [`MAX_DOCUMENT_BYTES`] or structures exceeding
+    /// 500,000 nonempty lines outside fenced code / the 64 MiB indexing budget.
     pub fn parse(source: String) -> Result<Self, ParseDocumentError> {
         if source.len() > MAX_DOCUMENT_BYTES {
             return Err(ParseDocumentError::TooLarge { size: source.len() });
         }
+        check_structure(&source)?;
         let options = Options::ENABLE_TABLES
             | Options::ENABLE_STRIKETHROUGH
             | Options::ENABLE_TASKLISTS
@@ -150,6 +161,7 @@ impl Document {
         let callouts = callout_spans(&source);
         let mut blocks = Vec::new();
         let mut headings = Vec::new();
+        let mut label_bytes = 0;
         let mut chunk_start = 0;
         let mut depth = 0usize;
         let mut block_start = 0;
@@ -164,9 +176,7 @@ impl Document {
                         block_start = range.start;
                         // A container must stay one row. Splitting at a heading or fence
                         // inside it would leave the closing `:::` in another chunk.
-                        let enclosed = callouts.iter().any(|span| {
-                            span.source.start < range.start && range.start < span.source.end
-                        });
+                        let enclosed = inside_callout(&callouts, range.start);
                         // A top-level heading is an exact navigation anchor. Keep its
                         // following paragraphs grouped and all nested blocks intact.
                         if !enclosed
@@ -233,11 +243,18 @@ impl Document {
                         code.push_str(&text);
                     }
                     if let Some((_, title)) = heading.as_mut() {
-                        title.push_str(&text);
+                        let available = (MAX_HEADING_LABEL_BYTES + 4).saturating_sub(title.len());
+                        let mut end = text.len().min(available);
+                        while !text.is_char_boundary(end) {
+                            end -= 1;
+                        }
+                        title.push_str(&text[..end]);
                     }
                 }
                 Event::SoftBreak | Event::HardBreak => {
-                    if let Some((_, title)) = heading.as_mut() {
+                    if let Some((_, title)) = heading.as_mut()
+                        && title.len() <= MAX_HEADING_LABEL_BYTES
+                    {
                         title.push(' ');
                     }
                 }
@@ -254,6 +271,7 @@ impl Document {
                             title.truncate(end);
                             title.push('…');
                         }
+                        label_bytes += title.len();
                         headings.push(Heading {
                             title,
                             level,
@@ -261,6 +279,7 @@ impl Document {
                             block: 0,
                         });
                     }
+                    check_index_size(blocks.len(), headings.len(), callouts.len(), label_bytes)?;
                     if depth == 0 {
                         if let Some(code) = diagram.take() {
                             blocks.push(Block::Mermaid {
@@ -299,9 +318,8 @@ impl Document {
                                 source: full,
                             });
                             chunk_start = range.end;
-                        } else if !callouts.iter().any(|span| {
-                            span.source.start < range.end && range.end < span.source.end
-                        }) && range.end - chunk_start >= CHUNK_TARGET_BYTES
+                        } else if !inside_callout(&callouts, range.end)
+                            && range.end - chunk_start >= CHUNK_TARGET_BYTES
                         {
                             blocks.push(Block::Markdown {
                                 source: chunk_start..range.end,
@@ -331,6 +349,23 @@ impl Document {
                 };
             }
         }
+        let payload_bytes = blocks
+            .iter()
+            .map(|block| match block {
+                Block::Mermaid { code, .. } => code.len(),
+                Block::CodePage { language, .. } => language.len(),
+                Block::Source { pages, .. } => {
+                    pages.len() * std::mem::size_of::<Range<usize>>() * 2
+                }
+                _ => 0,
+            })
+            .sum::<usize>();
+        check_index_size(
+            blocks.len(),
+            headings.len(),
+            callouts.len(),
+            label_bytes + references.len() + payload_bytes,
+        )?;
         for heading in &mut headings {
             heading.block = blocks
                 .partition_point(|block| block.source_range().end <= heading.source.start)
@@ -367,6 +402,44 @@ impl Document {
             .partition_point(|block| block.source_range().end <= offset);
         (index < self.blocks.len()).then_some(index)
     }
+}
+
+fn check_structure(source: &str) -> Result<(), ParseDocumentError> {
+    let mut fence = None;
+    let mut lines = 0;
+    for line in source.lines() {
+        if let Some((marker, width)) = fence {
+            if closing_code_fence(line, marker, width) {
+                fence = None;
+            }
+        } else {
+            if !line.trim().is_empty() {
+                lines += 1;
+                if lines > MAX_MARKDOWN_LINES {
+                    return Err(ParseDocumentError::TooComplex);
+                }
+            }
+            fence = opening_code_fence(line);
+        }
+    }
+    Ok(())
+}
+
+fn check_index_size(
+    blocks: usize,
+    headings: usize,
+    callouts: usize,
+    payload: usize,
+) -> Result<(), ParseDocumentError> {
+    let bytes = 2
+        * (blocks * std::mem::size_of::<Block>()
+            + headings * std::mem::size_of::<Heading>()
+            + callouts * std::mem::size_of::<CalloutSpan>()
+            + payload);
+    if bytes > MAX_INDEX_BYTES {
+        return Err(ParseDocumentError::TooComplex);
+    }
+    Ok(())
 }
 
 struct CalloutSpan {
@@ -662,6 +735,13 @@ fn closing_code_fence(line: &str, marker: char, width: usize) -> bool {
     count >= width && trimmed[count..].trim().is_empty()
 }
 
+// Spans are ordered and disjoint; only the preceding opening fence can enclose
+// an offset. Avoid scanning every container for each Markdown event.
+fn inside_callout(spans: &[CalloutSpan], offset: usize) -> bool {
+    let end = spans.partition_point(|span| span.source.start < offset);
+    end > 0 && offset < spans[end - 1].source.end
+}
+
 fn extract_callouts(
     source: &str,
     blocks: Vec<Block>,
@@ -679,9 +759,10 @@ fn extract_callouts(
         };
         let mut cursor = range.start;
         let mut split = false;
-        for span in spans
+        let first = spans.partition_point(|span| span.source.start < range.start);
+        for span in spans[first..]
             .iter()
-            .filter(|span| span.source.start >= range.start && span.body.end <= range.end)
+            .take_while(|span| span.body.end <= range.end)
         {
             split = true;
             if cursor < span.source.start && !source[cursor..span.source.start].trim().is_empty() {

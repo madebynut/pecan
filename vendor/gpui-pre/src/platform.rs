@@ -45,16 +45,14 @@ use crate::{
     ShapedRun, SharedString, Size, SvgRenderer, SystemWindowTab, Task, Window, WindowControlArea,
     hash, point, px, size,
 };
+use anyhow::Result;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 use anyhow::bail;
-use anyhow::{Context as _, Result};
 use async_task::Runnable;
 use collections::FxHashMap;
 use futures::channel::oneshot;
 #[cfg(any(test, feature = "test-support", feature = "bench-support"))]
 use image::RgbaImage;
-use image::codecs::gif::GifDecoder;
-use image::{AnimationDecoder as _, DynamicImage, Frame};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use scheduler::Instant;
 pub use scheduler::RunnableMeta;
@@ -65,7 +63,6 @@ use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::hash::{Hash, Hasher};
-use std::io::Cursor;
 use std::ops;
 use std::time::Duration;
 use std::{
@@ -3360,33 +3357,6 @@ pub struct Image {
     pub id: u64,
 }
 
-pub(crate) fn decode_static_image(
-    bytes: &[u8],
-    format: image::ImageFormat,
-) -> Result<SmallVec<[Frame; 1]>> {
-    let decoder = image::ImageReader::with_format(Cursor::new(bytes), format)
-        .into_decoder()
-        .context("creating image decoder")?;
-    decode_static_image_from_decoder(decoder)
-}
-
-pub(crate) fn decode_static_image_from_decoder(
-    mut decoder: impl image::ImageDecoder,
-) -> Result<SmallVec<[Frame; 1]>> {
-    let orientation = decoder
-        .orientation()
-        .context("reading decoder's orientation")?;
-    let mut image = DynamicImage::from_decoder(decoder).context("decoding image")?;
-    image.apply_orientation(orientation);
-
-    let mut data = image.into_rgba8();
-    for pixel in data.chunks_exact_mut(4) {
-        pixel.swap(0, 2);
-    }
-
-    Ok(SmallVec::from_elem(Frame::new(data), 1))
-}
-
 impl Hash for Image {
     fn hash<H: Hasher>(&self, state: &mut H) {
         state.write_u64(self.id);
@@ -3424,6 +3394,15 @@ impl Image {
             .and_then(|result| result.ok())
     }
 
+    /// Loads pixels while preserving decoder errors for a visible fallback.
+    pub fn use_render_image_result(
+        self: Arc<Self>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<Result<Arc<RenderImage>, crate::ImageCacheError>> {
+        ImageSource::Image(self).use_data(None, window, cx)
+    }
+
     /// Use the GPUI `get_asset` API to make this image renderable
     pub fn get_render_image(
         self: Arc<Self>,
@@ -3449,44 +3428,27 @@ impl Image {
 
     /// Convert the clipboard image to an `ImageData` object.
     pub fn to_image_data(&self, svg_renderer: SvgRenderer) -> Result<Arc<RenderImage>> {
+        crate::image_decode::check_source(&self.bytes)?;
         let frames = match self.format {
-            ImageFormat::Gif => {
-                let decoder = GifDecoder::new(Cursor::new(&self.bytes))?;
-                let mut frames = SmallVec::new();
-
-                for frame in decoder.into_frames() {
-                    match frame {
-                        Ok(mut frame) => {
-                            // Convert from RGBA to BGRA.
-                            for pixel in frame.buffer_mut().chunks_exact_mut(4) {
-                                pixel.swap(0, 2);
-                            }
-                            frames.push(frame);
-                        }
-                        Err(err) => {
-                            log::debug!("Skipping GIF frame due to decode error: {err}");
-                        }
-                    }
-                }
-
-                if frames.is_empty() {
-                    anyhow::bail!("GIF could not be decoded: all frames failed");
-                }
-
-                frames
+            ImageFormat::Gif => crate::image_decode::decode(&self.bytes, image::ImageFormat::Gif)?,
+            ImageFormat::Png => crate::image_decode::decode(&self.bytes, image::ImageFormat::Png)?,
+            ImageFormat::Jpeg => {
+                crate::image_decode::decode(&self.bytes, image::ImageFormat::Jpeg)?
             }
-            ImageFormat::Png => decode_static_image(&self.bytes, image::ImageFormat::Png)?,
-            ImageFormat::Jpeg => decode_static_image(&self.bytes, image::ImageFormat::Jpeg)?,
-            ImageFormat::Webp => decode_static_image(&self.bytes, image::ImageFormat::WebP)?,
-            ImageFormat::Bmp => decode_static_image(&self.bytes, image::ImageFormat::Bmp)?,
-            ImageFormat::Tiff => decode_static_image(&self.bytes, image::ImageFormat::Tiff)?,
-            ImageFormat::Ico => decode_static_image(&self.bytes, image::ImageFormat::Ico)?,
+            ImageFormat::Webp => {
+                crate::image_decode::decode(&self.bytes, image::ImageFormat::WebP)?
+            }
+            ImageFormat::Bmp => crate::image_decode::decode(&self.bytes, image::ImageFormat::Bmp)?,
+            ImageFormat::Tiff => {
+                crate::image_decode::decode(&self.bytes, image::ImageFormat::Tiff)?
+            }
+            ImageFormat::Ico => crate::image_decode::decode(&self.bytes, image::ImageFormat::Ico)?,
             ImageFormat::Svg => {
                 return svg_renderer
                     .render_single_frame(&self.bytes, 1.0)
                     .map_err(Into::into);
             }
-            ImageFormat::Pnm => decode_static_image(&self.bytes, image::ImageFormat::Pnm)?,
+            ImageFormat::Pnm => crate::image_decode::decode(&self.bytes, image::ImageFormat::Pnm)?,
         };
 
         Ok(Arc::new(RenderImage::new(frames)))

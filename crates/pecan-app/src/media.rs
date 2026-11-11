@@ -237,7 +237,8 @@ fn load_image(
                 .load(resource, window, cx)
                 .map(|result| result.map_err(|error| error.to_string()))
         }
-        PictureSource::Bytes(image) => crate::raster::visible(image, window, cx).map(Ok),
+        PictureSource::Bytes(image) => crate::raster::visible_result(image, window, cx)
+            .map(|result| result.map_err(|error| error.to_string())),
     }
 }
 
@@ -260,7 +261,8 @@ fn load_reading_image(
                 .load(resource, window, cx)
                 .map(|result| result.map_err(|error| error.to_string()))
         }
-        PictureSource::Bytes(image) => crate::raster::visible(image, window, cx).map(Ok),
+        PictureSource::Bytes(image) => crate::raster::visible_result(image, window, cx)
+            .map(|result| result.map_err(|error| error.to_string())),
     }
 }
 
@@ -374,7 +376,10 @@ fn preview(
 }
 
 fn image_error(error: &str) -> impl IntoElement {
-    div().p_3().child(format!("图片加载失败：{error}"))
+    div()
+        .debug_selector(|| "image-error".into())
+        .p_3()
+        .child(format!("图片加载失败：{error}"))
 }
 
 fn open(
@@ -1074,6 +1079,25 @@ mod tests {
             "Escape closes the fullscreen image viewer"
         );
         assert!(cx.windows().contains(&handle), "the document stays open");
+    }
+
+    #[gpui_kit::test]
+    fn broken_data_image_shows_an_error_without_staying_in_loading_state(cx: &mut TestAppContext) {
+        let source = "![invalid](data:image/png;base64,bm90IGEgcG5n)";
+        let (handle, _) = cx.update(|cx| {
+            gpui_kit::init(cx);
+            gpui_kit::open_window(WindowOptions::default(), cx, |_, cx| {
+                cx.new(|cx| ImageDocument {
+                    text: cx.new(|cx| TextViewState::markdown(source, cx)),
+                    extensions: extensions(MarkdownExtensions::default(), source, Path::new("")),
+                })
+            })
+            .unwrap()
+        });
+        let mut visual = VisualTestContext::from_window(handle, cx);
+        settle(&mut visual);
+        assert!(visual.debug_bounds("image-error").is_some());
+        assert!(visual.debug_bounds("image-preview").is_none());
     }
 
     #[gpui_kit::test]

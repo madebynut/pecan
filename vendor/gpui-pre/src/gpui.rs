@@ -38,6 +38,7 @@ mod executor;
 mod geometry;
 mod gestures;
 mod global;
+mod image_decode;
 mod input;
 mod inspector;
 mod interactive;

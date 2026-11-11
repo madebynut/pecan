@@ -350,3 +350,47 @@ fn rich_callout_labels_keep_inline_markup() {
         assert_eq!(Document::parse(source.clone()).unwrap().source(), source);
     }
 }
+
+#[test]
+fn dense_structure_is_rejected_but_long_fenced_source_is_preserved() {
+    let dense = "# tiny\n".repeat(500_001);
+    assert!(
+        Document::parse(dense).is_err(),
+        "small bytes must not permit an unbounded semantic index"
+    );
+    let source = format!("```text\n{}```\n", "line\n".repeat(500_001));
+    let document = Document::parse(source.clone()).unwrap();
+    assert_eq!(document.source(), source);
+    assert!(
+        document
+            .blocks()
+            .iter()
+            .all(|b| matches!(b, Block::CodePage { .. }))
+    );
+}
+
+#[test]
+fn many_callouts_keep_nested_headings_and_fenced_markers_intact() {
+    for newline in ["\n", "\r\n"] {
+        let part = "# Outside\n\n::: title\n\n## Inside\n\n~~~text\n::: literal\n~~~\n\n[text][target]\n\n:::\n\n".replace('\n', newline);
+        let source = format!("{}[target]: https://example.com\n", part.repeat(2000));
+        let document = Document::parse(source.clone()).unwrap();
+        assert_eq!(document.headings().len(), 4000);
+        assert_eq!(
+            document
+                .blocks()
+                .iter()
+                .filter(|b| matches!(b, Block::Callout { .. }))
+                .count(),
+            2000
+        );
+        for heading in document.headings().iter().filter(|h| h.title() == "Inside") {
+            assert!(matches!(
+                document.blocks()[heading.block_index()],
+                Block::Callout { .. }
+            ));
+        }
+        assert_eq!(document.source(), source);
+        assert!(document.reference_suffix().contains("https://example.com"));
+    }
+}

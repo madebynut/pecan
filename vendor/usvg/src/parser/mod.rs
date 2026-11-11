@@ -166,11 +166,16 @@ impl crate::Tree {
 pub fn decompress_svgz(data: &[u8]) -> Result<Vec<u8>, Error> {
     use std::io::Read;
 
-    let mut decoder = flate2::read::GzDecoder::new(data);
-    let mut decoded = Vec::with_capacity(data.len() * 2);
+    const MAX_SVG_BYTES: u64 = 16 * 1024 * 1024;
+    let decoder = flate2::read::GzDecoder::new(data);
+    let mut decoded = Vec::new();
     decoder
+        .take(MAX_SVG_BYTES + 1)
         .read_to_end(&mut decoded)
         .map_err(|_| Error::MalformedGZip)?;
+    if decoded.len() as u64 > MAX_SVG_BYTES {
+        return Err(Error::ElementsLimitReached);
+    }
     Ok(decoded)
 }
 

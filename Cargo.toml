@@ -47,7 +47,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "net", "time"] }
 ttf-parser = "0.25"
 unicode-linebreak = "0.1"
 usvg = { version = "0.46", default-features = false }
-zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+zip = { version = "9.0.0", default-features = false, features = ["deflate"] }
 
 anyhow = "1"
 ammonia = "4"
@@ -59,7 +59,7 @@ blake3 = "1"
 data-url = "0.3"
 html5ever = "0.27"
 gpui-kit = { version = "0.9.0", features = ["tree-sitter-languages"] }
-lru = "0.16"
+lru = "0.18.2"
 mathra = { version = "1.9.1", features = ["latin-modern"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -77,7 +77,7 @@ objc2-quick-look-ui = { version = "0.3", default-features = false, features = ["
 objc2-app-kit = { version = "0.3", default-features = false, features = ["NSApplication", "NSCursor", "NSImage", "NSResponder", "NSView", "NSWindow", "NSColor", "NSEvent", "NSScreen", "NSGraphics"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["NSData", "NSGeometry", "NSObject", "NSURL", "NSNotification", "NSOperation", "block2"] }
 png = "0.18"
-pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+pulldown-cmark = { version = "0.13.6", default-features = false, features = ["html"] }
 regex = "1"
 resvg = "0.46"
 thiserror = "2"

@@ -1548,8 +1548,25 @@ mod tests {
                 );
             });
         }
-        // Start with a proportional face: the platform monospace default is Menlo on macOS.
-        for (english, chinese) in [("Helvetica Neue", "PingFang SC"), ("Menlo", "Songti SC")] {
+        let database = pecan_mermaid::system_fonts();
+        let installed = |candidates: &[&str]| {
+            candidates
+                .iter()
+                .find(|name| {
+                    database
+                        .faces()
+                        .any(|face| face.families.iter().any(|(family, _)| family == *name))
+                })
+                .expect("preview regression needs installed sans, serif and monospace faces")
+                .to_string()
+        };
+        let sans = installed(&["PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC"]);
+        let serif = installed(&["Songti SC", "SimSun", "Noto Serif CJK SC"]);
+        let mono = installed(&["Menlo", "Consolas", "DejaVu Sans Mono"]);
+        for (english, chinese) in [
+            (sans.as_str(), sans.as_str()),
+            (mono.as_str(), serif.as_str()),
+        ] {
             let old_image = viewer.read_with(cx, |view, _| view.image.clone().unwrap());
             let previous = old_image.bytes().to_vec();
             visual.update(|_, cx| {

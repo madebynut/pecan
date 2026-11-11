@@ -8,6 +8,8 @@ mod code;
 mod diagram;
 mod export;
 mod fonts;
+#[cfg(test)]
+mod image_budget;
 use pecan_assets::language as language_icons;
 mod math;
 mod media;
