@@ -35,10 +35,10 @@ use notify::{RecursiveMode, Watcher as _};
 use pecan_document::{Document, SearchMatch, SearchQuery};
 
 use crate::{
-    CloseTab, CopyDocument, CopyFilePath, DecreaseText, ExportHtml, ExportMarkdown, ExportPdf,
-    ExportWord, Find, FocusReading, Help, IncreaseText, NextTab, Open, OpenFolder, OriginalPdf,
-    PreviousTab, Reload, ResetText, RevealFile, ShowSettings, ToggleFullscreen, ToggleOutline,
-    ToggleSidebar, ToggleTheme,
+    CloseTab, CopyDocument, CopyFilePath, DecreaseText, ExportHtml, ExportPdf, ExportWord, Find,
+    FocusReading, Help, IncreaseText, NextTab, Open, OpenFolder, OriginalPdf, PreviousTab, Reload,
+    ResetText, RevealFile, ShowSettings, ToggleFullscreen, ToggleOutline, ToggleSidebar,
+    ToggleTheme,
     diagram::RenderQueue,
     math::MathQueue,
     preferences::{Preferences, PreferencesData},
@@ -1502,9 +1502,6 @@ impl Render for Reader {
             }))
             .on_action(cx.listener(|reader, _: &ExportHtml, window, cx| {
                 reader.export_document(crate::export::DocumentFormat::Html, window, cx)
-            }))
-            .on_action(cx.listener(|reader, _: &ExportMarkdown, window, cx| {
-                reader.export_document(crate::export::DocumentFormat::Markdown, window, cx)
             }))
             .on_action(cx.listener(|reader, _: &CopyFilePath, _, cx| {
                 if let Some(path) = reader

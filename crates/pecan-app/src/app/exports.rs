@@ -120,7 +120,6 @@ impl Reader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ExportMarkdown;
     use gpui_kit::{AppContext, TestAppContext, VisualTestContext, component::TitleBar};
 
     #[gpui_kit::test]
@@ -145,7 +144,6 @@ mod tests {
             Box::new(ExportPdf) as Box<dyn gpui_kit::Action>,
             Box::new(ExportWord),
             Box::new(ExportHtml),
-            Box::new(ExportMarkdown),
         ] {
             visual.update(|window, cx| window.dispatch_action(action, cx));
             visual.run_until_parked();

@@ -65,7 +65,6 @@ gpui_kit::actions!(
         ExportPdf,
         ExportWord,
         ExportHtml,
-        ExportMarkdown,
         ToggleSource,
         SaveDocument,
         SaveDocumentAs,

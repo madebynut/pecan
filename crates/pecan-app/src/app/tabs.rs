@@ -514,8 +514,8 @@ mod tests {
     #[gpui_kit::test]
     fn empty_reader_actions_reopening_and_background_cancellation(cx: &mut TestAppContext) {
         use crate::{
-            CloseTab, CopyDocument, CopyFilePath, ExportHtml, ExportMarkdown, ExportPdf,
-            ExportWord, Find, Help, NextTab, PreviousTab, Reload, RevealFile,
+            CloseTab, CopyDocument, CopyFilePath, ExportHtml, ExportPdf, ExportWord, Find, Help,
+            NextTab, PreviousTab, Reload, RevealFile,
         };
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("reopen.md");
@@ -551,7 +551,6 @@ mod tests {
             Box::new(ExportPdf),
             Box::new(ExportWord),
             Box::new(ExportHtml),
-            Box::new(ExportMarkdown),
         ] {
             visual.update(|window, cx| window.dispatch_action(action, cx));
             visual.run_until_parked();
