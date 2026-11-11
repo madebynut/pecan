@@ -10,7 +10,6 @@
     <a href="https://github.com/madebynut/pecan/issues">反馈问题</a>
   </p>
   <p>
-    <img src="https://img.shields.io/badge/version-1.0.0-242424" alt="Version 1.0.0" />
     <img src="https://img.shields.io/badge/macOS_·_Windows-native-555555" alt="macOS and Windows" />
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-777777" alt="MIT license" /></a>
   </p>
@@ -64,17 +63,19 @@ PDF 保留可选择文字，Mermaid 和公式保留矢量；Word 输出原生可
 
 性能取决于文档结构、字体和图表复杂度。具体预算、测量条件与历史结果见 [性能说明](docs/performance.md)。
 
-## 下载与运行
+## 开始使用
 
-在 [Releases](https://github.com/madebynut/pecan/releases) 下载对应压缩包：
+1. 从 [Releases](https://github.com/madebynut/pecan/releases) 下载对应平台与架构的 ZIP，并核对 `SHA256SUMS.txt`。
+2. **macOS**：解压得到 `Pecan.app`，移入应用程序目录。**Windows**：解压整个目录后运行 `Pecan.exe`。
+3. 打开 Markdown 文档或文件夹，也可导入 Word、PDF；在设置中选择字体、主题和正文宽度。
+4. 使用大纲与搜索定位内容，切换「查看源码」编辑并保存，或通过「文件」菜单导出 PDF、Word、HTML。
 
-| 平台 | 文件 | 使用方式 |
+| 平台 | 架构 | 环境要求 |
 | :--- | :--- | :--- |
-| macOS 12+ · Apple Silicon | `Pecan-1.0.0-macOS-arm64.zip` | 解压，将 `Pecan.app` 放入应用程序目录 |
-| macOS 12+ · Intel | `Pecan-1.0.0-macOS-x86_64.zip` | 同上 |
-| Windows 10 / 11 · x64 | `Pecan-1.0.0-Windows-x64.zip` | 解压整个目录，运行 `Pecan.exe` |
+| macOS | Apple Silicon / Intel | macOS 12+ |
+| Windows | x86_64 | Windows 10 / Windows 11；支持 DirectX 11 的图形环境 |
 
-Windows 需要支持 DirectX 11 的图形环境。发布包附第三方许可证与 SHA-256 校验文件。当前 macOS 包使用 ad-hoc 签名，尚未经过 Apple 公证；Windows 包尚未进行 Authenticode 签名，系统可能显示来源确认。
+发布包附第三方许可证与 SHA-256 校验文件。当前 macOS 包使用 ad-hoc 签名，尚未经过 Apple 公证；Windows 包尚未进行 Authenticode 签名，系统可能显示来源确认。
 
 常用操作在 macOS 使用 `⌘`，Windows 使用 `Ctrl`：打开 `O`、查找 `F`、文件栏 `B`、大纲 `L`、关闭标签 `W`、设置 `,`。Windows 全屏使用 `F11`。首次启动显示欢迎文档；关闭最后一个标签默认保留空窗口，可在通用设置中更改。
 
