@@ -1331,7 +1331,7 @@ impl Render for Reader {
                 .child(
                     div()
                         .debug_selector(|| "empty-logo".into())
-                        .opacity(0.75)
+                        .opacity(0.45)
                         .child(gpui_kit::img(crate::brand::icon(cx)).size(px(100.))),
                 )
                 .into_any_element()
