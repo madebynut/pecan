@@ -21,7 +21,7 @@ cargo doc --locked --workspace --all-features --no-deps
 cargo run --locked -p pecan-export --example export_document -- samples/acceptance.md target/export-smoke
 ```
 
-GPUI 测试共享格式化信号量，须串行运行。标记为 ignored 的测试需要图形环境或外部验收文档，不会在普通 CI 自动执行。自动构建与测试不等同于 Windows 实机的高 DPI、驱动、输入法及 Office 显示验收；这些仍需按 [验收指南](../samples/acceptance-guide.md) 检查。
+GPUI 测试共享格式化信号量，须串行运行。Windows CI 使用固定提交和 SHA-256 校验的 Noto CJK 字体保证中英文渲染测试可重复；字体仅安装在临时 runner 的用户字体目录，不打包进应用。Windows 本地若缺少中文宋体／黑体，可运行 `./scripts/install-ci-fonts.ps1` 准备同一测试环境。标记为 ignored 的测试需要图形环境或外部验收文档，不会在普通 CI 自动执行。自动构建与测试不等同于 Windows 实机的高 DPI、驱动、输入法及 Office 显示验收；这些仍需按 [验收指南](../samples/acceptance-guide.md) 检查。
 
 ## 打包
 
