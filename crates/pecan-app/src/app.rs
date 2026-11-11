@@ -1331,7 +1331,7 @@ impl Render for Reader {
                 .child(
                     div()
                         .debug_selector(|| "empty-logo".into())
-                        .opacity(0.2)
+                        .opacity(0.75)
                         .child(gpui_kit::img(crate::brand::icon(cx)).size(px(100.))),
                 )
                 .into_any_element()
@@ -1638,25 +1638,42 @@ mod tests {
             )
             .unwrap()
         });
-        headless
-            .update_window(handle, |_, window, cx| window.draw(cx).clear(cx))
-            .unwrap();
-        let image = headless
-            .update_window(handle, |_, window, _| window.render_to_image().unwrap())
-            .unwrap();
-        if let Ok(output) = std::env::var("PECAN_METAL_OUTPUT") {
-            image
-                .save(PathBuf::from(output).join("empty-reader.png"))
-                .unwrap();
+        for theme in ["light", "dark"] {
+            let background = headless.update(|cx| {
+                Preferences::shared(cx).update(cx, |prefs, cx| {
+                    prefs.change(|data| data.theme = theme.into(), cx)
+                });
+                let color = cx.theme().background.to_rgb();
+                [color.r, color.g, color.b].map(|channel| (channel * 255.).round() as u8)
+            });
+            for _ in 0..3 {
+                headless.run_until_parked();
+                headless
+                    .update_window(handle, |_, window, cx| window.draw(cx).clear(cx))
+                    .unwrap();
+            }
+            let image = headless.capture_screenshot(handle).unwrap();
+            if let Ok(output) = std::env::var("PECAN_METAL_OUTPUT") {
+                image
+                    .save(PathBuf::from(output).join(format!("empty-reader-{theme}.png")))
+                    .unwrap();
+            }
+            let visible = (image.height() / 2 - 120..image.height() / 2 + 120)
+                .flat_map(|y| {
+                    (image.width() / 2 - 120..image.width() / 2 + 120).map(move |x| (x, y))
+                })
+                .filter(|&(x, y)| {
+                    image.get_pixel(x, y).0[..3]
+                        .iter()
+                        .zip(background)
+                        .any(|(&channel, background)| channel.abs_diff(background) > 90)
+                })
+                .count();
+            assert!(
+                visible > 500,
+                "{theme} logo must have clear contrast against the paper; visible={visible}"
+            );
         }
-        let visible = (image.height() / 2 - 120..image.height() / 2 + 120)
-            .flat_map(|y| (image.width() / 2 - 120..image.width() / 2 + 120).map(move |x| (x, y)))
-            .filter(|&(x, y)| image.get_pixel(x, y).0[..3].iter().any(|&v| v < 235))
-            .count();
-        assert!(
-            visible > 500,
-            "logo must be painted inside the empty reading area; visible={visible}"
-        );
     }
     #[test]
     #[cfg(target_os = "macos")]
