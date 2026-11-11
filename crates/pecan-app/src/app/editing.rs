@@ -32,12 +32,17 @@ pub(super) struct Session {
     busy: bool,
     revision: u64,
     preview_revision: u64,
+    saved_revision: Option<u64>,
     saved: Arc<Document>,
     saved_text: Rope,
     _subscription: Subscription,
     comparison: Option<Task<()>>,
 }
 impl Session {
+    fn save_confirmed(&self) -> bool {
+        !self.dirty && self.revision > 0 && self.saved_revision == Some(self.revision)
+    }
+
     pub(super) fn preview_pending(&self) -> bool {
         self.preview_revision != self.revision
     }
@@ -242,6 +247,7 @@ impl Reader {
                 busy: false,
                 revision: 0,
                 preview_revision: 0,
+                saved_revision: None,
                 saved: document,
                 saved_text,
                 _subscription: subscription,

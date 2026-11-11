@@ -175,6 +175,7 @@ impl Reader {
                                 });
                             }
                             edit.dirty = false;
+                            edit.saved_revision = Some(revision);
                             edit.preview_revision = revision;
                             completed = true;
                         }

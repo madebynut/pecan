@@ -485,7 +485,7 @@ impl Reader {
             .is_some_and(|tab| tab.edit.is_some())
         {
             self.status =
-                "源码会话已保留；如需丢弃草稿并重新读取，请使用源码工具栏的重新加载".into();
+                "源码会话已保留；如需丢弃草稿并重新读取，请使用顶部工具栏的重新加载".into();
             cx.notify();
             return;
         }
@@ -900,10 +900,13 @@ impl Reader {
         });
     }
     fn render_titlebar(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        // Center against the window, independently of asymmetric native controls and tools.
-        let title_width =
-            (window.viewport_size().width - px(crate::platform::choose(640., 844.))).max(px(0.));
+        let source_tools = self.source_tools(cx);
+        // Keep the centered title clear of each additional 28px tool and its 4px gap.
+        let title_width = (window.viewport_size().width
+            - px(crate::platform::choose(640., 844.) + source_tools.len() as f32 * 64.))
+        .max(px(0.));
         div()
+            .debug_selector(|| "reader-titlebar".into())
             .relative()
             .w_full()
             .flex_shrink_0()
@@ -978,6 +981,7 @@ impl Reader {
                             )
                             .child(
                                 Button::new("reload")
+                                    .debug_selector(|| "titlebar-reload".into())
                                     .small()
                                     .ghost()
                                     .child(crate::ui::icon(IconName::RefreshCw))
@@ -985,8 +989,11 @@ impl Reader {
                                         "重新加载 · ⌘R",
                                         "重新加载 · Ctrl+R",
                                     ))
-                                    .on_click(cx.listener(|reader, _, _, cx| reader.reload(cx))),
+                                    .on_click(cx.listener(|reader, _, window, cx| {
+                                        reader.reload_action(window, cx)
+                                    })),
                             )
+                            .children(source_tools)
                             .child(
                                 Button::new("reading-focus")
                                     .small()
@@ -1357,20 +1364,6 @@ impl Render for Reader {
                                 .overflow_x_scroll()
                                 .children(self.render_tabs(cx)),
                         )
-                        .when(active_tab.is_some(), |bar| {
-                            bar.child(
-                                crate::ui::tool_button(
-                                    "toggle-source",
-                                    gpui_kit::assets::IconName::CodeXml,
-                                    "查看源码 / 阅读模式",
-                                )
-                                .selected(active_tab.is_some_and(|tab| tab.source_mode()))
-                                .debug_selector(|| "toggle-source".into())
-                                .on_click(cx.listener(
-                                    |reader, _, window, cx| reader.toggle_source(window, cx),
-                                )),
-                            )
-                        })
                         .when(is_pdf, |bar| {
                             bar.child(
                                 div()

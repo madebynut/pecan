@@ -7,6 +7,8 @@ gpui_kit::assets::icon_assets!(
     DocumentIcons,
     [
         CodeXml,
+        Save,
+        SaveCheck,
         Sigma,
         Network,
         Download,
@@ -60,6 +62,8 @@ mod tests {
         for icon in [
             IconName::Download,
             IconName::CodeXml,
+            IconName::Save,
+            IconName::SaveCheck,
             IconName::Sigma,
             IconName::Network,
             IconName::Copy,
@@ -91,6 +95,8 @@ mod tests {
         let renderer = SvgRenderer::new(std::sync::Arc::new(ReaderAssets));
         for icon in [
             IconName::ListIndentIncrease,
+            IconName::Save,
+            IconName::SaveCheck,
             IconName::Braces,
             IconName::FoldVertical,
             IconName::UnfoldVertical,

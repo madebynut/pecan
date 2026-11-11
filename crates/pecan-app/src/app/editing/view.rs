@@ -2,19 +2,70 @@
 use super::{Reader, SaveMode};
 use gpui_kit::{
     AnyElement, Context, IntoElement,
-    component::{
-        ActiveTheme, Disableable, Sizable,
-        button::{Button, ButtonVariants},
-        h_flex,
-        input::Editor,
-        v_flex,
-    },
+    component::{ActiveTheme, Disableable, Icon, Selectable, input::Editor, v_flex},
     div,
     prelude::*,
     px,
 };
 
 impl Reader {
+    pub(in crate::app) fn source_tools(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let Some(tab) = self.tabs.get(self.active) else {
+            return Vec::new();
+        };
+        let mut tools = vec![
+            crate::ui::tool_button(
+                "toggle-source",
+                gpui_kit::assets::IconName::CodeXml,
+                crate::platform::choose("查看源码／阅读 · ⌘E", "查看源码／阅读 · Ctrl+E"),
+            )
+            .selected(tab.source_mode())
+            .disabled(self.edit_job.is_some())
+            .debug_selector(|| "toggle-source".into())
+            .on_click(cx.listener(|reader, _, window, cx| reader.toggle_source(window, cx)))
+            .into_any_element(),
+        ];
+        if let Some(edit) = tab
+            .edit
+            .as_ref()
+            .filter(|edit| edit.dirty || edit.save_confirmed())
+        {
+            let saved = edit.save_confirmed();
+            let icon = Icon::new(if saved {
+                gpui_kit::assets::IconName::SaveCheck
+            } else {
+                gpui_kit::assets::IconName::Save
+            })
+            .text_color(if saved {
+                cx.theme().success
+            } else {
+                cx.theme().foreground
+            });
+            let tooltip = if saved {
+                "已保存"
+            } else {
+                crate::platform::choose("保存 · ⌘S", "保存 · Ctrl+S")
+            };
+            tools.push(
+                crate::ui::tool_button("source-save", icon, tooltip)
+                    .disabled(self.edit_job.is_some())
+                    .debug_selector(|| "source-save".into())
+                    .when(saved, |button| {
+                        button
+                            .debug_selector(|| "source-saved".into())
+                            .cursor_default()
+                    })
+                    .when(!saved, |button| {
+                        button.on_click(cx.listener(|reader, _, window, cx| {
+                            reader.save_active(SaveMode::Existing, window, cx);
+                        }))
+                    })
+                    .into_any_element(),
+            );
+        }
+        tools
+    }
+
     pub(in crate::app) fn source_body(&self, cx: &mut Context<Self>) -> AnyElement {
         let tab = &self.tabs[self.active];
         let edit = tab.edit.as_ref().expect("source mode has an editor");
@@ -60,61 +111,6 @@ impl Reader {
             .flex_1()
             .min_h_0()
             .w_full()
-            .child(
-                h_flex()
-                    .h(px(38.))
-                    .px_3()
-                    .gap_2()
-                    .items_center()
-                    .flex_shrink_0()
-                    .border_b_1()
-                    .border_color(cx.theme().border)
-                    .child(
-                        div()
-                            .text_size(px(12.))
-                            .text_color(cx.theme().muted_foreground)
-                            .child(if edit.dirty {
-                                "Markdown · 未保存"
-                            } else {
-                                "Markdown"
-                            }),
-                    )
-                    .child(div().flex_1())
-                    .child(
-                        Button::new("source-reload")
-                            .small()
-                            .ghost()
-                            .label("重新加载")
-                            .cursor_pointer()
-                            .disabled(edit.busy || tab.path.is_none())
-                            .on_click(cx.listener(|reader, _, window, cx| {
-                                reader.reload_action(window, cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("source-save")
-                            .small()
-                            .ghost()
-                            .label("保存")
-                            .disabled(edit.busy)
-                            .cursor_pointer()
-                            .debug_selector(|| "source-save".into())
-                            .on_click(cx.listener(|reader, _, window, cx| {
-                                reader.save_active(SaveMode::Existing, window, cx)
-                            })),
-                    )
-                    .child(
-                        Button::new("source-read")
-                            .small()
-                            .ghost()
-                            .label("阅读模式")
-                            .disabled(edit.busy)
-                            .cursor_pointer()
-                            .on_click(cx.listener(|reader, _, window, cx| {
-                                reader.toggle_source(window, cx)
-                            })),
-                    ),
-            )
             .child(
                 div().flex_1().min_h_0().w_full().child(
                     Editor::new(&edit.editor)

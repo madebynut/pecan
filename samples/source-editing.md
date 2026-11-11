@@ -1,6 +1,6 @@
 # 源码编辑 · Source editing
 
-在标签栏点击 `</>`，或按 **⌘E / Ctrl+E**，切换阅读与源码模式。
+在顶部工具栏点击 `</>`，或按 **⌘E / Ctrl+E**，切换阅读与源码模式。
 
 这是一份可复制的验收文档。试试 **加粗**、*斜体*、~~删除线~~、`inline code` 和 [链接](https://github.com/madebynut/pecan)。
 

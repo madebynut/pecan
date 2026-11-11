@@ -92,6 +92,70 @@ fn editing_preview_saving_and_reopening_preserve_exact_markdown(cx: &mut TestApp
 }
 
 #[gpui_kit::test]
+fn top_toolbar_tracks_real_save_success_and_reload_keeps_the_unsaved_guard(
+    cx: &mut TestAppContext,
+) {
+    fn click(visual: &mut VisualTestContext, selector: &'static str) {
+        visual.update(|window, cx| window.draw(cx).clear(cx));
+        let point = visual.debug_bounds(selector).expect(selector).center();
+        visual.simulate_mouse_down(point, gpui_kit::MouseButton::Left, Default::default());
+        visual.simulate_mouse_up(point, gpui_kit::MouseButton::Left, Default::default());
+        visual.run_until_parked();
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("toolbar.md");
+    std::fs::write(&path, "# Original").unwrap();
+    let (handle, reader) = open(cx, Some(path.clone()));
+    let mut visual = VisualTestContext::from_window(handle, cx);
+    visual.update(|window, cx| window.draw(cx).clear(cx));
+    let toolbar = visual.debug_bounds("reader-titlebar").unwrap();
+    let toggle = visual.debug_bounds("toggle-source").unwrap();
+    assert!(toolbar.contains(&toggle.center()));
+    assert!(visual.debug_bounds("source-save").is_none());
+    assert!(visual.debug_bounds("source-saved").is_none());
+    click(&mut visual, "toggle-source");
+    assert!(reader.read_with(&visual.cx, |r, _| r.tabs[r.active].source_mode()));
+    visual.update(|window, cx| replace(&reader, "# Edited", window, cx));
+    super::super::tests::settle(&visual.cx);
+    click(&mut visual, "source-save");
+    super::super::tests::settle(&visual.cx);
+    visual.update(|window, cx| window.draw(cx).clear(cx));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "# Edited");
+    let saved = visual.debug_bounds("source-saved").unwrap();
+    assert!(toolbar.contains(&saved.center()));
+    assert!(visual.debug_bounds("source-save").is_none());
+    click(&mut visual, "toggle-source");
+    visual.update(|window, cx| window.draw(cx).clear(cx));
+    assert!(
+        visual.debug_bounds("source-saved").is_some(),
+        "saved status follows the tab into reading"
+    );
+    click(&mut visual, "toggle-source");
+    visual.update(|window, cx| replace(&reader, "# Another edit", window, cx));
+    super::super::tests::settle(&visual.cx);
+    visual.update(|window, cx| window.draw(cx).clear(cx));
+    assert!(visual.debug_bounds("source-saved").is_none());
+    assert!(visual.debug_bounds("source-save").is_some());
+    std::fs::write(&path, "# External").unwrap();
+    click(&mut visual, "source-save");
+    super::super::tests::settle(&visual.cx);
+    visual.update(|window, cx| window.draw(cx).clear(cx));
+    assert!(
+        visual.debug_bounds("source-saved").is_none(),
+        "a failed save cannot show success"
+    );
+    assert!(visual.debug_bounds("source-save").is_some());
+    click(&mut visual, "titlebar-reload");
+    assert!(visual.cx.has_pending_prompt());
+    visual.cx.simulate_prompt_answer("取消");
+    super::super::tests::settle(&visual.cx);
+    reader.read_with(&visual.cx, |_, cx| {
+        assert_eq!(text(&reader, cx), "# Another edit")
+    });
+    assert_eq!(std::fs::read_to_string(path).unwrap(), "# External");
+}
+
+#[gpui_kit::test]
 fn source_outline_uses_current_offsets_and_reports_deleted_headings(cx: &mut TestAppContext) {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("outline.md");
@@ -436,6 +500,13 @@ fn dirty_export_uses_the_latest_editor_text(cx: &mut TestAppContext) {
 #[ignore = "Requires a Metal graphical session"]
 fn source_editor_native_frames_have_readable_highlights_in_both_themes() {
     use gpui_kit::HeadlessAppContext;
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("源码编辑验收.md");
+    let source = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../samples/source-editing.md"
+    ));
+    std::fs::write(&path, source).unwrap();
     let mut headless = HeadlessAppContext::with_platform(
         Arc::new(gpui_apple::AppleTextSystem::new()),
         Arc::new(crate::assets::ReaderAssets),
@@ -459,19 +530,23 @@ fn source_editor_native_frames_have_readable_highlights_in_both_themes() {
             reader.update(cx, |reader, cx| {
                 let tab = &mut reader.tabs[reader.active];
                 tab.title = "源码编辑验收.md".into();
+                tab.path = Some(path.clone());
                 tab.view.update(cx, |view, _| {
-                    view.document = Arc::new(
-                        Document::parse(
-                            include_str!(concat!(
-                                env!("CARGO_MANIFEST_DIR"),
-                                "/../../samples/source-editing.md"
-                            ))
-                            .to_owned(),
-                        )
-                        .unwrap(),
-                    );
+                    view.document = Arc::new(Document::parse(source.to_owned()).unwrap());
                 });
                 reader.toggle_source(window, cx);
+            });
+            replace(&reader, &format!("{source}\n"), window, cx);
+        })
+        .unwrap();
+    headless.run_until_parked();
+    headless
+        .update_window(handle, |_, window, cx| {
+            reader.update(cx, |reader, cx| {
+                reader.save_active(SaveMode::Existing, window, cx);
+                let edit = reader.tabs[reader.active].edit.as_ref().unwrap();
+                edit.editor
+                    .update(cx, |editor, cx| editor.set_selected_range(0..0, cx));
             });
         })
         .unwrap();
@@ -492,6 +567,31 @@ fn source_editor_native_frames_have_readable_highlights_in_both_themes() {
         let image = headless
             .update_window(handle, |_, window, _| window.render_to_image().unwrap())
             .unwrap();
+        headless.update(|cx| {
+            let state = reader.read(cx);
+            assert!(
+                state.tabs[state.active]
+                    .edit
+                    .as_ref()
+                    .unwrap()
+                    .save_confirmed(),
+                "{}",
+                state.status
+            );
+        });
+        let green = image
+            .rows()
+            .take(68)
+            .flatten()
+            .filter(|pixel| {
+                let [r, g, b, _] = pixel.0;
+                g > r.saturating_add(25) && g > b.saturating_add(15)
+            })
+            .count();
+        assert!(
+            green > 20,
+            "{theme} must show the green saved icon in the top toolbar: {green}"
+        );
         let colors = image
             .pixels()
             .filter(|pixel| {
