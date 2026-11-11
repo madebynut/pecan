@@ -154,12 +154,19 @@ pub struct ThemeStyle {
     pub color: Option<gpui::Hsla>,
     pub font_style: Option<FontStyle>,
     pub font_weight: Option<FontWeightContent>,
+    pub strikethrough: Option<bool>,
 }
 
 impl From<ThemeStyle> for HighlightStyle {
     fn from(style: ThemeStyle) -> Self {
         HighlightStyle {
             color: style.color,
+            strikethrough: style.strikethrough.filter(|enabled| *enabled).map(|_| {
+                gpui::StrikethroughStyle {
+                    thickness: gpui::px(1.),
+                    color: style.color,
+                }
+            }),
             font_weight: style.font_weight.map(|w| match w {
                 FontWeightContent::Thin => gpui::FontWeight::THIN,
                 FontWeightContent::ExtraLight => gpui::FontWeight::EXTRA_LIGHT,
@@ -235,6 +242,8 @@ pub struct SyntaxColors {
     pub text_code_span: Option<ThemeStyle>,
     #[serde(rename = "text.literal")]
     pub text_literal: Option<ThemeStyle>,
+    #[serde(rename = "text.strikethrough")]
+    pub text_strikethrough: Option<ThemeStyle>,
     pub title: Option<ThemeStyle>,
     #[serde(rename = "type")]
     pub type_: Option<ThemeStyle>,
@@ -287,6 +296,7 @@ impl SyntaxColors {
             "tag.doctype" => self.tag_doctype,
             "text.code.span" => self.text_code_span,
             "text.literal" => self.text_literal,
+            "text.strikethrough" => self.text_strikethrough,
             "title" => self.title,
             "type" => self.type_,
             "variable" => self.variable,
@@ -306,7 +316,7 @@ impl SyntaxColors {
     }
 
     pub fn style_for_index(&self, index: usize) -> Option<HighlightStyle> {
-        const HIGHLIGHT_NAMES: [&str; 41] = [
+        const HIGHLIGHT_NAMES: [&str; 42] = [
             "attribute",
             "boolean",
             "comment",
@@ -348,6 +358,7 @@ impl SyntaxColors {
             "variable",
             "variable.special",
             "variant",
+            "text.strikethrough",
         ];
 
         HIGHLIGHT_NAMES.get(index).and_then(|name| self.style(name))

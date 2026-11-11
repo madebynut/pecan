@@ -27,11 +27,11 @@
 
 [
   (link_destination)
-] @text.uri
+] @link_uri
 
 [
   (link_label)
-] @text.reference
+] @link_text
 
 [
   (list_marker_plus)
@@ -39,6 +39,8 @@
   (list_marker_star)
   (list_marker_dot)
   (list_marker_parenthesis)
+  (task_list_marker_checked)
+  (task_list_marker_unchecked)
   (thematic_break)
 ] @punctuation.list_marker
 

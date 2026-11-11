@@ -52,6 +52,37 @@
       },
       "attribute": {
         "color": "#953800"
+      },
+      "title": {
+        "color": "#0550ae",
+        "font_weight": 700
+      },
+      "emphasis": {
+        "color": "#8250df",
+        "font_style": "italic"
+      },
+      "emphasis.strong": {
+        "color": "#953800",
+        "font_weight": 700
+      },
+      "text.code.span": {
+        "color": "#0a6440"
+      },
+      "text.literal": {
+        "color": "#0a6440"
+      },
+      "text.strikethrough": {
+        "color": "#6e7781",
+        "strikethrough": true
+      },
+      "link_text": {
+        "color": "#0550ae"
+      },
+      "link_uri": {
+        "color": "#116b80"
+      },
+      "punctuation.list_marker": {
+        "color": "#8250df"
       }
     }
   }

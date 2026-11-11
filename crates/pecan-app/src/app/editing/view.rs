@@ -16,7 +16,10 @@ impl Reader {
         let mut tools = vec![
             crate::ui::tool_button(
                 "toggle-source",
-                gpui_kit::assets::IconName::CodeXml,
+                // The open chevrons need a little more optical weight than closed icons.
+                Icon::new(gpui_kit::assets::IconName::CodeXml).transform(
+                    gpui_kit::Transformation::scale(gpui_kit::size(1.125, 1.125)),
+                ),
                 crate::platform::choose("查看源码／阅读 · ⌘E", "查看源码／阅读 · Ctrl+E"),
             )
             .selected(tab.source_mode())

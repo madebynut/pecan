@@ -15,7 +15,7 @@ use anyhow::Result;
 
 use crate::{ActiveTheme, DEFAULT_THEME_COLORS, ThemeMode, highlighter::languages};
 
-pub(super) const HIGHLIGHT_NAMES: [&str; 41] = [
+pub(super) const HIGHLIGHT_NAMES: [&str; 42] = [
     "attribute",
     "boolean",
     "comment",
@@ -57,6 +57,7 @@ pub(super) const HIGHLIGHT_NAMES: [&str; 41] = [
     "variable",
     "variable.special",
     "variant",
+    "text.strikethrough",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -166,6 +167,8 @@ pub struct SyntaxColors {
     pub text_code_span: Option<ThemeStyle>,
     #[serde(rename = "text.literal")]
     pub text_literal: Option<ThemeStyle>,
+    #[serde(rename = "text.strikethrough")]
+    pub text_strikethrough: Option<ThemeStyle>,
     pub title: Option<ThemeStyle>,
     #[serde(rename = "type")]
     pub type_: Option<ThemeStyle>,
@@ -228,6 +231,7 @@ pub struct ThemeStyle {
     color: Option<Hsla>,
     font_style: Option<FontStyle>,
     font_weight: Option<FontWeightContent>,
+    strikethrough: Option<bool>,
 }
 
 impl From<ThemeStyle> for HighlightStyle {
@@ -236,6 +240,12 @@ impl From<ThemeStyle> for HighlightStyle {
             color: style.color,
             font_weight: style.font_weight.map(Into::into),
             font_style: style.font_style.map(Into::into),
+            strikethrough: style.strikethrough.filter(|enabled| *enabled).map(|_| {
+                gpui::StrikethroughStyle {
+                    thickness: gpui::px(1.),
+                    color: style.color,
+                }
+            }),
             ..Default::default()
         }
     }
@@ -284,6 +294,7 @@ impl SyntaxColors {
             "tag.doctype" => self.tag_doctype,
             "text.code.span" => self.text_code_span,
             "text.literal" => self.text_literal,
+            "text.strikethrough" => self.text_strikethrough,
             "title" => self.title,
             "type" => self.type_,
             "variable" => self.variable,

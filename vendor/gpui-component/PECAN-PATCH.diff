@@ -426,7 +426,9 @@
  
  ((style_element
    (raw_text) @injection.content)
-- (#set! injection.language "css"))+ (#set! injection.language "css"))
+- (#set! injection.language "css"))
+\ No newline at end of file
++ (#set! injection.language "css"))
 --- a/src/highlighter/languages/jsx/highlights.scm
 +++ b/src/highlighter/languages/jsx/highlights.scm
 @@ -0,0 +1,8 @@
@@ -1085,3 +1087,170 @@
              .w_full()
              .child(
                  h_flex()
+--- a/src/highlighter/registry.rs
++++ b/src/highlighter/registry.rs
+@@ -15,7 +15,7 @@
+ 
+ use crate::{ActiveTheme, DEFAULT_THEME_COLORS, ThemeMode, highlighter::languages};
+ 
+-pub(super) const HIGHLIGHT_NAMES: [&str; 41] = [
++pub(super) const HIGHLIGHT_NAMES: [&str; 42] = [
+     "attribute",
+     "boolean",
+     "comment",
+@@ -57,6 +57,7 @@
+     "variable",
+     "variable.special",
+     "variant",
++    "text.strikethrough",
+ ];
+ 
+ #[derive(Debug, Clone, PartialEq, Eq)]
+@@ -166,6 +167,8 @@
+     pub text_code_span: Option<ThemeStyle>,
+     #[serde(rename = "text.literal")]
+     pub text_literal: Option<ThemeStyle>,
++    #[serde(rename = "text.strikethrough")]
++    pub text_strikethrough: Option<ThemeStyle>,
+     pub title: Option<ThemeStyle>,
+     #[serde(rename = "type")]
+     pub type_: Option<ThemeStyle>,
+@@ -228,6 +231,7 @@
+     color: Option<Hsla>,
+     font_style: Option<FontStyle>,
+     font_weight: Option<FontWeightContent>,
++    strikethrough: Option<bool>,
+ }
+ 
+ impl From<ThemeStyle> for HighlightStyle {
+@@ -236,6 +240,12 @@
+             color: style.color,
+             font_weight: style.font_weight.map(Into::into),
+             font_style: style.font_style.map(Into::into),
++            strikethrough: style.strikethrough.filter(|enabled| *enabled).map(|_| {
++                gpui::StrikethroughStyle {
++                    thickness: gpui::px(1.),
++                    color: style.color,
++                }
++            }),
+             ..Default::default()
+         }
+     }
+@@ -284,6 +294,7 @@
+             "tag.doctype" => self.tag_doctype,
+             "text.code.span" => self.text_code_span,
+             "text.literal" => self.text_literal,
++            "text.strikethrough" => self.text_strikethrough,
+             "title" => self.title,
+             "type" => self.type_,
+             "variable" => self.variable,
+--- a/src/highlighter/wasm_stub.rs
++++ b/src/highlighter/wasm_stub.rs
+@@ -154,12 +154,19 @@
+     pub color: Option<gpui::Hsla>,
+     pub font_style: Option<FontStyle>,
+     pub font_weight: Option<FontWeightContent>,
++    pub strikethrough: Option<bool>,
+ }
+ 
+ impl From<ThemeStyle> for HighlightStyle {
+     fn from(style: ThemeStyle) -> Self {
+         HighlightStyle {
+             color: style.color,
++            strikethrough: style.strikethrough.filter(|enabled| *enabled).map(|_| {
++                gpui::StrikethroughStyle {
++                    thickness: gpui::px(1.),
++                    color: style.color,
++                }
++            }),
+             font_weight: style.font_weight.map(|w| match w {
+                 FontWeightContent::Thin => gpui::FontWeight::THIN,
+                 FontWeightContent::ExtraLight => gpui::FontWeight::EXTRA_LIGHT,
+@@ -235,6 +242,8 @@
+     pub text_code_span: Option<ThemeStyle>,
+     #[serde(rename = "text.literal")]
+     pub text_literal: Option<ThemeStyle>,
++    #[serde(rename = "text.strikethrough")]
++    pub text_strikethrough: Option<ThemeStyle>,
+     pub title: Option<ThemeStyle>,
+     #[serde(rename = "type")]
+     pub type_: Option<ThemeStyle>,
+@@ -287,6 +296,7 @@
+             "tag.doctype" => self.tag_doctype,
+             "text.code.span" => self.text_code_span,
+             "text.literal" => self.text_literal,
++            "text.strikethrough" => self.text_strikethrough,
+             "title" => self.title,
+             "type" => self.type_,
+             "variable" => self.variable,
+@@ -306,7 +316,7 @@
+     }
+ 
+     pub fn style_for_index(&self, index: usize) -> Option<HighlightStyle> {
+-        const HIGHLIGHT_NAMES: [&str; 41] = [
++        const HIGHLIGHT_NAMES: [&str; 42] = [
+             "attribute",
+             "boolean",
+             "comment",
+@@ -348,6 +358,7 @@
+             "variable",
+             "variable.special",
+             "variant",
++            "text.strikethrough",
+         ];
+ 
+         HIGHLIGHT_NAMES.get(index).and_then(|name| self.style(name))
+--- a/src/highlighter/languages/markdown/highlights.scm
++++ b/src/highlighter/languages/markdown/highlights.scm
+@@ -27,11 +27,11 @@
+ 
+ [
+   (link_destination)
+-] @text.uri
++] @link_uri
+ 
+ [
+   (link_label)
+-] @text.reference
++] @link_text
+ 
+ [
+   (list_marker_plus)
+@@ -39,6 +39,8 @@
+   (list_marker_star)
+   (list_marker_dot)
+   (list_marker_parenthesis)
++  (task_list_marker_checked)
++  (task_list_marker_unchecked)
+   (thematic_break)
+ ] @punctuation.list_marker
+ 
+@@ -49,4 +51,4 @@
+ 
+ [
+   (backslash_escape)
+-] @string.escape
+\ No newline at end of file
++] @string.escape
+--- a/src/highlighter/languages/markdown/injections.scm
++++ b/src/highlighter/languages/markdown/injections.scm
+@@ -11,6 +11,6 @@
+ 
+ ((plus_metadata) @injection.content (#set! injection.language "toml"))
+ 
+-((inline) @injection.content
++([(inline) (pipe_table_cell)] @injection.content
+   (#set! injection.language "markdown_inline")
+   (#set! injection.combined))
+--- a/src/highlighter/languages/markdown_inline/highlights.scm
++++ b/src/highlighter/languages/markdown_inline/highlights.scm
+@@ -13,6 +13,9 @@
+ ((strong_emphasis) @emphasis.strong
+   (#set! highlight.allow-overlap))
+ 
++((strikethrough) @text.strikethrough
++  (#set! highlight.allow-overlap))
++
+ [
+   (link_destination)
+   (uri_autolink)

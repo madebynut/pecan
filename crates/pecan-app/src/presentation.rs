@@ -156,7 +156,8 @@ fn natural_reading_style(
                 5 => 1.1875,
                 _ => 1.0625,
             };
-            let heading = StyleRefinement::default()
+            // TextView owns spacing between blocks, including consecutive headings.
+            StyleRefinement::default()
                 .text_size(size * scale)
                 .line_height(relative(1.35))
                 .font_weight(if level == 1 {
@@ -164,8 +165,6 @@ fn natural_reading_style(
                 } else {
                     FontWeight::SEMIBOLD
                 })
-                .mt(if level == 1 { size * 0.75 } else { size * 1.65 });
-            heading.pb(if level == 1 { size * 1.25 } else { size })
         })
         .with_blockquote_style(
             StyleRefinement::default()
@@ -498,6 +497,73 @@ mod tests {
                     });
                 });
             }
+        }
+    }
+
+    #[gpui_kit::test]
+    fn consecutive_headings_share_compact_native_spacing(cx: &mut gpui_kit::TestAppContext) {
+        use gpui_kit::base::{TextView, TextViewState};
+        use gpui_kit::component::text::RangeHighlight;
+        use gpui_kit::{
+            AppContext, Context, Entity, IntoElement, ParentElement, Render, Window, div,
+        };
+        struct Fixture {
+            text: Entity<TextViewState>,
+            prefs: PreferencesData,
+        }
+        impl Render for Fixture {
+            fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+                div()
+                    .w(px(900.))
+                    .text_size(px(self.prefs.font_size as f32))
+                    .child(TextView::new(&self.text).style(reading_style(
+                        &self.prefs,
+                        ReadingPalette::for_app(cx),
+                        cx,
+                    )))
+            }
+        }
+        cx.update(gpui_kit::init);
+        for body in [16., 22.] {
+            let source = "# 设备定位 SDK\n\n## 背景与目标\n\n### 背景\n\n#### 四级\n\n##### 五级\n\n###### 六级\n\n正文";
+            let (_, visual) = cx.add_window_view(|_, cx| Fixture {
+                text: cx.new(|cx| {
+                    let mut text = TextViewState::markdown(source, cx);
+                    text.set_range_highlights(
+                        [RangeHighlight::new(
+                            0..text.rendered_text().len(),
+                            rgb(0xff00ff),
+                        )],
+                        cx,
+                    )
+                    .unwrap();
+                    text
+                }),
+                prefs: PreferencesData {
+                    font_size: body,
+                    ..Default::default()
+                },
+            });
+            for _ in 0..4 {
+                visual.run_until_parked();
+                visual.update(|window, cx| window.draw(cx).clear(cx));
+            }
+            visual.update(|window, _| {
+                let rows = window
+                    .painted_quads()
+                    .into_iter()
+                    .filter(|quad| quad.background.as_solid() == Some(rgb(0xff00ff).into()))
+                    .collect::<Vec<_>>();
+                assert_eq!(rows.len(), 7, "six headings followed by one paragraph");
+                for pair in rows.windows(2) {
+                    let gap = (pair[1].bounds.top().0 - pair[0].bounds.bottom().0)
+                        / window.scale_factor();
+                    assert!(
+                        (0. ..=body as f32 * 1.25).contains(&gap),
+                        "body {body}: adjacent heading lines must stay together, gap {gap}"
+                    );
+                }
+            });
         }
     }
 

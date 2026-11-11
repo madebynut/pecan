@@ -502,9 +502,10 @@ fn source_editor_native_frames_have_readable_highlights_in_both_themes() {
     use gpui_kit::HeadlessAppContext;
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("源码编辑验收.md");
+    // No fenced code: its colors must not conceal missing Markdown highlights.
     let source = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../samples/source-editing.md"
+        "/../../samples/markdown-typography.md"
     ));
     std::fs::write(&path, source).unwrap();
     let mut headless = HeadlessAppContext::with_platform(
@@ -593,7 +594,9 @@ fn source_editor_native_frames_have_readable_highlights_in_both_themes() {
             "{theme} must show the green saved icon in the top toolbar: {green}"
         );
         let colors = image
-            .pixels()
+            .rows()
+            .skip(68)
+            .flatten()
             .filter(|pixel| {
                 let [r, g, b, _] = pixel.0;
                 r.abs_diff(g).max(g.abs_diff(b)).max(r.abs_diff(b)) > 45
@@ -601,12 +604,35 @@ fn source_editor_native_frames_have_readable_highlights_in_both_themes() {
             .count();
         assert!(
             colors > 300,
-            "{theme} source frame must contain highlighted syntax: {colors}"
+            "{theme} source frame must highlight Markdown without fenced code: {colors}"
         );
         if let Some(directory) = std::env::var_os("PECAN_METAL_OUTPUT") {
             image
                 .save(PathBuf::from(directory).join(format!("source-{theme}.png")))
                 .unwrap();
         }
+        headless
+            .update_window(handle, |_, window, cx| {
+                reader.update(cx, |reader, cx| reader.toggle_source(window, cx));
+            })
+            .unwrap();
+        for _ in 0..4 {
+            headless.run_until_parked();
+            headless
+                .update_window(handle, |_, window, cx| window.draw(cx).clear(cx))
+                .unwrap();
+        }
+        if let Some(directory) = std::env::var_os("PECAN_METAL_OUTPUT") {
+            headless
+                .capture_screenshot(handle)
+                .unwrap()
+                .save(PathBuf::from(directory).join(format!("reading-{theme}.png")))
+                .unwrap();
+        }
+        headless
+            .update_window(handle, |_, window, cx| {
+                reader.update(cx, |reader, cx| reader.toggle_source(window, cx));
+            })
+            .unwrap();
     }
 }
