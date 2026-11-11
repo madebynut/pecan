@@ -95,7 +95,7 @@ end > 0 && offset < spans[end - 1].source.end
 
 使用实际安装的 CJK 无衬线/衬线和等宽字体，继续比较实际预览像素；路径断言采用平台规范化后的路径；全屏验证分别遵循平台窗体边距；最近文件测试初始化完整 GPUI 菜单环境。没有通过跳过这些测试消除失败。Intel 原生测试已通过，但首次冷构建在 release 编译时触及原来的 60 分钟作业限制，调整为 120 分钟，保留 LTO 和全部质量检查。构建触发仍仅限 tag push。
 
-三平台 CI 安装同一固定提交、SHA-256 校验的 Noto CJK 测试字体，避免托管 macOS/Windows 镜像缺失可选中文字体；下载校验通过后才原子替换。导入生命周期测试从入口就使用平台绝对路径，覆盖 Windows 规范化后查找和关闭标签的行为。字体安装只准备测试环境，不改变应用默认字体或打包内容。
+三平台 CI 安装同一固定提交、SHA-256 校验的 Noto CJK 字体，避免托管 macOS/Windows 镜像缺失可选中文字体；下载校验通过后才原子替换。导入生命周期测试从入口就使用平台绝对路径，覆盖 Windows 规范化后查找和关闭标签的行为。字体安装只准备渲染验证环境，不改变应用默认字体或打包内容。
 
 ## 需要持续跟进
 
@@ -116,6 +116,6 @@ end > 0 && offset < spans[end - 1].source.end
 - Rustfmt、严格全目标全特性 Clippy、Windows MSVC 交叉 Clippy、warnings-as-errors rustdoc 通过。
 - actionlint、打包脚本 shellcheck、diff 空白检查通过。
 - `samples/acceptance.md` 的 HTML / PDF / Word 与修改前逐字节相同；Markdown 仅临时资源目录名称不同，正文及对应图片字节相同。DOCX ZIP 完整性和 XML 解析通过。
-- 原生 CI：前一轮 macOS ARM 完整通过；Intel 测试通过但冷构建超时；Windows 测试暴露的平台假设已修正。本轮修改仍须以新 tag 的 CI 结果为准，不将前一轮结果算作新提交验证。
+- 原生 CI：前一轮 macOS ARM 完整通过；Intel 测试通过但冷构建超时；Windows 测试暴露的平台假设已修正。按最新发布策略，CI 移除 `cargo test`，完整测试由本地承担；CI 保留全目标 Clippy、rustdoc、导出 smoke test 和三平台打包。不能将本地测试或旧提交的 CI 结果表述为最新提交的三平台原生测试通过。
 
 本地 QA：`2026-11-11/pecan-production-review/`，包含四格式导出、逐项比较 JSON、基准与检查日志。

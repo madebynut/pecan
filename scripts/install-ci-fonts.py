@@ -1,4 +1,4 @@
-"""Install verified CJK fonts for rendering tests, never for application packaging."""
+"""Install verified CJK fonts for rendering checks, never for application packaging."""
 
 import argparse
 import hashlib
