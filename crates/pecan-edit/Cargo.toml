@@ -1,0 +1,16 @@
+[package]
+name = "pecan-edit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Conflict-aware atomic Markdown saves"
+
+[dependencies]
+blake3.workspace = true
+pecan-document.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

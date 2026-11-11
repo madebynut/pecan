@@ -30,6 +30,7 @@ gpui-kit.workspace = true
 futures-lite.workspace = true
 lru.workspace = true
 pecan-document.workspace = true
+pecan-edit.workspace = true
 pecan-mermaid.workspace = true
 notify.workspace = true
 pulldown-cmark.workspace = true

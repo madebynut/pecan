@@ -5,6 +5,7 @@ members = [
     "crates/pecan-code",
     "crates/pecan-config",
     "crates/pecan-document",
+    "crates/pecan-edit",
     "crates/pecan-export",
     "crates/pecan-format",
     "crates/pecan-import",
@@ -27,6 +28,7 @@ pecan-assets = { path = "crates/pecan-assets" }
 pecan-code = { path = "crates/pecan-code" }
 pecan-config = { path = "crates/pecan-config" }
 pecan-document = { path = "crates/pecan-document" }
+pecan-edit = { path = "crates/pecan-edit" }
 pecan-export = { path = "crates/pecan-export" }
 pecan-format = { path = "crates/pecan-format" }
 pecan-import = { path = "crates/pecan-import" }

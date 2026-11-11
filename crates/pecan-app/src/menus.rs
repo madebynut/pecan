@@ -50,6 +50,9 @@ pub(crate) fn install(cx: &mut App) {
                 return;
             }
             if let Some(handle) = cx.active_window() {
+                if crate::app::request_close_window(handle, cx) {
+                    return;
+                }
                 let _ = handle.update(cx, |_, window, _| window.remove_window());
             }
         })
@@ -67,6 +70,8 @@ pub(crate) fn refresh(cx: &mut App) {
             MenuItem::action("打开文件夹…", OpenFolder),
             MenuItem::submenu(recent_menu),
             MenuItem::separator(),
+            MenuItem::action("保存", crate::SaveDocument),
+            MenuItem::action("另存为 Markdown…", crate::SaveDocumentAs),
             MenuItem::action("重新加载", Reload),
             MenuItem::action("查看 PDF 原版", OriginalPdf),
             MenuItem::action(crate::platform::REVEAL_FILE, RevealFile),
@@ -92,6 +97,7 @@ pub(crate) fn refresh(cx: &mut App) {
             MenuItem::action("查找…", Find),
         ]),
         Menu::new("视图").items([
+            MenuItem::action("查看源码／阅读模式", crate::ToggleSource),
             MenuItem::action("显示／隐藏文件栏", ToggleSidebar),
             MenuItem::action("显示／隐藏大纲", ToggleOutline),
             MenuItem::action("专注阅读", FocusReading),

@@ -5774,6 +5774,7 @@ dependencies = [
  "pecan-code",
  "pecan-config",
  "pecan-document",
+ "pecan-edit",
  "pecan-export",
  "pecan-format",
  "pecan-import",
@@ -5826,6 +5827,16 @@ dependencies = [
  "html5ever 0.27.0",
  "pulldown-cmark",
  "regex",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "pecan-edit"
+version = "1.0.0"
+dependencies = [
+ "blake3",
+ "pecan-document",
+ "tempfile",
  "thiserror 2.0.21",
 ]
 

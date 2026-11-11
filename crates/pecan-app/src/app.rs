@@ -1,4 +1,6 @@
+mod editing;
 mod exports;
+pub(crate) use editing::{request_close_window, request_quit};
 mod history;
 #[cfg(test)]
 mod regression;
@@ -54,6 +56,7 @@ struct Tab {
     title: String,
     view: Entity<DocumentView>,
     resources: Option<Arc<pecan_import::Resources>>,
+    edit: Option<editing::Session>,
 }
 
 pub(crate) struct Reader {
@@ -92,6 +95,8 @@ pub(crate) struct Reader {
     watcher: Option<(PathBuf, notify::RecommendedWatcher)>,
     changed: Arc<AtomicBool>,
     _watch_task: Task<()>,
+    edit_job: Option<Task<()>>,
+    close_prompt: bool,
 }
 
 /// The bundled guide is immutable and references no local files; reopened Help tabs share it.
@@ -158,6 +163,7 @@ impl Reader {
                 title: "欢迎使用碧果".into(),
                 view: welcome_view(&queue, &math, cx),
                 resources: None,
+                edit: None,
             }]
         } else {
             Vec::new()
@@ -235,7 +241,10 @@ impl Reader {
             watcher: None,
             changed,
             _watch_task: watch_task,
+            edit_job: None,
+            close_prompt: false,
         };
+        editing::register(window, cx);
         if let Some(path) = initial {
             if path.is_dir() {
                 reader.open_folder(path, cx);
@@ -324,9 +333,15 @@ impl Reader {
                             let Some(index) = reader.tabs.iter().position(|tab| tab.path.as_ref() == Some(&path)) else {
                                 return;
                             };
+                            // A late watcher result must never replace a source editing session.
+                            if reader.tabs[index].edit.is_some() {
+                                reader.status = "文件有外部变更，源码草稿已保留；保存时会检查冲突".into();
+                                cx.notify();
+                                return;
+                            }
                             let other_bytes: usize = reader.tabs.iter().enumerate()
                                 .filter(|(i, _)| *i != index)
-                                .map(|(_, tab)| tab.view.read(cx).document.source().len()).sum();
+                                .map(|(_, tab)| tab.source_bytes(cx)).sum();
                             if other_bytes + loaded.document.source().len() > MAX_OPEN_BYTES {
                                 reader.status = "重新加载后文档总量超过 64 MiB，请关闭部分标签后重试；当前内容已保留".into();
                                 cx.notify();
@@ -375,7 +390,7 @@ impl Reader {
                                 || reader
                                     .tabs
                                     .iter()
-                                    .map(|tab| tab.view.read(cx).document.source().len())
+                                    .map(|tab| tab.source_bytes(cx))
                                     .sum::<usize>()
                                     + bytes
                                     > MAX_OPEN_BYTES
@@ -383,8 +398,13 @@ impl Reader {
                                 if reader.tabs.is_empty() {
                                     break;
                                 }
-                                reader.tabs.remove(0);
-                                reader.active = reader.active.saturating_sub(1);
+                                let Some(index) = reader.tabs.iter().position(|tab| !tab.protected()) else {
+                                    reader.status = "打开文档已达预算，请先保存并关闭部分标签".into();
+                                    cx.notify();
+                                    return;
+                                };
+                                reader.tabs.remove(index);
+                                if index < reader.active { reader.active -= 1; }
                             }
                             reader.tabs.push(Tab {
                                 path: Some(path.clone()),
@@ -392,6 +412,7 @@ impl Reader {
                                 title,
                                 view,
                                 resources: Some(resources),
+                                edit: None,
                             });
                             reader.active = reader.tabs.len() - 1;
                         }
@@ -458,6 +479,16 @@ impl Reader {
         }
     }
     fn reload(&mut self, cx: &mut Context<Self>) {
+        if self
+            .tabs
+            .get(self.active)
+            .is_some_and(|tab| tab.edit.is_some())
+        {
+            self.status =
+                "源码会话已保留；如需丢弃草稿并重新读取，请使用源码工具栏的重新加载".into();
+            cx.notify();
+            return;
+        }
         if let Some(path) = self.tabs.get(self.active).and_then(|tab| tab.path.clone()) {
             self.load(path, LoadMode::Replace, cx);
         }
@@ -678,6 +709,18 @@ impl Reader {
             )
     }
     fn search_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(session) = self
+            .tabs
+            .get(self.active)
+            .and_then(|tab| tab.edit.as_ref())
+            .filter(|edit| edit.show_source)
+        {
+            session.editor.update(cx, |editor, cx| {
+                editor.focus(window, cx);
+                editor.open_search(false, cx);
+            });
+            return;
+        }
         if self.tabs.is_empty() {
             return;
         }
@@ -786,8 +829,18 @@ impl Reader {
         }
     }
     fn resize_text(&mut self, delta: f64, cx: &mut Context<Self>) {
+        let source = self.tabs.get(self.active).is_some_and(Tab::source_mode);
         self.prefs.update(cx, |prefs, cx| {
-            prefs.change(|data| data.font_size += delta, cx)
+            prefs.change(
+                |data| {
+                    if source {
+                        data.code_size += delta;
+                    } else {
+                        data.font_size += delta;
+                    }
+                },
+                cx,
+            )
         });
     }
     fn toggle_theme(&mut self, cx: &mut Context<Self>) {
@@ -807,8 +860,15 @@ impl Reader {
         }
         let view = welcome_view(&self.queue, &self.math, cx);
         if self.tabs.len() >= MAX_TABS {
-            self.tabs.remove(0);
-            self.active = self.active.saturating_sub(1);
+            let Some(index) = self.tabs.iter().position(|tab| !tab.protected()) else {
+                self.status = "请先保存并关闭部分标签，再打开使用指南".into();
+                cx.notify();
+                return;
+            };
+            self.tabs.remove(index);
+            if index < self.active {
+                self.active -= 1;
+            }
         }
         self.tabs.push(Tab {
             path: None,
@@ -816,6 +876,7 @@ impl Reader {
             title: "碧果使用指南".into(),
             view,
             resources: None,
+            edit: None,
         });
         self.activate(self.tabs.len() - 1, cx);
     }
@@ -1205,13 +1266,8 @@ impl Reader {
                                             .truncate()
                                             .child(heading.title().to_string()),
                                     )
-                                    .on_click(cx.listener(move |reader, _, _, cx| {
-                                        if let Some(tab) = reader.tabs.get(reader.active) {
-                                            tab.view.update(cx, |view, cx| {
-                                                view.reveal_heading(index, cx)
-                                            });
-                                        }
-                                        cx.notify();
+                                    .on_click(cx.listener(move |reader, _, window, cx| {
+                                        reader.navigate_heading(index, window, cx);
                                     }))
                                     .into_any_element()
                             })
@@ -1249,13 +1305,17 @@ impl Render for Reader {
             .and_then(|tab| tab.resources.as_ref())
             .map(|resources| resources.kind());
         let is_pdf = kind == Some(pecan_import::SourceKind::Pdf);
+        let source_mode = active_tab.is_some_and(Tab::source_mode);
         let reading_mode = match kind {
+            _ if source_mode => "UTF-8 · Markdown 源码",
             Some(pecan_import::SourceKind::Pdf) => "PDF · 重排",
             Some(pecan_import::SourceKind::Office) => "文档 · 重排",
             _ if active_tab.is_some() => "UTF-8 · Markdown",
             _ => "",
         };
-        let document_body = if let Some(view) = active_view {
+        let document_body = if active_tab.is_some_and(|tab| tab.source_mode()) {
+            self.source_body(cx)
+        } else if let Some(view) = active_view {
             self.document_body(view, cx)
         } else {
             div()
@@ -1297,6 +1357,20 @@ impl Render for Reader {
                                 .overflow_x_scroll()
                                 .children(self.render_tabs(cx)),
                         )
+                        .when(active_tab.is_some(), |bar| {
+                            bar.child(
+                                crate::ui::tool_button(
+                                    "toggle-source",
+                                    gpui_kit::assets::IconName::CodeXml,
+                                    "查看源码 / 阅读模式",
+                                )
+                                .selected(active_tab.is_some_and(|tab| tab.source_mode()))
+                                .debug_selector(|| "toggle-source".into())
+                                .on_click(cx.listener(
+                                    |reader, _, window, cx| reader.toggle_source(window, cx),
+                                )),
+                            )
+                        })
                         .when(is_pdf, |bar| {
                             bar.child(
                                 div()
@@ -1401,7 +1475,23 @@ impl Render for Reader {
             .on_action(cx.listener(|reader, _: &ToggleOutline, _, cx| {
                 reader.toggle_outline(cx);
             }))
-            .on_action(cx.listener(|reader, _: &Reload, _, cx| reader.reload(cx)))
+            .on_action(
+                cx.listener(|reader, _: &Reload, window, cx| reader.reload_action(window, cx)),
+            )
+            .on_action(cx.listener(|reader, _: &crate::ToggleSource, window, cx| {
+                reader.toggle_source(window, cx)
+            }))
+            .on_action(cx.listener(|reader, _: &crate::SaveDocument, window, cx| {
+                reader.save_active(editing::SaveMode::Existing, window, cx)
+            }))
+            .on_action(
+                cx.listener(|reader, _: &crate::SaveDocumentAs, window, cx| {
+                    reader.save_active(editing::SaveMode::As, window, cx)
+                }),
+            )
+            .on_action(cx.listener(|reader, _: &crate::CloseWindow, window, cx| {
+                reader.close_window(window, cx)
+            }))
             .on_action(cx.listener(|reader, _: &CloseTab, window, cx| {
                 if crate::pdf::is_active(cx) {
                     cx.defer(|cx| {
@@ -1411,17 +1501,17 @@ impl Render for Reader {
                     reader.close_tab(reader.active, window, cx);
                 }
             }))
-            .on_action(cx.listener(|reader, _: &ExportPdf, _, cx| {
-                reader.export_document(crate::export::DocumentFormat::Pdf, cx)
+            .on_action(cx.listener(|reader, _: &ExportPdf, window, cx| {
+                reader.export_document(crate::export::DocumentFormat::Pdf, window, cx)
             }))
-            .on_action(cx.listener(|reader, _: &ExportWord, _, cx| {
-                reader.export_document(crate::export::DocumentFormat::Word, cx)
+            .on_action(cx.listener(|reader, _: &ExportWord, window, cx| {
+                reader.export_document(crate::export::DocumentFormat::Word, window, cx)
             }))
-            .on_action(cx.listener(|reader, _: &ExportHtml, _, cx| {
-                reader.export_document(crate::export::DocumentFormat::Html, cx)
+            .on_action(cx.listener(|reader, _: &ExportHtml, window, cx| {
+                reader.export_document(crate::export::DocumentFormat::Html, window, cx)
             }))
-            .on_action(cx.listener(|reader, _: &ExportMarkdown, _, cx| {
-                reader.export_document(crate::export::DocumentFormat::Markdown, cx)
+            .on_action(cx.listener(|reader, _: &ExportMarkdown, window, cx| {
+                reader.export_document(crate::export::DocumentFormat::Markdown, window, cx)
             }))
             .on_action(cx.listener(|reader, _: &CopyFilePath, _, cx| {
                 if let Some(path) = reader
@@ -1437,7 +1527,10 @@ impl Render for Reader {
             .on_action(cx.listener(|reader, _: &CopyDocument, _, cx| {
                 if let Some(tab) = reader.tabs.get(reader.active) {
                     cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(
-                        tab.view.read(cx).document.source().to_string(),
+                        tab.edit.as_ref().map_or_else(
+                            || tab.view.read(cx).document.source().to_string(),
+                            |edit| edit.editor.read(cx).text().to_string(),
+                        ),
                     ));
                 }
             }))
@@ -1454,26 +1547,35 @@ impl Render for Reader {
             .on_action(cx.listener(|reader, _: &IncreaseText, _, cx| reader.resize_text(1., cx)))
             .on_action(cx.listener(|reader, _: &DecreaseText, _, cx| reader.resize_text(-1., cx)))
             .on_action(cx.listener(|reader, _: &ResetText, _, cx| {
+                let source = reader.tabs.get(reader.active).is_some_and(Tab::source_mode);
                 reader.prefs.update(cx, |prefs, cx| {
                     prefs.change(
-                        |data| data.font_size = PreferencesData::default().font_size,
+                        |data| {
+                            if source {
+                                data.code_size = PreferencesData::default().code_size;
+                            } else {
+                                data.font_size = PreferencesData::default().font_size;
+                            }
+                        },
                         cx,
                     )
                 })
             }))
             .on_action(cx.listener(|reader, _: &ToggleTheme, _, cx| reader.toggle_theme(cx)))
             .on_action(cx.listener(|reader, _: &Help, _, cx| reader.help(cx)))
-            .on_action(cx.listener(|reader, _: &NextTab, _, cx| {
+            .on_action(cx.listener(|reader, _: &NextTab, window, cx| {
                 if !reader.tabs.is_empty() {
                     reader.activate((reader.active + 1) % reader.tabs.len(), cx);
+                    reader.focus_document(window, cx);
                 }
             }))
-            .on_action(cx.listener(|reader, _: &PreviousTab, _, cx| {
+            .on_action(cx.listener(|reader, _: &PreviousTab, window, cx| {
                 if !reader.tabs.is_empty() {
                     reader.activate(
                         (reader.active + reader.tabs.len() - 1) % reader.tabs.len(),
                         cx,
                     );
+                    reader.focus_document(window, cx);
                 }
             }))
             .child(self.render_titlebar(window, cx))
@@ -1497,12 +1599,14 @@ impl Render for Reader {
                             .child(self.status.clone()),
                     )
                     .when(!self.tabs.is_empty(), |bar| {
-                        bar.child(
-                            div()
-                                .flex_shrink_0()
-                                .pl_3()
-                                .child(format!("{} px · {reading_mode}", prefs.font_size)),
-                        )
+                        bar.child(div().flex_shrink_0().pl_3().child(format!(
+                            "{} px · {reading_mode}",
+                            if source_mode {
+                                prefs.code_size
+                            } else {
+                                prefs.font_size
+                            }
+                        )))
                     }),
             )
             .when_some(drag_cursor, |root, cursor| {

@@ -187,6 +187,7 @@ fn oversized_reload_keeps_original_document_and_other_tabs(cx: &mut TestAppConte
                 title: name.into(),
                 view,
                 resources: None,
+                edit: None,
             });
         }
     });

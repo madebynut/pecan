@@ -36,7 +36,7 @@ impl Render for TabDrag {
     }
 }
 #[derive(Clone, Copy)]
-enum CloseScope {
+pub(super) enum CloseScope {
     One,
     Others,
     Right,
@@ -57,18 +57,30 @@ impl Reader {
         if index >= self.tabs.len() {
             return;
         }
+        let ids = self
+            .tabs
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| match scope {
+                CloseScope::One => *i == index,
+                CloseScope::Others => *i != index,
+                CloseScope::Right => *i > index,
+                CloseScope::All => true,
+            })
+            .map(|(_, tab)| tab.view.entity_id())
+            .collect();
+        self.request_close(super::editing::ClosePlan::tabs(ids), window, cx);
+    }
+    pub(super) fn remove_tabs(
+        &mut self,
+        ids: &[EntityId],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let active = self.tabs[self.active].view.entity_id();
         let old_index = self.active;
-        let keep = |i| match scope {
-            CloseScope::One => i != index,
-            CloseScope::Others => i == index,
-            CloseScope::Right => i <= index,
-            CloseScope::All => false,
-        };
-        let mut i = 0;
         self.tabs.retain(|tab| {
-            let retained = keep(i);
-            i += 1;
+            let retained = !ids.contains(&tab.view.entity_id());
             if !retained {
                 tab.view.update(cx, |view, cx| view.suspend(cx));
             }
@@ -92,7 +104,7 @@ impl Reader {
             self.focus.focus(window, cx);
             if self.prefs.read(cx).data.quit_on_last_tab {
                 window.remove_window();
-                cx.quit();
+                cx.defer(super::editing::request_quit);
             }
             cx.notify();
             return;
@@ -108,6 +120,7 @@ impl Reader {
             self.active = old_index.min(self.tabs.len() - 1);
             self.activate(self.active, cx);
         }
+        self.focus_document(window, cx);
     }
     fn move_tab(&mut self, view: EntityId, target: usize, cx: &mut Context<Self>) {
         let Some(from) = self
@@ -164,7 +177,13 @@ impl Reader {
                             .truncate()
                             .child(tab.title.clone()),
                     )
-                    .on_click(cx.listener(move |reader, _, _, cx| reader.activate(index, cx)))
+                    .when(tab.protected(), |row| {
+                        row.child(div().text_size(px(11.)).child("●"))
+                    })
+                    .on_click(cx.listener(move |reader, _, window, cx| {
+                        reader.activate(index, cx);
+                        reader.focus_document(window, cx);
+                    }))
                     .on_drag(
                         TabDrag {
                             owner,
@@ -349,6 +368,7 @@ mod tests {
                         title: title.into(),
                         view,
                         resources: None,
+                        edit: None,
                     });
                 }
                 reader.active = 1;

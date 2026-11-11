@@ -66,6 +66,9 @@ gpui_kit::actions!(
         ExportWord,
         ExportHtml,
         ExportMarkdown,
+        ToggleSource,
+        SaveDocument,
+        SaveDocumentAs,
         RevealFile,
         FocusReading,
         IncreaseText,
@@ -127,7 +130,7 @@ fn main() {
             cx.on_action(|_: &Hide, cx| cx.hide());
             cx.on_action(|_: &HideOthers, cx| cx.hide_other_apps());
             cx.on_action(|_: &ShowAll, cx| cx.unhide_other_apps());
-            cx.on_action(|_: &Quit, cx| cx.quit());
+            cx.on_action(|_: &Quit, cx| cx.defer(app::request_quit));
             cx.bind_keys([
                 KeyBinding::new("escape", diagram::CloseDiagram, Some("DiagramViewer")),
                 KeyBinding::new("+", diagram::ZoomIn, Some("DiagramViewer")),
@@ -185,6 +188,21 @@ fn main() {
                     None,
                 ),
                 KeyBinding::new(platform::choose("cmd-o", "ctrl-o"), Open, Some("Pecan")),
+                KeyBinding::new(
+                    platform::choose("cmd-s", "ctrl-s"),
+                    SaveDocument,
+                    Some("Pecan"),
+                ),
+                KeyBinding::new(
+                    platform::choose("cmd-shift-s", "ctrl-shift-s"),
+                    SaveDocumentAs,
+                    Some("Pecan"),
+                ),
+                KeyBinding::new(
+                    platform::choose("cmd-e", "ctrl-e"),
+                    ToggleSource,
+                    Some("Pecan"),
+                ),
                 KeyBinding::new(
                     platform::choose("cmd-shift-o", "ctrl-shift-o"),
                     OpenFolder,

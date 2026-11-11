@@ -1,23 +1,37 @@
 //! Shared export actions and useful reading context-menu commands.
 use super::Reader;
 use crate::{
-    CopyDocument, CopyFilePath, ExportHtml, ExportMarkdown, ExportPdf, ExportWord, Find,
-    FocusReading, Reload, RevealFile,
+    CopyDocument, CopyFilePath, ExportHtml, ExportPdf, ExportWord, Find, FocusReading, Reload,
+    RevealFile,
     export::{self, DocumentFormat, Snapshot},
     reading::DocumentView,
 };
 use gpui_kit::{
-    AnyElement, ClipboardItem, Context, Entity, IntoElement,
+    AnyElement, ClipboardItem, Context, Entity, IntoElement, Window,
     component::menu::{ContextMenuExt as _, PopupMenuItem},
     div,
     prelude::*,
 };
 
 impl Reader {
-    pub(super) fn export_document(&mut self, format: DocumentFormat, cx: &mut Context<Self>) {
+    pub(super) fn export_document(
+        &mut self,
+        format: DocumentFormat,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
+        if tab.edit.as_ref().is_some_and(|edit| edit.preview_pending()) {
+            self.prepare_reading(
+                tab.view.entity_id(),
+                super::editing::PreviewRequest::Export(format),
+                window,
+                cx,
+            );
+            return;
+        }
         let view = tab.view.read(cx);
         let snapshot = Snapshot {
             document: view.document.clone(),
@@ -77,12 +91,12 @@ impl Reader {
                     )
                     .menu("复制 Markdown 全文", Box::new(CopyDocument))
                     .menu("查找…", Box::new(Find))
+                    .menu("查看源码", Box::new(crate::ToggleSource))
                     .separator()
                     .submenu("导出文档", window, cx, |menu, _, _| {
                         menu.menu("PDF…", Box::new(ExportPdf))
                             .menu("Word…", Box::new(ExportWord))
                             .menu("HTML…", Box::new(ExportHtml))
-                            .menu("Markdown…", Box::new(ExportMarkdown))
                     })
                     .separator()
                     .menu("专注阅读", Box::new(FocusReading))
@@ -106,6 +120,7 @@ impl Reader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ExportMarkdown;
     use gpui_kit::{AppContext, TestAppContext, VisualTestContext, component::TitleBar};
 
     #[gpui_kit::test]
