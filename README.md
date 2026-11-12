@@ -3,7 +3,6 @@
   <h1>Pecan · 碧果</h1>
   <p><strong>让技术文档，回归阅读。</strong></p>
   <p>
-    <a href="docs/guide.md">使用指南</a> ·
     <a href="samples/welcome.md">功能示例</a> ·
     <a href="https://github.com/madebynut/pecan/issues">反馈问题</a>
   </p>
@@ -25,7 +24,7 @@ Pecan 是 macOS 与 Windows 上的原生 Markdown 阅读器，用 Rust 与 GPUI 
 
 Mermaid 和 LaTeX 在本机绘制。图表可独立预览，并导出 SVG / PNG。PDF 保留可选中的文字和矢量图表，Word 保留可编辑的段落与表格，HTML 把图片、图表和公式嵌进单个文件。
 
-macOS 使用 `⌘`，Windows 使用 `Ctrl`：打开 `O`、查找 `F`、文件栏 `B`、大纲 `L`、关闭标签 `W`、设置 `,`。Windows 全屏使用 `F11`。更多操作见 [使用指南](docs/guide.md)。
+macOS 使用 `⌘`，Windows 使用 `Ctrl`：打开 `O`、查找 `F`、文件栏 `B`、大纲 `L`、关闭标签 `W`、设置 `,`。Windows 全屏使用 `F11`。
 
 导入覆盖 DOCX、PDF、RTF、ODT、EPUB、PPTX、XLSX、CSV 等，复杂分页和批注可能无法完整重排。PDF 默认提取文字，不做 OCR。Mermaid 与 LaTeX 覆盖常见图表和数学、化学表达式，不覆盖 Mermaid.js 的全部扩展或任意 TeX 宏包。
 
@@ -39,4 +38,4 @@ cd pecan
 cargo run --locked --release --bin Pecan
 ```
 
-打包、模块划分和验收见 [开发指南](docs/development.md)。项目以 [Apache License 2.0](LICENSE) 开源。
+项目以 [Apache License 2.0](LICENSE) 开源。
