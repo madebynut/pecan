@@ -39,6 +39,9 @@ jobs:
           - platform: Windows-x64
             os: windows-2022
             target: x86_64-pc-windows-msvc
+          - platform: Linux-x64
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     steps:
@@ -48,6 +51,19 @@ jobs:
           python-version: '3.12'
       - name: Validate version
         run: python scripts/release-version.py
+      - name: Install Linux libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libwayland-dev \
+            libvulkan-dev \
+            mesa-vulkan-drivers \
+            fontconfig \
+            zip
       - uses: dtolnay/rust-toolchain@1.98.0
         with:
           targets: ${{ matrix.target }}
@@ -84,6 +100,9 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/bundle-windows.ps1 -Target '${{ matrix.target }}'
+      - name: Package Linux
+        if: runner.os == 'Linux'
+        run: sh scripts/bundle-linux.sh ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:
           name: Pecan-${{ matrix.platform }}

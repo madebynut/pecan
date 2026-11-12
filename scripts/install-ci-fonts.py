@@ -4,6 +4,8 @@ import argparse
 import hashlib
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import sys
 import tempfile
 from urllib.request import urlopen
@@ -21,7 +23,9 @@ def default_directory():
         return Path(os.environ["LOCALAPPDATA"]) / "Microsoft/Windows/Fonts"
     if sys.platform == "darwin":
         return Path.home() / "Library/Fonts"
-    raise SystemExit("This test environment supports macOS and Windows.")
+    if sys.platform == "linux":
+        return Path.home() / ".local/share/fonts"
+    raise SystemExit(f"This test environment does not support {sys.platform}.")
 
 
 def file_digest(path):
@@ -56,6 +60,8 @@ def install(directory):
             print(f"Installed {filename}")
         finally:
             temporary.unlink(missing_ok=True)
+    if sys.platform == "linux" and (cache := shutil.which("fc-cache")):
+        subprocess.run([cache, "-f", str(directory)], check=True)
 
 
 if __name__ == "__main__":
