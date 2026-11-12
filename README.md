@@ -30,7 +30,7 @@ macOS 使用 `⌘`，Windows 与 Linux 使用 `Ctrl`：打开 `O`、查找 `F`�
 
 ## 从源码构建
 
-需要 **Rust 1.98+**。macOS 安装 Xcode Command Line Tools；Windows 安装 Visual Studio 2022 Build Tools 的 **使用 C++ 的桌面开发**与 Windows SDK。Linux 安装 pkg-config、libxkbcommon、Wayland 与 Vulkan 开发包。运行时还需要 fontconfig、Vulkan 驱动和 xdg-desktop-portal；中文使用已安装的 Noto Sans CJK 或思源黑体。
+需要 **Rust 1.98+**。macOS 安装 Xcode Command Line Tools；Windows 安装 Visual Studio 2022 Build Tools 的 **使用 C++ 的桌面开发**与 Windows SDK。Linux 安装 pkg-config、libxkbcommon、Wayland、Vulkan 与 fontconfig 开发包。运行时还需要 Vulkan 驱动和 xdg-desktop-portal；中文使用已安装的 Noto Sans CJK 或思源黑体。
 
 ```sh
 git clone https://github.com/madebynut/pecan.git

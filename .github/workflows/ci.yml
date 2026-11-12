@@ -63,6 +63,7 @@ jobs:
             libvulkan-dev \
             mesa-vulkan-drivers \
             fontconfig \
+            libfontconfig1-dev \
             zip
       - uses: dtolnay/rust-toolchain@1.98.0
         with:
