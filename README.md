@@ -2,83 +2,36 @@
   <img src="assets/brand/pecan-icon.svg" width="112" height="112" alt="Pecan Logo" />
   <h1>Pecan · 碧果</h1>
   <p><strong>让技术文档，回归阅读。</strong></p>
-  <p>以 Rust 与 GPUI 构建的原生桌面阅读器。<br />清晰的排版、流畅的图表、可分享的文档，收在一个安静的窗口里。</p>
   <p>
     <a href="docs/guide.md">使用指南</a> ·
     <a href="samples/welcome.md">功能示例</a> ·
     <a href="https://github.com/madebynut/pecan/issues">反馈问题</a>
   </p>
-  <p>
-    <img src="https://img.shields.io/badge/macOS_·_Windows-native-555555" alt="macOS and Windows" />
-    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-777777" alt="MIT license" /></a>
-  </p>
 </div>
 
 ---
 
-## 为认真阅读而设计
-
-**Pecan 以阅读为中心，也支持直接编辑 Markdown。** 打开 Markdown，也能把 Word、PDF 等文档转换为适合屏幕阅读的内容。阅读与格式化不会改写原文件；源码修改由你明确保存。不需要账户，也不会将文档上传到转换服务。
-
-黑、白、灰构成界面的底色。文件栏、标签页和大纲各有位置；收起两侧面板，就只留下文档本身。从一份接口说明到一整篇技术方案，阅读、检索、预览与导出都在手边。
+Pecan 是 macOS 与 Windows 上的原生 Markdown 阅读器，用 Rust 与 GPUI 绘制。也可以编辑 Markdown，并在本地把 Word、PDF 等文档转成适合阅读的内容。阅读和格式化保持原文件不变；源码在保存时才写入。
 
 | 阅读与导航 | 内容与表达 | 分享与输出 |
 | :--- | :--- | :--- |
-| 阅读 / 源码一键切换 | Markdown 编辑、高亮、撤销与查找 | 保存、另存为与外部修改冲突检查 |
-| 多标签、拖动排序、最近文件 | Markdown、表格、任务列表、提示块 | PDF、Word、HTML、Markdown |
-| 可拖动侧栏、标题大纲、全文查找 | Mermaid 原生渲染与高清缩放 | Mermaid 独立 SVG / PNG 导出 |
-| 浅色 / 深色 / 跟随系统 | LaTeX 数学与化学公式 | 可选择的 PDF 文字与矢量图表 |
+| 阅读与源码切换 | Markdown 编辑、高亮、撤销与查找 | 保存、另存为与外部修改冲突检查 |
+| 多标签、拖动排序、最近文件 | 表格、任务列表、提示块 | PDF、Word、HTML、Markdown |
+| 可拖动侧栏、标题大纲、全文查找 | Mermaid 原生渲染与高清缩放 | Mermaid 独立 SVG / PNG |
+| 浅色 / 深色 / 跟随系统 | LaTeX 数学与化学公式 | 可选中的 PDF 文字与矢量图表 |
 | 中英文字体、字号、行高分别设置 | 代码高亮、折叠、缩进线、一键复制 | 可编辑的 Word 段落与表格 |
 
-## 值得多看一眼的细节
+正文右键「查看源码」，或按 `⌘E` / `Ctrl+E`，即可在阅读和带行号的 Markdown 编辑器之间切换。`⌘S` / `Ctrl+S` 保存，配合 Shift 另存为。有未保存修改时，关闭或切回阅读都会询问保存、不保存或取消；不保存仍用当前草稿预览，不写入文件。Word、PDF 和欢迎页的修改另存为 Markdown。
 
-### 图表清楚，思路才清楚
+Mermaid 和 LaTeX 在本机绘制。图表可独立预览，并导出 SVG / PNG。PDF 保留可选中的文字和矢量图表，Word 保留可编辑的段落与表格，HTML 把图片、图表和公式嵌进单个文件。
 
-Mermaid 无需浏览器或 JavaScript 运行时。正文里直接阅读，点击进入独立预览；缩放会按窗口尺寸与显示密度重新栅格化，保持线条和文字清晰。图表的源码、高亮、复制与导出均可从块工具栏访问。普通图片使用同样的预览交互。
+macOS 使用 `⌘`，Windows 使用 `Ctrl`：打开 `O`、查找 `F`、文件栏 `B`、大纲 `L`、关闭标签 `W`、设置 `,`。Windows 全屏使用 `F11`。更多操作见 [使用指南](docs/guide.md)。
 
-### 代码不只是有颜色
-
-Tree-sitter 提供多语言语法高亮，语言标识搭配离线 Devicon 图标。代码保留完整高度，支持水平滚动、结构折叠与一键复制。Tab 宽度可选自动识别、2、4、8；JSON、YAML、TOML、JS / TS / TSX、SQL 等已接入本地格式化器。格式化只影响阅读与排版，源文件保持原样。
-
-### 排版可以有自己的习惯
-
-正文、代码、界面、Mermaid 的字体分别配置，并支持中英文独立选择系统字体。数学使用专用数学字体。默认正文 **16px / 1.6 倍行高 / 960px 宽度**，随窗口自动收缩；代码默认 14px。标题、引用、表格、行内代码和提示块都有统一的留白与层级。
-
-### 导出后，依然是一份好读的文档
-
-PDF 保留可选择文字，Mermaid 和公式保留矢量；Word 输出原生可编辑内容；HTML 将图片、图表和公式嵌入单文件，便于离线分享。通过「另存为…」保存 Markdown，保留源码并将引用图片保存到配套资源目录。
-
-### 看见问题，顺手修改
-
-正文右键选择「查看源码」，或按 `⌘E` / `Ctrl+E`，正文区域即切换为带行号和语法高亮的 Markdown 编辑器。支持撤销、重做、查找和大纲定位；切回阅读立即预览。`⌘S` / `Ctrl+S` 保存，配合 Shift 另存为。未保存的修改在关闭时提示，检测到外部改动时保留草稿；Word、PDF 与欢迎页的修改另存为 Markdown。可用 [源码编辑验收文档](samples/source-editing.md) 体验。
-
-## 原生，也克制
-
-- **GPU 绘制**：GPUI 直接绘制桌面界面，不打包 Chromium 或 WebView。
-- **按需呈现**：文档采用虚拟列表，可见块才创建阅读组件；缓存有明确上限。
-- **后台处理**：索引、搜索、图表、公式、格式化与转换在后台执行，任务并发和资源占用受到约束。
-- **重复利用**：内容寻址缓存、共享字体库、复用网络连接，减少重复解析与分配。
-- **本地优先**：内置图标和数学字体离线可用。只有文档引用网络图片或你点击外部链接时才需要网络。
-
-性能取决于文档结构、字体和图表复杂度。具体预算、测量条件与历史结果见 [性能说明](docs/performance.md)。
-
-## 开始使用
-
-打开 Markdown 文档或文件夹，也可导入 Word、PDF；在设置中选择字体、主题和正文宽度。使用大纲与搜索定位内容，切换「查看源码」编辑并保存，或通过「文件」菜单导出 PDF、Word、HTML。
-
-常用操作在 macOS 使用 `⌘`，Windows 使用 `Ctrl`：打开 `O`、查找 `F`、文件栏 `B`、大纲 `L`、关闭标签 `W`、设置 `,`。Windows 全屏使用 `F11`。首次启动显示欢迎文档；关闭最后一个标签默认保留空窗口，可在通用设置中更改。
-
-## 支持范围
-
-- **Markdown**：常见基础语法、表格内 Markdown、提示块与 `:::` 高亮块，以及图片、公式和 Mermaid 扩展。
-- **文档导入**：DOCX / DOC、PDF、RTF、ODT、EPUB、PPTX、XLSX、CSV 等由 anydoc 在本地转换。复杂分页、批注、修订及多栏布局可能无法完整重排。
-- **PDF 阅读**：默认提取文字重排，不执行 OCR。原版查看在 macOS 使用 PDFKit，在 Windows 使用系统默认 PDF 阅读器。
-- **Mermaid / LaTeX**：原生实现覆盖常见图表和数学、化学表达式；不保证兼容 Mermaid.js 全部扩展或任意 TeX 宏包。无法渲染时保留可查看、可复制的源码与错误信息。
-- **格式化与导出**：未接入格式化器、语法无效或超过预算的代码保留原文。PDF / Word / HTML 使用全局 Tab 配置；单块临时设置只作用于阅读，Markdown 导出保留原文。
+导入覆盖 DOCX、PDF、RTF、ODT、EPUB、PPTX、XLSX、CSV 等，复杂分页和批注可能无法完整重排。PDF 默认提取文字，不做 OCR。Mermaid 与 LaTeX 覆盖常见图表和数学、化学表达式，不覆盖 Mermaid.js 的全部扩展或任意 TeX 宏包。
 
 ## 从源码构建
 
-需要 **Rust 1.98+**。macOS 安装 Xcode Command Line Tools；Windows 安装 Visual Studio 2022 Build Tools 的 **使用 C++ 的桌面开发**与 Windows SDK。不需要 Node.js、Python 文档转换器或外部 Office。
+需要 **Rust 1.98+**。macOS 安装 Xcode Command Line Tools；Windows 安装 Visual Studio 2022 Build Tools 的 **使用 C++ 的桌面开发**与 Windows SDK。
 
 ```sh
 git clone https://github.com/madebynut/pecan.git
@@ -86,14 +39,4 @@ cd pecan
 cargo run --locked --release --bin Pecan
 ```
 
-打包另需 Python 3.9+；macOS 执行 `sh scripts/bundle-macos.sh`，Windows 在 PowerShell 执行 `./scripts/bundle-windows.ps1`。
-
-工作区按功能划分为 12 个 crate：界面、文档、源码保存、格式化、高亮、资源、配置、网络、导入、导出、图表与数学。模块边界见 [架构说明](docs/architecture.md)，构建、验收和发布步骤见 [开发指南](docs/development.md)。`vendor/` 中的上游补丁与许可证是构建的一部分，请一并保留。
-
-## 参与与致谢
-
-欢迎提交可复现的问题、排版样例和改进建议。阅读效果问题请附操作系统、缩放比例以及去除敏感内容后的最小文档。
-
-Pecan 由 [GPUI Kit](https://github.com/longbridge/gpui-kit)、pulldown-cmark、Tree-sitter、mermaid-rs-renderer、resvg、mathra、krilla 和 anydoc 等开源项目支持；图标采用 Lucide 与 Devicon。完整许可证随源码提供，见 [licenses](licenses)。
-
-项目以 [MIT License](LICENSE) 开源。
+打包、模块划分和验收见 [开发指南](docs/development.md)。项目以 [Apache License 2.0](LICENSE) 开源。

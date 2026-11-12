@@ -14,6 +14,7 @@ try {
     New-Item -ItemType Directory -Force $Staging | Out-Null
     Copy-Item "target/$Target/release/Pecan.exe" "$Staging/Pecan.exe" -Force
     Copy-Item LICENSE "$Staging/LICENSE.txt" -Force
+    Copy-Item NOTICE "$Staging/NOTICE.txt" -Force
     Copy-Item licenses "$Staging/licenses" -Recurse -Force
     $Executable = Get-Item "$Staging/Pecan.exe"
     if ($Executable.VersionInfo.ProductVersion -ne $Version) {

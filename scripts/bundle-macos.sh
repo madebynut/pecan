@@ -15,6 +15,8 @@ trap 'rm -rf "$staging"' EXIT HUP INT TERM
 staged_bundle="$staging/Pecan.app"
 mkdir -p "$staged_bundle/Contents/MacOS" "$staged_bundle/Contents/Resources"
 cp "$project_root/target/$target/release/Pecan" "$staged_bundle/Contents/MacOS/Pecan"
+cp "$project_root/LICENSE" "$staged_bundle/Contents/Resources/LICENSE"
+cp "$project_root/NOTICE" "$staged_bundle/Contents/Resources/NOTICE"
 cp -R "$project_root/licenses" "$staged_bundle/Contents/Resources/licenses"
 cp "$project_root/assets/brand/pecan.icns" "$staged_bundle/Contents/Resources/Pecan.icns"
 cat > "$staged_bundle/Contents/Info.plist" <<PLIST
