@@ -2,7 +2,7 @@
 use std::sync::Arc;
 
 use gpui_kit::{
-    App, Background, FontFallbacks, FontWeight, Global, Hsla, Overflow, StyleRefinement, Styled,
+    App, Background, FontWeight, Global, Hsla, Overflow, StyleRefinement, Styled,
     TextStyleRefinement, base::TextViewStyle, component::ActiveTheme, px, relative, rems, rgb,
 };
 
@@ -109,7 +109,7 @@ fn build(prefs: &PreferencesData, cx: &App) -> Styles {
         body: StyleRefinement {
             text: TextStyleRefinement {
                 font_family: Some(crate::fonts::family(&prefs.english_font).to_owned().into()),
-                font_fallbacks: Some(FontFallbacks::from_fonts(vec![prefs.chinese_font.clone()])),
+                font_fallbacks: Some(crate::fonts::text_fallbacks(&prefs.chinese_font)),
                 ..Default::default()
             },
             ..Default::default()
@@ -192,8 +192,7 @@ fn natural_reading_style(
                 .pr(px(5.))
                 .py(px(1.));
             // Keep the configured Chinese face for glyphs missing in the code font.
-            code.text.font_fallbacks =
-                Some(FontFallbacks::from_fonts(vec![prefs.chinese_font.clone()]));
+            code.text.font_fallbacks = Some(crate::fonts::text_fallbacks(&prefs.chinese_font));
             code
         })
         .with_table(table)
@@ -226,6 +225,7 @@ fn code_style(prefs: &PreferencesData, palette: ReadingPalette) -> StyleRefineme
         .bg(palette.code)
         .border_color(palette.border)
         .rounded(px(3.));
+    style.text.font_fallbacks = Some(crate::fonts::text_fallbacks(&prefs.chinese_font));
     style.text.white_space = Some(gpui_kit::WhiteSpace::Nowrap);
     style.overflow.x = Some(Overflow::Scroll);
     style.overflow.y = Some(Overflow::Visible);

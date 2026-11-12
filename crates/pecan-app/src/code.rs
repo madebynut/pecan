@@ -31,6 +31,13 @@ use std::{
 /// Native editor padding, shared by short and scrollable fences.
 const CODE_PADDING: f32 = 16.;
 
+fn code_type(prefs: &crate::preferences::PreferencesData) -> gpui_kit::StyleRefinement {
+    let mut style = gpui_kit::StyleRefinement::default();
+    style.text.font_family = Some(crate::fonts::family(&prefs.code_font).to_owned().into());
+    style.text.font_fallbacks = Some(crate::fonts::text_fallbacks(&prefs.chinese_font));
+    style
+}
+
 /// Top-level fences borrow the document; nested Markdown already has a decoded body.
 #[derive(Clone)]
 enum CodeSource {
@@ -574,7 +581,7 @@ impl Render for CodeCard {
                                 .h_full()
                                 .rounded_none()
                                 .bg(palette.code)
-                                .font_family(crate::fonts::family(&prefs.code_font).to_owned())
+                                .refine_style(&code_type(&prefs))
                                 .text_size(px(prefs.code_size as f32))
                                 .line_height(px(line_height))
                                 .px(px(16.)),

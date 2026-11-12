@@ -1,0 +1,16 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Pecan
+Name[zh_CN]=碧果
+GenericName=Markdown Reader
+GenericName[zh_CN]=Markdown 阅读器
+Comment=让技术文档，回归阅读。
+Exec=@BIN@ %f
+Icon=@ICON@
+Terminal=false
+Categories=Office;Viewer;
+MimeType=text/markdown;text/x-markdown;
+StartupNotify=true
+StartupWMClass=com.pecan.reader
+Keywords=markdown;reader;pecan;

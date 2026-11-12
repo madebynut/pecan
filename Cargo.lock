@@ -5749,7 +5749,7 @@ dependencies = [
 
 [[package]]
 name = "pecan-app"
-version = "1.0.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "anyhow",
  "async-lock",
@@ -5794,7 +5794,7 @@ dependencies = [
 
 [[package]]
 name = "pecan-assets"
-version = "1.0.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "pecan-document",
  "roxmltree 0.21.2",
@@ -5802,7 +5802,7 @@ dependencies = [
 
 [[package]]
 name = "pecan-code"
-version = "1.0.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "gpui-kit",
  "serde_json",
@@ -5810,7 +5810,7 @@ dependencies = [
 
 [[package]]
 name = "pecan-config"
-version = "1.0.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "anyhow",
  "pecan-mermaid",
@@ -5822,7 +5822,7 @@ dependencies = [
 
 [[package]]
 name = "pecan-document"
-version = "1.0.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "html5ever 0.27.0",
  "pulldown-cmark",
@@ -5832,7 +5832,7 @@ dependencies = [
 
 [[package]]
 name = "pecan-edit"
-version = "1.0.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "blake3",
  "pecan-document",
@@ -5842,7 +5842,7 @@ dependencies = [
 
 [[package]]
 name = "pecan-export"
-version = "1.0.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "ammonia",
  "anyhow",
@@ -5881,7 +5881,7 @@ dependencies = [
 
 [[package]]
 name = "pecan-format"
-version = "1.0.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "anyhow",
  "async-lock",
@@ -5904,7 +5904,7 @@ dependencies = [
 
 [[package]]
 name = "pecan-import"
-version = "1.0.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "anydoc",
  "pecan-document",
@@ -5914,7 +5914,7 @@ dependencies = [
 
 [[package]]
 name = "pecan-math"
-version = "1.0.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "async-lock",
  "blake3",
@@ -5926,7 +5926,7 @@ dependencies = [
 
 [[package]]
 name = "pecan-mermaid"
-version = "1.0.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "async-lock",
  "blake3",
@@ -5941,7 +5941,7 @@ dependencies = [
 
 [[package]]
 name = "pecan-network"
-version = "1.0.0"
+version = "1.0.0-beta.1"
 dependencies = [
  "anyhow",
  "async-lock",

@@ -7,64 +7,130 @@ pub const SYSTEM_UI_FONT: &str = ".SystemUIFont";
 /// Portable preference name for the installed platform monospace font.
 pub const SYSTEM_MONO_FONT: &str = ".SystemMonospace";
 
-fn installed_family(candidates: &[&str], monospace: bool) -> String {
+/// Families a typical Linux desktop actually ships. DejaVu Sans has no CJK glyphs,
+/// so it is a Latin fallback and never a Chinese candidate.
+const LINUX_MONO: &[&str] = &[
+    "DejaVu Sans Mono",
+    "Noto Sans Mono",
+    "Liberation Mono",
+    "Ubuntu Mono",
+];
+const LINUX_LATIN: &[&str] = &[
+    "Noto Sans",
+    "Ubuntu",
+    "Adwaita Sans",
+    "Cantarell",
+    "DejaVu Sans",
+    "Liberation Sans",
+    "FreeSans",
+];
+const LINUX_CJK: &[&str] = &[
+    "Noto Sans CJK SC",
+    "Noto Sans SC",
+    "Noto Serif CJK SC",
+    "Source Han Sans SC",
+    "Source Han Sans CN",
+    "WenQuanYi Zen Hei",
+    "WenQuanYi Micro Hei",
+    "Droid Sans Fallback",
+];
+
+fn installed_family(candidates: &[&str], monospace: bool) -> Option<String> {
     let db = database();
-    for name in candidates {
-        if let Some(face) = db.faces().find(|face| {
-            (!monospace || face.monospaced)
-                && face.families.iter().any(|(family, _)| family == name)
-        }) {
-            return face.families[0].0.clone();
-        }
-    }
-    db.faces()
+    candidates.iter().find_map(|name| {
+        db.faces()
+            .find(|face| {
+                (!monospace || face.monospaced)
+                    && face.families.iter().any(|(family, _)| family == name)
+            })
+            .and_then(|face| face.families.first().map(|(family, _)| family.clone()))
+    })
+}
+
+fn any_family(monospace: bool) -> Option<String> {
+    database()
+        .faces()
         .find(|face| !monospace || face.monospaced)
-        .map_or_else(|| "sans-serif".into(), |face| face.families[0].0.clone())
+        .and_then(|face| face.families.first().map(|(family, _)| family.clone()))
+}
+
+fn cjk_named_family() -> Option<String> {
+    database().faces().find_map(|face| {
+        face.families.iter().find_map(|(family, _)| {
+            let ascii = family.to_ascii_lowercase();
+            let cjk = ascii.contains("cjk")
+                || ascii.contains("source han")
+                || ascii.contains("noto sans sc")
+                || ascii.contains("noto serif sc")
+                || ascii.contains("wenquanyi")
+                || ascii.contains("droid sans fallback")
+                || family.contains("思源")
+                || family.contains("文泉驿");
+            cjk.then(|| family.clone())
+        })
+    })
 }
 
 fn system_mono() -> &'static str {
     static FAMILY: OnceLock<String> = OnceLock::new();
     FAMILY.get_or_init(|| {
-        installed_family(
-            if cfg!(target_os = "macos") {
-                &["Menlo", "Monaco", "Courier New"]
-            } else if cfg!(target_os = "windows") {
-                &["Consolas", "Cascadia Mono", "Courier New"]
-            } else {
-                &["DejaVu Sans Mono", "Noto Sans Mono", "Liberation Mono"]
-            },
-            true,
-        )
+        let names: &[&str] = if cfg!(target_os = "macos") {
+            &["Menlo", "Monaco", "Courier New"]
+        } else if cfg!(target_os = "windows") {
+            &["Consolas", "Cascadia Mono", "Courier New"]
+        } else {
+            LINUX_MONO
+        };
+        installed_family(names, true)
+            .or_else(|| any_family(true))
+            .unwrap_or_else(|| SYSTEM_MONO_FONT.to_owned())
     })
 }
 
 fn system_ui(chinese: bool) -> &'static str {
     static LATIN: OnceLock<String> = OnceLock::new();
     static CJK: OnceLock<String> = OnceLock::new();
-    let (cache, names): (&OnceLock<String>, &[&str]) = if chinese {
-        (
-            &CJK,
+    let cache = if chinese { &CJK } else { &LATIN };
+    cache.get_or_init(|| {
+        let names: &[&str] = if chinese {
             if cfg!(target_os = "macos") {
                 &["PingFang SC", "Hiragino Sans GB"]
             } else if cfg!(target_os = "windows") {
                 &["Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI"]
             } else {
-                &["Noto Sans CJK SC", "Noto Sans SC", "DejaVu Sans"]
-            },
-        )
+                LINUX_CJK
+            }
+        } else if cfg!(target_os = "macos") {
+            &[".AppleSystemUIFont", "System Font", "Helvetica Neue"]
+        } else if cfg!(target_os = "windows") {
+            &["Segoe UI Variable", "Segoe UI"]
+        } else {
+            LINUX_LATIN
+        };
+        let mut resolved = installed_family(names, false);
+        if resolved.is_none()
+            && chinese
+            && cfg!(not(any(target_os = "macos", target_os = "windows")))
+        {
+            resolved = cjk_named_family();
+        }
+        resolved
+            .or_else(|| any_family(false))
+            .unwrap_or_else(|| SYSTEM_UI_FONT.to_owned())
+    })
+}
+
+/// Resolve a portable system alias to an installed family.
+/// Explicit family names are returned unchanged. When no face is installed,
+/// the alias is returned so the platform text system can try its own cascade.
+pub fn resolve_installed(name: &str, chinese: bool) -> &str {
+    if name == SYSTEM_MONO_FONT {
+        system_mono()
+    } else if name == SYSTEM_UI_FONT {
+        system_ui(chinese)
     } else {
-        (
-            &LATIN,
-            if cfg!(target_os = "macos") {
-                &[".AppleSystemUIFont", "System Font", "Helvetica Neue"]
-            } else if cfg!(target_os = "windows") {
-                &["Segoe UI Variable", "Segoe UI"]
-            } else {
-                &["Noto Sans", "DejaVu Sans"]
-            },
-        )
-    };
-    cache.get_or_init(|| installed_family(names, false))
+        name
+    }
 }
 
 /// Independent system font families for Latin and CJK diagram text.
@@ -99,24 +165,12 @@ impl DiagramFonts {
     /// Resolve the Latin preference to an installed platform family when it is a
     /// system font alias. Explicit family names are returned unchanged.
     pub fn english_family(&self) -> &str {
-        if self.english == SYSTEM_MONO_FONT {
-            system_mono()
-        } else if self.english == SYSTEM_UI_FONT {
-            system_ui(false)
-        } else {
-            self.english()
-        }
+        resolve_installed(self.english(), false)
     }
     /// Resolve the CJK preference to an installed platform family when it is a
     /// system font alias. Explicit family names are returned unchanged.
     pub fn chinese_family(&self) -> &str {
-        if self.chinese == SYSTEM_MONO_FONT {
-            system_mono()
-        } else if self.chinese == SYSTEM_UI_FONT {
-            system_ui(true)
-        } else {
-            self.chinese()
-        }
+        resolve_installed(self.chinese(), true)
     }
 }
 
@@ -326,5 +380,24 @@ mod tests {
         );
         assert_eq!(fonts.english(), SYSTEM_MONO_FONT);
         assert_eq!(fonts.chinese(), SYSTEM_UI_FONT);
+    }
+
+    #[test]
+    fn explicit_names_stay_put_and_linux_candidates_are_real_families() {
+        assert_eq!(resolve_installed("Latin & Serif", false), "Latin & Serif");
+        assert_eq!(resolve_installed("CJK Font", true), "CJK Font");
+        assert!(LINUX_CJK.iter().all(|name| {
+            !name.contains("DejaVu") && !name.contains("IBM Plex") && !name.starts_with('.')
+        }));
+        assert!(LINUX_CJK.contains(&"Noto Sans CJK SC"));
+        assert!(LINUX_CJK.contains(&"Source Han Sans SC"));
+        assert!(LINUX_LATIN.contains(&"Noto Sans"));
+        assert!(LINUX_LATIN.contains(&"DejaVu Sans"));
+        assert!(LINUX_MONO.contains(&"DejaVu Sans Mono"));
+        assert!(LINUX_MONO.contains(&"Noto Sans Mono"));
+        if database().faces().next().is_some() {
+            assert_ne!(resolve_installed(SYSTEM_MONO_FONT, false), SYSTEM_MONO_FONT);
+            assert_ne!(resolve_installed(SYSTEM_UI_FONT, true), SYSTEM_UI_FONT);
+        }
     }
 }

@@ -1,7 +1,7 @@
 use gpui_kit::component::StyledExt as _;
 use gpui_kit::{
-    AnyWindowHandle, App, AppContext, Bounds, Context, Entity, Global, IntoElement, Render,
-    SharedString, Subscription, Window, WindowBounds,
+    AnyWindowHandle, App, AppContext, Context, Entity, Global, IntoElement, Render, SharedString,
+    Subscription, Window,
     component::{
         ActiveTheme, IconName, IndexPath, Sizable, TitleBar,
         button::{Button, ButtonVariants},
@@ -45,15 +45,8 @@ pub(crate) fn open(cx: &mut App) {
 }
 
 pub(crate) fn about(cx: &mut App) {
-    let mut options = TitleBar::window_options();
-    if let Some(titlebar) = options.titlebar.as_mut() {
-        titlebar.title = Some("关于碧果".into());
-    }
-    options.window_bounds = Some(WindowBounds::Windowed(Bounds::centered(
-        None,
-        size(px(460.), px(390.)),
-        cx,
-    )));
+    let mut options = crate::native_window_options("关于碧果", cx, size(px(460.), px(390.)));
+    options.window_min_size = None;
     if let Err(error) = gpui_kit::open_window(options, cx, |_, cx| cx.new(|_| AboutPanel)) {
         tracing::error!(%error, "unable to open About window");
     }

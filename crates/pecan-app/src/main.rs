@@ -98,7 +98,7 @@ fn main() {
         .with_quit_mode(QuitMode::LastWindowClosed)
         .run(move |cx: &mut App| {
             gpui_kit::init(cx);
-            cx.set_app_identity("com.pecan.reader", "Pecan");
+            cx.set_app_identity(platform::APP_ID, "Pecan");
             fonts::install(cx);
             #[cfg(target_os = "macos")]
             brand::install_native_icon();
@@ -267,6 +267,13 @@ fn native_window_options(title: &str, cx: &App, dimensions: Size<Pixels>) -> Win
     options.window_min_size = Some(size(px(760.), px(500.)));
     if let Some(titlebar) = options.titlebar.as_mut() {
         titlebar.title = Some(title.to_string().into());
+    }
+    // Wayland groups windows by this id, and X11 uses it as the window class
+    // so the desktop entry's icon and launcher match the running process.
+    #[cfg(target_os = "linux")]
+    {
+        options.app_id = Some(platform::APP_ID.into());
+        options.icon = Some(brand::window_icon());
     }
     options
 }

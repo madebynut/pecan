@@ -18,6 +18,20 @@ pub(crate) fn icon(cx: &App) -> Arc<RenderImage> {
     .clone()
 }
 
+/// X11 window icon. Wayland takes the icon from the desktop entry instead.
+#[cfg(target_os = "linux")]
+pub(crate) fn window_icon() -> Arc<image::RgbaImage> {
+    static ICON: OnceLock<Arc<image::RgbaImage>> = OnceLock::new();
+    ICON.get_or_init(|| {
+        Arc::new(
+            image::load_from_memory(include_bytes!("../../../assets/brand/pecan-icon-256.png"))
+                .expect("bundled Pecan PNG is valid")
+                .to_rgba8(),
+        )
+    })
+    .clone()
+}
+
 /// Give AppKit the same multi-resolution icon used by the application bundle.
 #[cfg(target_os = "macos")]
 pub(crate) fn install_native_icon() {

@@ -1,6 +1,6 @@
 //! Compact, consistent controls for the image and diagram viewers.
 use gpui_kit::{
-    Div, ElementId, FontFallbacks, StyleRefinement, Styled, TextStyleRefinement,
+    Div, ElementId, StyleRefinement, Styled, TextStyleRefinement,
     component::{
         Icon, IconName, Sizable, Size,
         button::{Button, ButtonVariants},
@@ -22,9 +22,7 @@ pub(crate) fn font_style(prefs: &crate::preferences::PreferencesData) -> StyleRe
     StyleRefinement {
         text: TextStyleRefinement {
             font_family: Some(crate::fonts::family(&prefs.ui_font).to_owned().into()),
-            font_fallbacks: Some(FontFallbacks::from_fonts(vec![
-                prefs.ui_chinese_font.clone(),
-            ])),
+            font_fallbacks: Some(crate::fonts::text_fallbacks(&prefs.ui_chinese_font)),
             ..Default::default()
         },
         ..Default::default()
