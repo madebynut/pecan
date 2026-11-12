@@ -294,7 +294,7 @@ pub(crate) fn open(path: &Path, cx: &mut gpui_kit::App) -> anyhow::Result<()> {
     #[cfg(not(target_os = "macos"))]
     {
         // The reflow reader is shared; original pages use the user's PDF association.
-        let path = path.canonicalize()?;
+        let path = pecan_document::files::canonicalize(path)?;
         cx.open_with_system(&path);
         Ok(())
     }

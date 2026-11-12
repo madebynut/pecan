@@ -94,12 +94,45 @@ jobs:
           RUSTDOCFLAGS: -D warnings
       - name: Export smoke test
         run: cargo run --locked --target ${{ matrix.target }} -p pecan-export --example export_document -- samples/acceptance.md target/export-smoke
+      # Signing is skipped when the secrets are absent, which keeps forks and trial tags building.
+      - name: Import macOS signing certificate
+        if: runner.os == 'macOS'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          [ -n "$MACOS_CERTIFICATE" ] || { echo "No signing certificate; the bundle is ad-hoc signed."; exit 0; }
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password=$(openssl rand -base64 24)
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          printf '%s' "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"
+          security list-keychains -d user -s "$keychain" login.keychain-db
       - name: Package macOS
         if: runner.os == 'macOS'
+        env:
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: sh scripts/bundle-macos.sh ${{ matrix.target }}
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --no-progress -y
+          }
       - name: Package Windows
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: ./scripts/bundle-windows.ps1 -Target '${{ matrix.target }}'
       - name: Package Linux
         if: runner.os == 'Linux'
@@ -107,7 +140,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Pecan-${{ matrix.platform }}
-          path: dist/Pecan-*.zip
+          path: |
+            dist/Pecan-*.zip
+            dist/Pecan-*-Setup.exe
           if-no-files-found: error
 
   publish:
@@ -126,9 +161,13 @@ jobs:
           merge-multiple: true
       - name: Checksums
         working-directory: dist
-        run: sha256sum Pecan-*.zip > SHA256SUMS.txt
+        run: sha256sum Pecan-* > SHA256SUMS.txt
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: gh release create "$RELEASE_TAG" dist/* --verify-tag --title "Pecan ${RELEASE_TAG#v}" --generate-notes
+        # SemVer pre-release tags such as v1.0.0-beta.1 must not become the latest release.
+        run: |
+          prerelease=
+          case "$RELEASE_TAG" in *-*) prerelease=--prerelease ;; esac
+          gh release create "$RELEASE_TAG" dist/* --verify-tag --title "Pecan ${RELEASE_TAG#v}" --generate-notes $prerelease

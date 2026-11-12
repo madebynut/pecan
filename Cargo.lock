@@ -5752,6 +5752,7 @@ name = "pecan-app"
 version = "1.0.0-beta.1"
 dependencies = [
  "anyhow",
+ "async-channel",
  "async-lock",
  "blake3",
  "block2 0.6.2",
@@ -5762,6 +5763,7 @@ dependencies = [
  "gpui-pre-apple",
  "gpui-pre-platform",
  "image",
+ "log",
  "lru",
  "markdown",
  "notify",
@@ -5784,6 +5786,8 @@ dependencies = [
  "png 0.18.1",
  "pulldown-cmark",
  "regex",
+ "semver",
+ "serde",
  "serde_json",
  "tempfile",
  "tracing",
@@ -5813,6 +5817,7 @@ name = "pecan-config"
 version = "1.0.0-beta.1"
 dependencies = [
  "anyhow",
+ "pecan-document",
  "pecan-mermaid",
  "serde",
  "serde_json",
@@ -5824,9 +5829,11 @@ dependencies = [
 name = "pecan-document"
 version = "1.0.0-beta.1"
 dependencies = [
+ "dunce",
  "html5ever 0.27.0",
  "pulldown-cmark",
  "regex",
+ "tempfile",
  "thiserror 2.0.21",
 ]
 

@@ -1,0 +1,65 @@
+# Dependency policy checked by `cargo deny check` in CI.
+# https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+# Known vulnerabilities and unmaintained crates fail the check; add an ignore entry
+# with the advisory ID and a reason only after reviewing that Pecan is not affected.
+yanked = "deny"
+# Reviewed 2026-11: each entry is an "unmaintained" notice, not a vulnerability, on a crate
+# pulled in by GPUI, the PDF and SVG stack, or the code formatter. Revisit when upstream moves.
+ignore = [
+    { id = "RUSTSEC-2024-0384", reason = "instant: timing shim used by the vendored gpui-base and gpui-component" },
+    { id = "RUSTSEC-2024-0436", reason = "paste: compile-time macro used by gpui-component and pulp; no runtime code" },
+    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile: PEM parsing in the pinned reqwest fork; Pecan loads no PEM files" },
+    { id = "RUSTSEC-2026-0206", reason = "rustybuzz: text shaping in usvg, krilla and PDF export; successor harfrust needs an upstream migration" },
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser: font parsing in fontdb, usvg, GPUI and mathra; successor skrifa needs an upstream migration" },
+    { id = "RUSTSEC-2026-0249", reason = "smartstring: string storage inside the swc TypeScript formatter" },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant: D-Bus encoding for Linux accessibility and portals through zbus" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names: D-Bus names for Linux accessibility and portals through zbus" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive: derive macros of zvariant; no runtime code" },
+]
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+# Permissive licenses, plus file-level copyleft (MPL-2.0) and the font license used by
+# the bundled math fonts. Dual-licensed crates qualify through any allowed option.
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "OFL-1.1",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+
+# The crate ships an MIT LICENSE file but no `license` field in its manifest.
+[[licenses.clarify]]
+crate = "tree-sitter-graphql"
+expression = "MIT"
+license-files = [{ path = "LICENSE", hash = 0xf96b34a8 }]
+
+[bans]
+# GPUI and its platform crates pull several major versions of common crates.
+multiple-versions = "allow"
+# Workspace and vendored crates are path dependencies.
+wildcards = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

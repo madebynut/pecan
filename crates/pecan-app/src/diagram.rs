@@ -859,6 +859,7 @@ impl Render for DiagramViewer {
             viewer::MediaKind::Diagram,
             viewer::fit_scale((w, h), self.available) * self.zoom * window.scale_factor() * 100.,
             (self.zoom <= 0.25, self.zoom >= 4.),
+            None,
             cx.listener(|view, action, window, cx| match action {
                 viewer::ZoomAction::In => view.zoom(1.25, cx),
                 viewer::ZoomAction::Out => view.zoom(0.8, cx),
@@ -877,6 +878,8 @@ impl Render for DiagramViewer {
                     };
                     cx.notify();
                 }
+                // Diagrams render locally; the toolbar shows no reload button for them.
+                viewer::ZoomAction::Reload => {}
             }),
             cx,
         );

@@ -46,6 +46,8 @@ pub struct PreferencesData {
     pub auto_reload: bool,
     /// Exit when the reader's last document tab is closed.
     pub quit_on_last_tab: bool,
+    /// Ask GitHub Releases once per launch whether a newer version exists.
+    pub check_updates: bool,
 }
 
 impl Default for PreferencesData {
@@ -70,6 +72,7 @@ impl Default for PreferencesData {
             reading_width: 960.,
             auto_reload: true,
             quit_on_last_tab: false,
+            check_updates: true,
         }
     }
 }
@@ -233,6 +236,54 @@ pub fn config_directory() -> Option<PathBuf> {
     }
 }
 
+/// Machine-local storage for crash-recovery copies of unsaved drafts, never roamed or synced.
+pub fn recovery_directory() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        config_directory().map(|directory| directory.join("Recovery"))
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var_os("LOCALAPPDATA")
+            .or_else(|| std::env::var_os("APPDATA"))
+            .map(PathBuf::from)
+            .map(|root| root.join("Pecan").join("Recovery"))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        log_directory()
+            .and_then(|logs| logs.parent().map(Path::to_path_buf))
+            .map(|root| root.join("recovery"))
+    }
+}
+
+/// Keep diagnostics in each platform's per-user log or state location, outside roaming settings.
+pub fn log_directory() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .map(|home| home.join("Library/Logs/Pecan"))
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var_os("LOCALAPPDATA")
+            .or_else(|| std::env::var_os("APPDATA"))
+            .map(PathBuf::from)
+            .map(|root| root.join("Pecan").join("logs"))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        std::env::var_os("XDG_STATE_HOME")
+            .filter(|root| Path::new(root).is_absolute())
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state"))
+            })
+            .map(|root| root.join("Pecan").join("logs"))
+    }
+}
+
 /// Read bounded configuration bytes; Pecan wins; missing settings may import Moye, then MyMD without modifying either.
 pub fn read_config_with_legacy(path: &Path) -> std::io::Result<(Vec<u8>, bool)> {
     match read_config(path) {
@@ -277,7 +328,7 @@ fn save(path: &Path, data: &PreferencesData) -> anyhow::Result<()> {
     let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
     temporary.write_all(&serde_json::to_vec_pretty(data)?)?;
     temporary.as_file().sync_all()?;
-    temporary.persist(path)?;
+    pecan_document::files::persist(temporary, path)?;
     Ok(())
 }
 
@@ -293,6 +344,10 @@ mod tests {
     fn last_tab_exit_defaults_off_for_existing_preferences_and_persists_when_enabled() {
         let mut data: super::PreferencesData = serde_json::from_str(r#"{"font_size":22}"#).unwrap();
         assert!(!data.quit_on_last_tab);
+        assert!(
+            data.check_updates,
+            "settings saved before the option existed keep checking"
+        );
         data.quit_on_last_tab = true;
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("preferences.json");

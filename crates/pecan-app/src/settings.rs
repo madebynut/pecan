@@ -93,13 +93,19 @@ impl Render for AboutPanel {
                             .text_color(cx.theme().muted_foreground)
                             .child("STIX Two Math：SIL OFL · Latin Modern Math：GUST"),
                     )
+                    .children(crate::update::available(cx).map(|version| {
+                        Button::new("about-update")
+                            .small()
+                            .label(format!("查看新版本 {version}"))
+                            .on_click(move |_, _, cx| crate::update::open(&version, cx))
+                    }))
                     .child(
                         Button::new("project-license")
                             .small()
                             .ghost()
                             .label("查看开源许可证")
                             .on_click(|_, _, cx| {
-                                cx.open_url("https://github.com/matheusmota-dev-br/mathra")
+                                cx.open_url("https://github.com/madebynut/pecan/tree/main/licenses")
                             }),
                     ),
             )
@@ -349,10 +355,13 @@ impl Render for SettingsPanel {
         let reset = self.prefs.clone();
         let close_reader = self.prefs.clone();
         let close_writer = self.prefs.clone();
+        let update_reader = self.prefs.clone();
+        let update_writer = self.prefs.clone();
         let pages = [
             SettingPage::new("通用").icon(IconName::Settings).group(SettingGroup::new().title("文件与设置").items([
                 SettingItem::new("外部修改后自动重新加载", SettingField::switch(move |cx|reader.read(cx).data.auto_reload, move |v,cx|writer.update(cx,|p,cx|p.change(|d|d.auto_reload=v,cx)))),
                 SettingItem::new("关闭最后一个标签时退出应用", SettingField::switch(move |cx|close_reader.read(cx).data.quit_on_last_tab, move |v,cx|close_writer.update(cx,|p,cx|p.change(|d|d.quit_on_last_tab=v,cx)))),
+                SettingItem::new("检查新版本", SettingField::switch(move |cx|update_reader.read(cx).data.check_updates, move |v,cx|update_writer.update(cx,|p,cx|p.change(|d|d.check_updates=v,cx)))).description("启动 5 秒后向 GitHub Releases 匿名查询一次，有新版本时在状态栏提示。"),
                 SettingItem::render(move |_,_,_| Button::new("reset-preferences").ghost().label("恢复默认设置").on_click({ let reset=reset.clone(); move |_,_,cx|reset.update(cx,|p,cx|p.change(|d|*d=PreferencesData::default(),cx)) })),
             ])),
             SettingPage::new("外观").icon(IconName::Sun).group(SettingGroup::new().title("界面").items([

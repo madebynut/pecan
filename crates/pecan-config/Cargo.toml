@@ -11,6 +11,7 @@ anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
+pecan-document.workspace = true
 pecan-mermaid.workspace = true
 
 [lints]

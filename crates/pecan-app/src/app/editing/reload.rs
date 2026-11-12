@@ -29,7 +29,7 @@ impl Reader {
         let worker_path = path.clone();
         let background = cx.background_spawn(async move {
             let _permit = workspace::CONVERSION_SLOTS.acquire().await;
-            let identity = std::fs::canonicalize(&worker_path)?;
+            let identity = pecan_document::files::canonicalize(&worker_path)?;
             workspace::load(&worker_path).map(|loaded| (identity, loaded))
         });
         self.edit_job = Some(cx.spawn_in(window, async move |weak, cx| {

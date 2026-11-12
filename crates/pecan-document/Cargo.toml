@@ -7,9 +7,11 @@ license.workspace = true
 description = "Immutable Markdown documents, bounded chunk indexing and search"
 
 [dependencies]
+dunce.workspace = true
 html5ever.workspace = true
 pulldown-cmark.workspace = true
 regex.workspace = true
+tempfile.workspace = true
 thiserror.workspace = true
 
 [lints]

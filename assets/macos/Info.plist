@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleName</key><string>Pecan</string>
+<key>CFBundleDisplayName</key><string>Pecan</string>
+<key>CFBundleExecutable</key><string>Pecan</string>
+<key>CFBundleIdentifier</key><string>com.pecan.reader</string>
+<key>CFBundleIconFile</key><string>Pecan</string>
+<key>CFBundleVersion</key><string>@VERSION@</string>
+<key>CFBundleShortVersionString</key><string>@VERSION@</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>NSHighResolutionCapable</key><true/>
+<key>NSPrincipalClass</key><string>NSApplication</string>
+<key>LSMinimumSystemVersion</key><string>12.0</string>
+<!-- Finder lists Pecan under Open With and the Dock accepts drops for these types.
+     Alternate rank never takes over an existing default application. -->
+<key>CFBundleDocumentTypes</key>
+<array>
+  <dict>
+    <key>CFBundleTypeName</key><string>Markdown Document</string>
+    <key>CFBundleTypeRole</key><string>Editor</string>
+    <key>LSHandlerRank</key><string>Alternate</string>
+    <key>LSItemContentTypes</key>
+    <array><string>net.daringfireball.markdown</string></array>
+  </dict>
+  <dict>
+    <key>CFBundleTypeName</key><string>Imported Document</string>
+    <key>CFBundleTypeRole</key><string>Viewer</string>
+    <key>LSHandlerRank</key><string>Alternate</string>
+    <key>LSItemContentTypes</key>
+    <array>
+      <string>com.adobe.pdf</string>
+      <string>org.openxmlformats.wordprocessingml.document</string>
+      <string>org.openxmlformats.wordprocessingml.document.macroenabled</string>
+      <string>com.microsoft.word.doc</string>
+      <string>org.oasis-open.opendocument.text</string>
+      <string>public.rtf</string>
+      <string>org.idpf.epub-container</string>
+      <string>org.openxmlformats.presentationml.presentation</string>
+      <string>com.microsoft.powerpoint.ppt</string>
+      <string>org.oasis-open.opendocument.presentation</string>
+      <string>org.openxmlformats.spreadsheetml.sheet</string>
+      <string>com.microsoft.excel.xls</string>
+      <string>org.oasis-open.opendocument.spreadsheet</string>
+      <string>public.comma-separated-values-text</string>
+    </array>
+  </dict>
+  <dict>
+    <key>CFBundleTypeName</key><string>Folder</string>
+    <key>CFBundleTypeRole</key><string>Viewer</string>
+    <key>LSHandlerRank</key><string>Alternate</string>
+    <key>LSItemContentTypes</key>
+    <array><string>public.folder</string></array>
+  </dict>
+</array>
+<!-- Older macOS releases do not declare Markdown; the system declaration wins where it exists. -->
+<key>UTImportedTypeDeclarations</key>
+<array>
+  <dict>
+    <key>UTTypeIdentifier</key><string>net.daringfireball.markdown</string>
+    <key>UTTypeDescription</key><string>Markdown Document</string>
+    <key>UTTypeConformsTo</key>
+    <array><string>public.plain-text</string></array>
+    <key>UTTypeTagSpecification</key>
+    <dict>
+      <key>public.filename-extension</key>
+      <array><string>md</string><string>markdown</string><string>mdown</string></array>
+      <key>public.mime-type</key>
+      <array><string>text/markdown</string></array>
+    </dict>
+  </dict>
+</array>
+</dict></plist>

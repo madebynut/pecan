@@ -38,7 +38,8 @@ pub(super) struct Images {
 impl Images {
     pub(super) fn new(directory: &Path, client: Arc<dyn HttpClient>) -> Self {
         Self {
-            directory: std::fs::canonicalize(directory).unwrap_or_else(|_| directory.to_path_buf()),
+            directory: pecan_document::files::canonicalize(directory)
+                .unwrap_or_else(|_| directory.to_path_buf()),
             client,
             bytes: 0,
             loaded: 0,
@@ -422,6 +423,16 @@ fn svg_text(bytes: &[u8]) -> Result<&str> {
 }
 
 fn image_path(directory: &Path, uri: &str) -> Result<PathBuf> {
+    let path = resolve_image_path(directory, uri)?;
+    // Opening a UNC path makes Windows authenticate to that host.
+    ensure!(
+        pecan_document::files::resource_allowed(directory, &path),
+        "已阻止读取其他网络共享上的图片"
+    );
+    Ok(path)
+}
+
+fn resolve_image_path(directory: &Path, uri: &str) -> Result<PathBuf> {
     // A Windows drive letter is a path, not a URL scheme.
     #[cfg(windows)]
     if Path::new(uri).is_absolute() {
@@ -442,6 +453,9 @@ fn image_path(directory: &Path, uri: &str) -> Result<PathBuf> {
 }
 
 fn read_image(path: &Path) -> Result<Vec<u8>> {
+    // Check before opening: opening a FIFO or device blocks until another process writes.
+    let metadata = std::fs::metadata(path).with_context(|| format!("读取 {}", path.display()))?;
+    ensure!(metadata.is_file(), "图片不是普通文件");
     let mut file = std::fs::File::open(path).with_context(|| format!("读取 {}", path.display()))?;
     let metadata = file.metadata()?;
     ensure!(metadata.is_file(), "图片不是普通文件");
@@ -495,12 +509,21 @@ mod tests {
     #[test]
     fn windows_drive_unc_and_file_urls_resolve_to_local_images() {
         let directory = Path::new(r"C:\文档");
-        for path in [
-            r"C:\图片\hello world.png",
-            "C:/图片/hello world.png",
-            r"\\server\share\图.png",
-        ] {
+        for path in [r"C:\图片\hello world.png", "C:/图片/hello world.png"] {
             assert_eq!(image_path(directory, path).unwrap(), PathBuf::from(path));
+        }
+        // A share is readable from documents on that share, never from elsewhere.
+        let shared = Path::new(r"\\server\share\文档");
+        assert_eq!(
+            image_path(shared, r"\\server\share\图.png").unwrap(),
+            PathBuf::from(r"\\server\share\图.png")
+        );
+        for path in [
+            r"\\server\share\图.png",
+            "file://server/share/a.png",
+            "//server/share/a.png",
+        ] {
+            assert!(image_path(directory, path).is_err(), "{path}");
         }
         assert_eq!(
             image_path(directory, "file:///C:/images/hello%20world.png").unwrap(),

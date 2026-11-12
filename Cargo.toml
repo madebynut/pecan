@@ -55,10 +55,12 @@ anyhow = "1"
 ammonia = "4"
 base64 = "0.22"
 anydoc = { path = "vendor/anydoc", version = "0.2.4" }
+async-channel = "2"
 async-lock = "3"
 block2 = "0.6"
 blake3 = "1"
 data-url = "0.3"
+dunce = "1.0.5"
 html5ever = "0.27"
 gpui-kit = { version = "0.9.0", features = ["tree-sitter-languages"] }
 lru = "0.18.2"
@@ -81,6 +83,7 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["NSD
 png = "0.18"
 pulldown-cmark = { version = "0.13.6", default-features = false, features = ["html"] }
 regex = "1"
+semver = "1"
 resvg = "0.46"
 thiserror = "2"
 tracing = "0.1"

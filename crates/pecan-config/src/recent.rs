@@ -49,6 +49,13 @@ impl History {
     fn normalize(&mut self) {
         let mut seen = std::collections::HashSet::new();
         let mut budget = MAX_FILE_BYTES - 1024;
+        // Earlier Windows builds stored `\\?\C:\…` identities; fold them into the plain form.
+        for entry in &mut self.entries {
+            let simplified = pecan_document::files::simplified(&entry.path);
+            if simplified != entry.path {
+                entry.path = simplified.to_path_buf();
+            }
+        }
         self.entries.retain(|entry| {
             // JSON escaping or native byte arrays need at most six bytes per encoded byte.
             let cost = entry
@@ -101,18 +108,19 @@ fn save_inner(path: &Path, data: &History) -> anyhow::Result<()> {
     );
     temporary.write_all(&bytes)?;
     temporary.as_file().sync_all()?;
-    temporary.persist(path)?;
+    pecan_document::files::persist(temporary, path)?;
     Ok(())
 }
 
 /// Display a compact sanitized path without changing its native identity.
 pub fn display_path(path: &Path) -> String {
+    let path = pecan_document::files::simplified(path);
     let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" });
     let text = home
         .and_then(|home| {
             path.strip_prefix(home)
                 .ok()
-                .map(|rest| format!("~/{}", rest.display()))
+                .map(|rest| format!("~{}{}", std::path::MAIN_SEPARATOR, rest.display()))
         })
         .unwrap_or_else(|| path.display().to_string());
     text.chars()

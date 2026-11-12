@@ -21,6 +21,8 @@ pub(crate) enum ZoomAction {
     Out,
     Fit,
     Original,
+    /// Load the image again, for downloads that failed or stalled.
+    Reload,
 }
 
 /// A shared pointer gesture; a lost mouse-up is ended by the next unpressed move.
@@ -56,6 +58,8 @@ pub(crate) fn toolbar(
     kind: MediaKind,
     percent: f32,
     limits: (bool, bool),
+    // `Some(enabled)` shows the reload button; images from data URLs cannot change.
+    reload: Option<bool>,
     action: impl Fn(&ZoomAction, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> gpui_kit::AnyElement {
@@ -120,7 +124,18 @@ pub(crate) fn toolbar(
             "原始尺寸",
             ZoomAction::Original,
             false,
-        ));
+        ))
+        .when_some(reload, |controls, enabled| {
+            controls
+                .child(div().w(px(1.)).h(px(14.)).bg(cx.theme().border))
+                .child(button(
+                    "reload",
+                    IconName::RefreshCw,
+                    crate::platform::choose("重新加载（⌘R）", "重新加载（Ctrl+R）"),
+                    ZoomAction::Reload,
+                    !enabled,
+                ))
+        });
     h_flex()
         .debug_selector(move || match kind {
             MediaKind::Image => "image-footer".into(),

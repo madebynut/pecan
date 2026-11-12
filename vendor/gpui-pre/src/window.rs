@@ -2179,6 +2179,11 @@ impl Window {
         platform_window.on_active_status_change(Box::new({
             let mut cx = cx.to_async();
             move |active| {
+                // AppKit delivers a closing window's resign-key after GPUI has removed it,
+                // because the notification is forwarded through the foreground executor.
+                if !cx.update(|cx| cx.windows().contains(&handle)) {
+                    return;
+                }
                 handle
                     .update(&mut cx, |_, window, cx| {
                         window.active.set(active);

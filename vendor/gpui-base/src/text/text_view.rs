@@ -129,8 +129,32 @@ pub(crate) fn handle_link_click(
         ClickEvent::Keyboard(_) => true,
         ClickEvent::Touch(click) => !click.long_press,
     } {
-        cx.open_url(&url);
+        if is_web_link(&url) {
+            cx.open_url(&url);
+        }
     }
+}
+
+/// Whether a document link may be handed to the system opener.
+///
+/// The opener launches whatever the OS associates with a URL. Document text is untrusted,
+/// so `file:`, `smb:`, registered app protocols (`ms-msdt:`, `search-ms:`) and relative
+/// paths, which `ShellExecute` and `xdg-open` resolve against the working directory and
+/// could run a program next to the document, are not opened.
+pub fn is_web_link(url: &str) -> bool {
+    let url = url.trim_start_matches(|c: char| c.is_whitespace() || c.is_control());
+    if url.chars().any(char::is_control) {
+        return false;
+    }
+    let Some((scheme, rest)) = url.split_once(':') else {
+        return false;
+    };
+    if scheme.eq_ignore_ascii_case("mailto") {
+        return !rest.is_empty();
+    }
+    (scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https"))
+        && rest.starts_with("//")
+        && rest.len() > 2
 }
 
 /// A text view that can render Markdown or HTML.

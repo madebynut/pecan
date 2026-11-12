@@ -217,6 +217,10 @@ impl SvgRenderer {
                 }),
                 resolve_string: Box::new(|href, options| {
                     let path = options.get_abs_path(std::path::Path::new(href));
+                    // Opening a UNC path would make Windows authenticate to that host.
+                    if is_network_path(&path) {
+                        return None;
+                    }
                     // Missing/unsupported references keep the upstream omission behavior.
                     if !path.is_file() {
                         return None;
@@ -325,6 +329,30 @@ impl SvgRenderer {
     fn render_pixmap(&self, bytes: &[u8], size: SvgSize) -> Result<Pixmap, usvg::Error> {
         let tree = self.parse_svg(bytes)?;
         rasterize_tree(&tree.0, size)
+    }
+}
+
+/// UNC, device and non-volume verbatim roots on Windows can reach other machines.
+fn is_network_path(path: &std::path::Path) -> bool {
+    #[cfg(windows)]
+    {
+        use std::path::{Component, Prefix};
+        match path.components().next() {
+            Some(Component::Prefix(prefix)) => match prefix.kind() {
+                Prefix::UNC(..) | Prefix::VerbatimUNC(..) | Prefix::DeviceNS(..) => true,
+                Prefix::Verbatim(root) => !root
+                    .to_string_lossy()
+                    .get(..7)
+                    .is_some_and(|start| start.eq_ignore_ascii_case("Volume{")),
+                Prefix::Disk(_) | Prefix::VerbatimDisk(_) => false,
+            },
+            _ => false,
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        false
     }
 }
 

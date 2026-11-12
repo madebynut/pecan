@@ -19,26 +19,26 @@ cp "$project_root/LICENSE" "$staged_bundle/Contents/Resources/LICENSE"
 cp "$project_root/NOTICE" "$staged_bundle/Contents/Resources/NOTICE"
 cp -R "$project_root/licenses" "$staged_bundle/Contents/Resources/licenses"
 cp "$project_root/assets/brand/pecan.icns" "$staged_bundle/Contents/Resources/Pecan.icns"
-cat > "$staged_bundle/Contents/Info.plist" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>CFBundleName</key><string>Pecan</string>
-<key>CFBundleDisplayName</key><string>Pecan</string>
-<key>CFBundleExecutable</key><string>Pecan</string>
-<key>CFBundleIdentifier</key><string>com.pecan.reader</string>
-<key>CFBundleIconFile</key><string>Pecan</string>
-<key>CFBundleVersion</key><string>$version</string>
-<key>CFBundleShortVersionString</key><string>$version</string>
-<key>CFBundlePackageType</key><string>APPL</string>
-<key>NSHighResolutionCapable</key><true/>
-<key>NSPrincipalClass</key><string>NSApplication</string>
-<key>LSMinimumSystemVersion</key><string>12.0</string>
-</dict></plist>
-PLIST
-codesign --force --sign - --timestamp=none "$staged_bundle"
-codesign --verify --strict --verbose=2 "$staged_bundle"
+sed "s/@VERSION@/$version/g" "$project_root/assets/macos/Info.plist" > "$staged_bundle/Contents/Info.plist"
 plutil -lint "$staged_bundle/Contents/Info.plist"
+# MACOS_SIGNING_IDENTITY names a Developer ID Application certificate in the keychain.
+# Without it the bundle is ad-hoc signed, which Gatekeeper rejects for downloaded apps.
+if [ -n "${MACOS_SIGNING_IDENTITY:-}" ]; then
+    codesign --force --sign "$MACOS_SIGNING_IDENTITY" --options runtime --timestamp "$staged_bundle"
+else
+    codesign --force --sign - --timestamp=none "$staged_bundle"
+fi
+codesign --verify --strict --verbose=2 "$staged_bundle"
+# Notarization needs an Apple ID app-specific password: APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD.
+if [ -n "${MACOS_SIGNING_IDENTITY:-}" ] && [ -n "${APPLE_ID:-}" ]; then
+    submission="$staging/notarize.zip"
+    ditto -c -k --sequesterRsrc --keepParent "$staged_bundle" "$submission"
+    xcrun notarytool submit "$submission" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+        --password "$APPLE_APP_PASSWORD" --wait --timeout 30m
+    xcrun stapler staple "$staged_bundle"
+    xcrun stapler validate "$staged_bundle"
+    spctl --assess --type execute --verbose=2 "$staged_bundle"
+fi
 if [ -e "$bundle" ]; then
     mv "$bundle" "$staging/previous.app"
 fi
@@ -46,4 +46,3 @@ mv "$staged_bundle" "$bundle"
 archive="$project_root/dist/Pecan-$version-macOS-$arch.zip"
 ditto -c -k --sequesterRsrc --keepParent "$bundle" "$archive"
 echo "$archive"
-

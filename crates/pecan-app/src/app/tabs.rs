@@ -90,6 +90,7 @@ impl Reader {
             self.active = 0;
             self.load_revision += 1;
             self.load_job = None;
+            self.queued.clear();
             self.search_revision += 1;
             self.search_job = None;
             self.matches = Default::default();

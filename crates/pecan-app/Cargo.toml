@@ -21,6 +21,7 @@ blake3.workspace = true
 regex.workspace = true
 anyhow.workspace = true
 pecan-import.workspace = true
+async-channel.workspace = true
 async-lock.workspace = true
 data-url.workspace = true
 # Already linked by GPUI with these codecs: `Frame` buffers, plus image sizes and
@@ -35,6 +36,8 @@ pecan-mermaid.workspace = true
 notify.workspace = true
 pulldown-cmark.workspace = true
 png.workspace = true
+semver.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 pecan-math.workspace = true
@@ -51,6 +54,7 @@ objc2-app-kit.workspace = true
 objc2-foundation.workspace = true
 
 [dev-dependencies]
+log = "0.4"
 gpui-platform = { package = "gpui-pre-platform", version = "0.3.11", features = ["test-support"] }
 markdown = "1"
 gpui = { package = "gpui-pre", version = "0.3.11", features = ["test-support"] }

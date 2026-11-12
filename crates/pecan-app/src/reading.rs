@@ -679,7 +679,11 @@ impl Render for MarkdownChunk {
                             let raw = uri.as_ref();
                             #[cfg(windows)]
                             if std::path::Path::new(raw).is_absolute() {
-                                return ImageSource::from(PathBuf::from(raw));
+                                return crate::media::permitted_path(
+                                    &directory,
+                                    PathBuf::from(raw),
+                                )
+                                .map_or_else(|_| crate::media::blocked_image(), ImageSource::from);
                             }
                             if url::Url::parse(raw).is_ok() {
                                 return ImageSource::from(uri.clone());
@@ -689,7 +693,8 @@ impl Render for MarkdownChunk {
                                 .and_then(|base| base.join(raw).ok())
                                 .and_then(|url| url.to_file_path().ok())
                                 .unwrap_or_else(|| directory.join(raw));
-                            ImageSource::from(path)
+                            crate::media::permitted_path(&directory, path)
+                                .map_or_else(|_| crate::media::blocked_image(), ImageSource::from)
                         }),
                 ),
             )
@@ -1639,5 +1644,41 @@ mod tests {
             "UI work did not settle after 10000 executor ticks during {stage}; queued={:?}",
             cx.dispatcher.scheduler().pending_task_counts()
         );
+    }
+}
+
+/// Document links reach the OS opener through the vendored `TextView` policy.
+#[cfg(test)]
+mod link_policy_tests {
+    use gpui_kit::base::text::is_web_link;
+
+    #[test]
+    fn only_web_and_mail_links_reach_the_system_opener() {
+        for allowed in [
+            "https://example.com/a?b#c",
+            "HTTP://example.com",
+            " https://example.com",
+            "mailto:team@example.com",
+        ] {
+            assert!(is_web_link(allowed), "{allowed}");
+        }
+        for denied in [
+            "file:///C:/Windows/System32/calc.exe",
+            "evil.exe",
+            "./run.sh",
+            "C:\\Users\\Public\\x.exe",
+            "\\\\attacker\\share\\x.exe",
+            "smb://attacker/share",
+            "ms-msdt:/id PCWDiagnostic",
+            "search-ms:query=x",
+            "javascript:alert(1)",
+            "https:example.com",
+            "https://",
+            "https://example.com\n--flag",
+            "#heading",
+            "",
+        ] {
+            assert!(!is_web_link(denied), "{denied}");
+        }
     }
 }

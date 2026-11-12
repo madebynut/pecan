@@ -16,7 +16,9 @@ gpui_kit::assets::icon_assets!(
         ListIndentIncrease,
         Braces,
         FoldVertical,
-        UnfoldVertical
+        UnfoldVertical,
+        Image,
+        ImageOff
     ]
 );
 

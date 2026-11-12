@@ -1,19 +1,27 @@
 //! Clickable Markdown images with the shared GPUI media preview.
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use gpui_kit::{
-    App, Context, FocusHandle, Image, ImageCacheProvider, ImageFormat, ImageSource, IntoElement,
-    Pixels, Render, RenderImage, Resource, ScrollHandle, SharedString, Size, Subscription, Window,
+    App, AppContext as _, Context, Entity, FocusHandle, Image, ImageFormat, ImageSource,
+    IntoElement, Pixels, Render, RenderImage, Resource, RetainAllImageCache, ScrollHandle,
+    SharedString, Size, Subscription, Window,
+    assets::IconName as AssetIcon,
     component::{
-        ActiveTheme, Theme, h_flex,
+        ActiveTheme, Icon, IconName, Theme, h_flex,
+        skeleton::Skeleton,
         text::{
             InlineElement, InlineRenderContext, MarkdownExtensions, MarkdownNode,
             MarkdownParseContext, MarkdownPlugin, markdown_ast,
         },
+        v_flex,
     },
     div, img,
     prelude::*,
-    px, retain_all,
+    px,
 };
 use pulldown_cmark::Parser;
 
@@ -21,8 +29,13 @@ use crate::viewer;
 
 gpui_kit::actions!(
     pecan_image,
-    [CloseImage, ZoomImageIn, ZoomImageOut, FitImage]
+    [CloseImage, ZoomImageIn, ZoomImageOut, FitImage, ReloadImage]
 );
+
+/// Reveals a loaded image's reload button while the pointer is over the image.
+const IMAGE_GROUP: &str = "pecan-image";
+/// Placeholder size for a block image whose pixels and Markdown size are both unknown.
+const PLACEHOLDER: (f32, f32) = (360., 202.5);
 
 /// Keep full-resolution pixels cached; zoom only changes the element's geometry.
 const MAX_ZOOM: f32 = 8.;
@@ -190,8 +203,32 @@ fn reference_key(label: &str) -> String {
 
 use pecan_document::html_image;
 
+/// About 16 MiB once decoded, matching the file and network image budgets.
+const MAX_DATA_URL_BYTES: usize = 22 * 1024 * 1024;
+const BLOCKED_SHARE: &str = "已阻止读取其他网络共享上的图片";
+
+/// Refuse a local image path that would make Windows connect to another SMB host.
+pub(crate) fn permitted_path(directory: &Path, path: PathBuf) -> Result<PathBuf, String> {
+    if pecan_document::files::resource_allowed(directory, &path) {
+        Ok(path)
+    } else {
+        tracing::warn!(path = %path.display(), "blocked an image on another network share");
+        Err(BLOCKED_SHARE.into())
+    }
+}
+
+/// An image that fails immediately, for references the document may not load.
+pub(crate) fn blocked_image() -> gpui_kit::ImageSource {
+    gpui_kit::ImageSource::Custom(Arc::new(|_, _| {
+        Some(Err(gpui_kit::ImageCacheError::Asset(BLOCKED_SHARE.into())))
+    }))
+}
+
 fn resolve_source(uri: &str, directory: &Path) -> Result<PictureSource, String> {
     if uri.starts_with("data:") {
+        if uri.len() > MAX_DATA_URL_BYTES {
+            return Err("内嵌图片超过 16 MiB".into());
+        }
         let data = data_url::DataUrl::process(uri).map_err(|error| error.to_string())?;
         let mime = data.mime_type();
         let format = ImageFormat::from_mime_type(&format!("{}/{}", mime.type_, mime.subtype))
@@ -203,13 +240,17 @@ fn resolve_source(uri: &str, directory: &Path) -> Result<PictureSource, String> 
     }
     #[cfg(windows)]
     if Path::new(uri).is_absolute() {
-        return Ok(PictureSource::Resource(Path::new(uri).to_path_buf().into()));
+        let path = permitted_path(directory, Path::new(uri).to_path_buf())?;
+        return Ok(PictureSource::Resource(path.into()));
     }
     if let Ok(url) = url::Url::parse(uri) {
         return if url.scheme() == "file" {
-            url.to_file_path()
-                .map(|path| PictureSource::Resource(path.into()))
-                .map_err(|()| "无效的本地图片路径".into())
+            let path = url
+                .to_file_path()
+                .map_err(|()| "无效的本地图片路径".to_string())?;
+            Ok(PictureSource::Resource(
+                permitted_path(directory, path)?.into(),
+            ))
         } else {
             Ok(PictureSource::Resource(Resource::Uri(
                 uri.to_string().into(),
@@ -221,49 +262,80 @@ fn resolve_source(uri: &str, directory: &Path) -> Result<PictureSource, String> 
         .and_then(|base| base.join(uri).ok())
         .and_then(|url| url.to_file_path().ok())
         .unwrap_or_else(|| directory.join(uri));
-    Ok(PictureSource::Resource(path.into()))
+    Ok(PictureSource::Resource(
+        permitted_path(directory, path)?.into(),
+    ))
 }
 
 fn load_image(
     source: &PictureSource,
+    cache: &Entity<RetainAllImageCache>,
     window: &mut Window,
     cx: &mut App,
 ) -> Option<Result<Arc<RenderImage>, String>> {
     match source {
-        PictureSource::Resource(resource) => {
-            let mut provider = retain_all("media-viewer-image");
-            provider
-                .provide(window, cx)
-                .load(resource, window, cx)
-                .map(|result| result.map_err(|error| error.to_string()))
-        }
+        PictureSource::Resource(resource) => cache
+            .update(cx, |cache, cx| cache.load(resource, window, cx))
+            .map(|result| result.map_err(|error| error.to_string())),
         PictureSource::Bytes(image) => crate::raster::visible_result(image, window, cx)
             .map(|result| result.map_err(|error| error.to_string())),
     }
 }
+
+/// The cache entry to evict so an image loads again; embedded data URLs have none.
+type Reload = (Entity<RetainAllImageCache>, Resource);
 
 fn load_reading_image(
     source: &PictureSource,
     node: &MarkdownNode,
     window: &mut Window,
     cx: &mut App,
-) -> Option<Result<Arc<RenderImage>, String>> {
+) -> (Option<Result<Arc<RenderImage>, String>>, Option<Reload>) {
     match source {
         PictureSource::Resource(resource) => {
             // Element state owns this cache: leaving a virtual row releases its decoded pixels
             // and atlas entries rather than accumulating every visited image in App's cache.
-            let mut provider = retain_all((
+            let id = (
                 "reading-image",
                 node.source_range().map_or(0, |range| range.start),
-            ));
-            let cache = provider.provide(window, cx);
-            cache
-                .load(resource, window, cx)
-                .map(|result| result.map_err(|error| error.to_string()))
+            );
+            let cache = window.with_global_id(id.into(), |global_id, window| {
+                window.with_element_state::<Entity<RetainAllImageCache>, _>(
+                    global_id,
+                    |cache, _| {
+                        let cache = cache.unwrap_or_else(|| RetainAllImageCache::new(cx));
+                        (cache.clone(), cache)
+                    },
+                )
+            });
+            let loaded = load_image(source, &cache, window, cx);
+            (loaded, Some((cache, resource.clone())))
         }
-        PictureSource::Bytes(image) => crate::raster::visible_result(image, window, cx)
-            .map(|result| result.map_err(|error| error.to_string())),
+        PictureSource::Bytes(_) => (
+            load_image(source, &RetainAllImageCache::new(cx), window, cx),
+            None,
+        ),
     }
+}
+
+/// Drop the cached result, cancelling a stalled download, and load the image again.
+fn reload_button(id: usize, (cache, resource): Reload, cx: &App) -> impl IntoElement {
+    div()
+        .rounded(px(6.))
+        .bg(cx.theme().background.opacity(0.85))
+        .border_1()
+        .border_color(cx.theme().border)
+        .child(
+            crate::ui::tool_button(("image-reload", id), IconName::RefreshCw, "重新加载图片")
+                .debug_selector(|| "image-reload".into())
+                .on_click(move |_, window, cx| {
+                    cx.stop_propagation();
+                    gpui_kit::base::TextSelection::clear(window, cx);
+                    cache.update(cx, |cache, cx| cache.remove(&resource, window, cx));
+                    // Cached document rows only redraw when the window refreshes.
+                    window.refresh();
+                }),
+        )
 }
 
 fn preview(
@@ -275,18 +347,38 @@ fn preview(
     let Some(image) = node.data::<MarkdownImage>() else {
         return div().into_any_element();
     };
+    let id = node.source_range().map_or(0, |range| range.start);
     let source = match &image.source {
         Ok(source) => source,
+        Err(error) if inline_height.is_none() => {
+            return failed_block(image, error, None, id, cx).into_any_element();
+        }
         Err(error) => return image_error(error).into_any_element(),
     };
-    let loaded = load_reading_image(source, node, window, cx);
+    let (loaded, reload) = load_reading_image(source, node, window, cx);
     if let Some(Err(error)) = &loaded {
-        return image_error(error).into_any_element();
+        // Transport details stay in the log (GPUI records them); readers get the next step.
+        let remote = matches!(source, PictureSource::Resource(Resource::Uri(_)));
+        let error = if remote {
+            "无法连接图片地址，请检查网络后点右上角重新加载"
+        } else {
+            error.as_str()
+        };
+        if inline_height.is_none() {
+            return failed_block(image, error, reload, id, cx).into_any_element();
+        }
+        // Inline images are one text line tall: keep the message and button in the line.
+        return h_flex()
+            .gap_1()
+            .items_center()
+            .child(image_error(error))
+            .children(reload.map(|reload| reload_button(id, reload, cx)))
+            .into_any_element();
     }
     let dimensions = loaded
         .as_ref()
         .and_then(|result| result.as_ref().ok())
-        .map_or((240., 160.), |image| {
+        .map_or(PLACEHOLDER, |image| {
             let size = image.size(0);
             (size.width.0 as f32, size.height.0 as f32)
         });
@@ -308,9 +400,25 @@ fn preview(
     let system_image = image.clone();
     #[cfg(target_os = "macos")]
     let system_pixels = pixels.clone();
+    let loading = pixels.is_none();
+    // Inline images are one line tall; their reload stays in the error state and the viewer.
+    let overlay = reload.filter(|_| inline_height.is_none()).map(|reload| {
+        div()
+            .absolute()
+            .top(px(8.))
+            .right(px(8.))
+            // A loaded image shows the button on hover; a pending one always shows it.
+            .when(!loading, |overlay| {
+                overlay
+                    .opacity(0.)
+                    .group_hover(IMAGE_GROUP, |style| style.opacity(1.))
+            })
+            .child(reload_button(id, reload, cx))
+    });
     let target = div()
-        .id(node.source_range().map_or(0, |range| range.start))
+        .id(id)
         .debug_selector(|| "image-preview".into())
+        .group(IMAGE_GROUP)
         .relative()
         .cursor_pointer()
         .when(inline_height.is_some(), |target| {
@@ -329,6 +437,10 @@ fn preview(
                     .with_fallback(|| image_error("图片加载失败").into_any_element()),
             )
         })
+        .when(loading && inline_height.is_none(), |target| {
+            target.child(skeleton(None, cx))
+        })
+        .children(overlay)
         .on_mouse_down(gpui_kit::MouseButton::Left, |_, window, cx| {
             window.prevent_default();
             gpui_kit::base::GlobalState::suppress_text_selection(cx);
@@ -373,6 +485,117 @@ fn preview(
             .child(target)
             .into_any_element()
     }
+}
+
+/// The size a block image's placeholder takes: its Markdown size, else [`PLACEHOLDER`].
+fn placeholder_size(image: &MarkdownImage) -> (f32, f32) {
+    let (width, height) = PLACEHOLDER;
+    match (image.width, image.height) {
+        (Some(width), Some(height)) => (width, height),
+        (Some(width), None) => (width, width * height / PLACEHOLDER.0),
+        (None, Some(height)) => (height * width / PLACEHOLDER.1, height),
+        (None, None) => PLACEHOLDER,
+    }
+}
+
+/// A block image that cannot be shown keeps its place as a skeleton, with reload in its corner.
+fn failed_block(
+    image: &MarkdownImage,
+    error: &str,
+    reload: Option<Reload>,
+    id: usize,
+    cx: &App,
+) -> impl IntoElement {
+    let (width, height) = placeholder_size(image);
+    h_flex().w_full().justify_center().py_3().child(
+        div()
+            .id(("image-failed", id))
+            .debug_selector(|| "image-skeleton".into())
+            .relative()
+            .w_full()
+            .max_w(px(width))
+            .aspect_ratio(width / height.max(1.))
+            .child(skeleton(Some(error), cx))
+            .children(reload.map(|reload| {
+                div()
+                    .absolute()
+                    .top(px(8.))
+                    .right(px(8.))
+                    .child(reload_button(id, reload, cx))
+            })),
+    )
+}
+
+/// The placeholder surface: pulsing while loading, still with the reason once it failed.
+fn skeleton(error: Option<&str>, cx: &App) -> impl IntoElement {
+    let surface = div()
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full()
+        .rounded(px(8.));
+    let surface = if error.is_none() && !cx.reduce_motion() {
+        Skeleton::new()
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .rounded(px(8.))
+            .into_any_element()
+    } else {
+        surface.bg(cx.theme().skeleton).into_any_element()
+    };
+    div()
+        .when(error.is_none(), |placeholder| {
+            placeholder.debug_selector(|| "image-skeleton".into())
+        })
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full()
+        .child(surface)
+        // The skeleton fill is close to the dark page background; the outline keeps its shape.
+        .child(
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+                .rounded(px(8.))
+                .border_1()
+                .border_color(cx.theme().border),
+        )
+        .child(
+            v_flex()
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+                .items_center()
+                .justify_center()
+                .gap_2()
+                .px_10()
+                .text_color(cx.theme().muted_foreground)
+                .child(
+                    Icon::new(if error.is_some() {
+                        AssetIcon::ImageOff
+                    } else {
+                        AssetIcon::Image
+                    })
+                    .size(px(28.)),
+                )
+                .when_some(error, |content, error| {
+                    content.child(
+                        div()
+                            .debug_selector(|| "image-error".into())
+                            .w_full()
+                            .text_center()
+                            .text_xs()
+                            .line_clamp(2)
+                            .child(format!("图片加载失败：{error}")),
+                    )
+                }),
+        )
 }
 
 fn image_error(error: &str) -> impl IntoElement {
@@ -456,6 +679,7 @@ pub(crate) struct ImageViewer {
     current_scale: f32,
     available: Size<Pixels>,
     pixels: Option<Arc<RenderImage>>,
+    cache: Entity<RetainAllImageCache>,
     _bounds: Subscription,
     _display: Subscription,
     _theme: Subscription,
@@ -487,6 +711,7 @@ impl ImageViewer {
             current_scale: 1.,
             available: Size::default(),
             pixels,
+            cache: RetainAllImageCache::new(cx),
             _bounds: cx.observe_window_bounds(window, |_, _, cx| cx.notify()),
             _display: cx.observe_window_display(window, |_, _, cx| cx.notify()),
             _theme: cx.observe_global::<Theme>(|_, cx| cx.notify()),
@@ -495,6 +720,23 @@ impl ImageViewer {
 
     fn zoom(&mut self, factor: f32, cx: &mut Context<Self>) {
         self.scale = Scale::Fixed((self.current_scale * factor).clamp(MIN_ZOOM, MAX_ZOOM));
+        cx.notify();
+    }
+
+    fn reloadable(&self) -> bool {
+        matches!(self.image.source, Ok(PictureSource::Resource(_)))
+    }
+
+    /// Discard the shown pixels and any cached result, then download or read the image again.
+    fn reload(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Ok(PictureSource::Resource(resource)) = &self.image.source else {
+            return;
+        };
+        if let Some(pixels) = self.pixels.take() {
+            cx.drop_image(pixels, Some(window));
+        }
+        self.cache
+            .update(cx, |cache, cx| cache.remove(resource, window, cx));
         cx.notify();
     }
 
@@ -512,7 +754,7 @@ impl Render for ImageViewer {
             .pixels
             .as_ref()
             .map(|pixels| Ok(pixels.clone()))
-            .or_else(|| source.and_then(|source| load_image(source, window, cx)));
+            .or_else(|| source.and_then(|source| load_image(source, &self.cache, window, cx)));
         if let Some(Ok(pixels)) = &loaded {
             self.pixels = Some(pixels.clone());
         }
@@ -604,6 +846,7 @@ impl Render for ImageViewer {
                 self.current_scale <= MIN_ZOOM,
                 self.current_scale >= MAX_ZOOM,
             ),
+            Some(self.reloadable()),
             cx.listener(|view, action, window, cx| match action {
                 viewer::ZoomAction::In => view.zoom(1.25, cx),
                 viewer::ZoomAction::Out => view.zoom(0.8, cx),
@@ -611,6 +854,7 @@ impl Render for ImageViewer {
                 viewer::ZoomAction::Original => {
                     view.reset(Scale::Fixed(1. / window.scale_factor()), cx)
                 }
+                viewer::ZoomAction::Reload => view.reload(window, cx),
             }),
             cx,
         );
@@ -644,6 +888,7 @@ impl Render for ImageViewer {
             .on_action(cx.listener(|view, _: &ZoomImageIn, _, cx| view.zoom(1.25, cx)))
             .on_action(cx.listener(|view, _: &ZoomImageOut, _, cx| view.zoom(0.8, cx)))
             .on_action(cx.listener(|view, _: &FitImage, _, cx| view.reset(Scale::Fit, cx)))
+            .on_action(cx.listener(|view, _: &ReloadImage, window, cx| view.reload(window, cx)))
             .child(viewer::frame(self.title.clone(), canvas, controls, cx))
     }
 }
@@ -986,6 +1231,132 @@ mod tests {
             !cx.read(|cx| ImageSource::from(path.clone()).is_asset_cached(cx)),
             "closing image previews releases their global source"
         );
+    }
+
+    #[gpui_kit::test]
+    fn reload_retries_a_failed_image_and_refreshes_the_enlarged_view(cx: &mut TestAppContext) {
+        let fixture = tempfile::tempdir().unwrap();
+        let path = fixture.path().join("late.svg");
+        let svg = |width: u32| {
+            format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="300"><rect width="{width}" height="300" fill="#237e79"/></svg>"##
+            )
+        };
+        let source = "![稍后出现](late.svg)\n\n末尾文字\n";
+        let (handle, _) = cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_reduce_motion(true);
+            gpui_kit::open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(Bounds::new(
+                        point(px(0.), px(0.)),
+                        size(px(1000.), px(800.)),
+                    ))),
+                    ..Default::default()
+                },
+                cx,
+                |_, cx| {
+                    cx.new(|cx| ImageDocument {
+                        text: cx.new(|cx| TextViewState::markdown(source, cx)),
+                        extensions: extensions(
+                            MarkdownExtensions::default(),
+                            source,
+                            fixture.path(),
+                        ),
+                    })
+                },
+            )
+            .unwrap()
+        });
+        let mut visual = VisualTestContext::from_window(handle, cx);
+        // The first frame comes before the background read finishes, like a slow download.
+        visual.update(draw);
+        let pending = visual
+            .debug_bounds("image-skeleton")
+            .expect("a loading image shows a skeleton");
+        let reload = visual
+            .debug_bounds("image-reload")
+            .expect("a loading image offers reload");
+        assert!(pending.contains(&reload.center()) && pending.right() - reload.right() < px(16.));
+        assert!(visual.debug_bounds("image-error").is_none());
+        settle(&mut visual);
+        assert!(
+            visual.debug_bounds("image-error").is_some(),
+            "the file is missing"
+        );
+        assert!(visual.debug_bounds("image-preview").is_none());
+        let skeleton = visual
+            .debug_bounds("image-skeleton")
+            .expect("a failed block image keeps its place as a skeleton");
+        assert!(skeleton.size.width > px(300.) && skeleton.size.height > px(150.));
+        let reload = visual
+            .debug_bounds("image-reload")
+            .expect("a failed image offers reload");
+        assert!(
+            skeleton.contains(&reload.center())
+                && skeleton.right() - reload.right() < px(16.)
+                && reload.top() - skeleton.top() < px(16.),
+            "reload sits in the skeleton's top-right corner: {skeleton:?} {reload:?}"
+        );
+
+        std::fs::write(&path, svg(600)).unwrap();
+        visual.simulate_click(reload.center(), gpui_kit::Modifiers::default());
+        settle(&mut visual);
+        assert!(visual.debug_bounds("image-error").is_none());
+        assert!(visual.debug_bounds("image-skeleton").is_none());
+        let preview = visual
+            .debug_bounds("image-preview")
+            .expect("reload shows the image once it can be read");
+        assert!(
+            visual.debug_bounds("image-reload").is_some(),
+            "a loaded image keeps its reload button in the top-right corner"
+        );
+        let corner = visual.debug_bounds("image-reload").unwrap();
+        assert!(corner.right() <= preview.right() && corner.top() >= preview.top());
+        assert!(corner.center().x > preview.center().x && corner.center().y < preview.center().y);
+
+        visual.simulate_click(preview.center(), gpui_kit::Modifiers::default());
+        settle(&mut visual);
+        let viewer_handle = cx
+            .windows()
+            .into_iter()
+            .find(|viewer| *viewer != handle)
+            .expect("click opens the image window");
+        let mut visual = VisualTestContext::from_window(viewer_handle, cx);
+        settle(&mut visual);
+        let viewer = visual.update(|window, cx| {
+            window
+                .root::<gpui_kit::base::Root>()
+                .flatten()
+                .unwrap()
+                .read(cx)
+                .view()
+                .clone()
+                .downcast::<ImageViewer>()
+                .unwrap()
+        });
+        let before = visual.update(|_, cx| viewer.read(cx).pixels.clone().unwrap());
+        std::fs::write(&path, svg(900)).unwrap();
+        let button = visual
+            .debug_bounds("image-reload")
+            .expect("the enlarged view has a reload button in its toolbar");
+        assert!(button.top() >= visual.debug_bounds("image-canvas").unwrap().bottom());
+        visual.simulate_click(button.center(), gpui_kit::Modifiers::default());
+        settle(&mut visual);
+        visual.update(|_, cx| {
+            let after = viewer
+                .read(cx)
+                .pixels
+                .clone()
+                .expect("the image loads again");
+            assert!(!Arc::ptr_eq(&before, &after));
+            // SVGs rasterize at the display scale; 600 → 900 is the change made on disk.
+            assert_eq!(
+                after.size(0).width.0 * 2,
+                before.size(0).width.0 * 3,
+                "reload reads the current file"
+            );
+        });
     }
 
     #[gpui_kit::test]

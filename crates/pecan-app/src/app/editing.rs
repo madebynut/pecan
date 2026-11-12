@@ -1,4 +1,5 @@
 //! Source sessions, asynchronous preview/save, and one shared unsaved-changes guard.
+mod recovery;
 mod reload;
 mod save;
 #[cfg(test)]
@@ -13,6 +14,9 @@ use gpui_kit::{
 };
 use pecan_document::Document;
 use std::{sync::Arc, time::Duration};
+
+pub(super) use recovery::Drafts;
+pub(crate) use recovery::{install as install_recovery, offer as offer_recovery};
 
 #[derive(Clone, Copy)]
 pub(super) enum SaveMode {
@@ -82,6 +86,23 @@ impl Tab {
 struct Readers(Vec<(AnyWindowHandle, WeakEntity<Reader>)>);
 impl Global for Readers {}
 
+/// Drafts the user chose not to save during the quit in progress, by tab and revision.
+///
+/// The approvals stay out of each session's dirty flag: cancelling a later window's
+/// prompt must leave earlier windows' drafts protected.
+#[derive(Default)]
+struct QuitApprovals(Vec<(EntityId, u64)>);
+impl Global for QuitApprovals {}
+
+fn quit_approved(tab: &Tab, cx: &App) -> bool {
+    tab.edit.as_ref().is_some_and(|edit| {
+        !edit.busy
+            && cx.try_global::<QuitApprovals>().is_some_and(|approvals| {
+                approvals.0.contains(&(tab.view.entity_id(), edit.revision))
+            })
+    })
+}
+
 pub(super) fn register(window: &mut Window, cx: &mut Context<Reader>) {
     if !cx.has_global::<Readers>() {
         cx.set_global(Readers::default());
@@ -99,6 +120,8 @@ pub(super) fn register(window: &mut Window, cx: &mut Context<Reader>) {
                 reader.close_window(window, cx);
                 false
             } else {
+                // Every draft was saved; drop copies the ticker has not removed yet.
+                reader.discard_all_drafts(cx);
                 true
             }
         })
@@ -123,7 +146,40 @@ pub(crate) fn request_close_window(handle: AnyWindowHandle, cx: &mut App) -> boo
     true
 }
 
+/// Open files the system hands to a running app in the frontmost reader window.
+///
+/// Returns `false` when no reader window is open, so the caller can create one.
+pub(crate) fn open_in_front(paths: Vec<std::path::PathBuf>, cx: &mut App) -> bool {
+    let active = cx.active_window();
+    let target = cx.try_global::<Readers>().and_then(|readers| {
+        let live = || {
+            readers
+                .0
+                .iter()
+                .filter_map(|(window, reader)| Some((*window, reader.upgrade()?)))
+        };
+        live()
+            .find(|(window, _)| Some(*window) == active)
+            .or_else(|| live().next_back())
+    });
+    let Some((handle, reader)) = target else {
+        return false;
+    };
+    handle
+        .update(cx, |_, window, cx| {
+            window.activate_window();
+            reader.update(cx, |reader, cx| reader.open_paths(paths, cx));
+        })
+        .is_ok()
+}
+
+/// Start quitting: every window with unsaved drafts asks before the app exits.
 pub(crate) fn request_quit(cx: &mut App) {
+    cx.set_global(QuitApprovals::default());
+    continue_quit(cx);
+}
+
+fn continue_quit(cx: &mut App) {
     let pending = cx.try_global::<Readers>().and_then(|readers| {
         readers.0.iter().find_map(|(window, reader)| {
             let reader = reader.upgrade()?;
@@ -131,7 +187,7 @@ pub(crate) fn request_quit(cx: &mut App) {
                 .read(cx)
                 .tabs
                 .iter()
-                .any(Tab::protected)
+                .any(|tab| tab.protected() && !quit_approved(tab, cx))
                 .then_some((*window, reader))
         })
     });
@@ -145,6 +201,27 @@ pub(crate) fn request_quit(cx: &mut App) {
             })
         });
     } else {
+        // Every window agreed: only now do the declined drafts stop guarding their windows.
+        let readers: Vec<_> = cx.try_global::<Readers>().map_or_else(Vec::new, |readers| {
+            readers
+                .0
+                .iter()
+                .filter_map(|(_, reader)| reader.upgrade())
+                .collect()
+        });
+        for reader in readers {
+            reader.update(cx, |reader, cx| {
+                // Each draft was saved or declined, so none should be offered at next launch.
+                reader.discard_all_drafts(cx);
+                for index in 0..reader.tabs.len() {
+                    if quit_approved(&reader.tabs[index], cx)
+                        && let Some(edit) = &mut reader.tabs[index].edit
+                    {
+                        edit.dirty = false;
+                    }
+                }
+            });
+        }
         cx.quit();
     }
 }
@@ -557,7 +634,11 @@ impl Reader {
                             plan.approved.push((id, revision));
                             reader.request_close(plan, window, cx);
                         }
-                        _ => {}
+                        _ => {
+                            if matches!(plan.finish, Finish::Quit) {
+                                cx.set_global(QuitApprovals::default());
+                            }
+                        }
                     }
                     cx.notify();
                 });
@@ -567,22 +648,32 @@ impl Reader {
         }
         match plan.finish {
             Finish::Tabs => {
+                self.discard_drafts(plan.ids.iter().copied(), cx);
                 if !self.tabs.is_empty() {
                     self.remove_tabs(&plan.ids, window, cx);
                 }
             }
-            Finish::Window => window.remove_window(),
+            Finish::Window => {
+                self.discard_all_drafts(cx);
+                window.remove_window();
+            }
             Finish::Quit => {
-                // Approved drafts are discarded only after the entire window's guard succeeds.
-                for tab in &mut self.tabs {
-                    if let Some(edit) = &mut tab.edit {
-                        edit.dirty = false;
-                    }
-                }
-                cx.defer(request_quit);
+                // Approved drafts are discarded only when the app actually exits; until then
+                // they stay dirty, so a cancelled prompt in another window loses nothing.
+                let approved: Vec<_> = self
+                    .tabs
+                    .iter()
+                    .filter_map(|tab| {
+                        let edit = tab.edit.as_ref()?;
+                        edit.dirty.then_some((tab.view.entity_id(), edit.revision))
+                    })
+                    .collect();
+                cx.default_global::<QuitApprovals>().0.extend(approved);
+                cx.defer(continue_quit);
             }
             Finish::Reload => {
                 if let Some(id) = plan.ids.first() {
+                    self.discard_drafts([*id], cx);
                     self.reload_source(*id, window, cx);
                 }
             }

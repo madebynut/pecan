@@ -27,7 +27,7 @@ impl Client {
             .user_agent(concat!("Pecan/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
-            .redirect_policy(reqwest::redirect::Policy::limited(10))
+            .redirect_policy(redirect_policy(10))
             .pool_max_idle_per_host(2)
             .pool_idle_timeout(Duration::from_secs(30))
             .build()
@@ -76,10 +76,8 @@ impl HttpClient for Client {
             let (parts, body) = request.into_parts();
             let redirect = match parts.extensions.get::<RedirectPolicy>() {
                 Some(RedirectPolicy::NoFollow) => reqwest::redirect::Policy::none(),
-                Some(RedirectPolicy::FollowLimit(count)) => {
-                    reqwest::redirect::Policy::limited(*count as usize)
-                }
-                _ => reqwest::redirect::Policy::limited(10),
+                Some(RedirectPolicy::FollowLimit(count)) => redirect_policy(*count as usize),
+                _ => redirect_policy(10),
             };
             let timeout = parts
                 .extensions
@@ -130,6 +128,75 @@ impl HttpClient for Client {
     }
 }
 
+/// Follow at most `limit` redirects that neither downgrade HTTPS nor leave the public internet.
+///
+/// Document images load without a click, so a public URL must not be able to bounce the
+/// request to a router, a cloud metadata endpoint or another service on the local network.
+/// Hostnames are not resolved here; only address literals and `localhost` are recognized.
+fn redirect_policy(limit: usize) -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(move |attempt| {
+        if attempt.previous().len() > limit {
+            return attempt.error("too many redirects");
+        }
+        let decision = match (attempt.previous().first(), attempt.previous().last()) {
+            (Some(origin), Some(previous)) => redirect_allowed(origin, previous, attempt.url()),
+            _ => Ok(()),
+        };
+        match decision {
+            Ok(()) => attempt.follow(),
+            Err(reason) => attempt.error(reason),
+        }
+    })
+}
+
+fn redirect_allowed(
+    origin: &url::Url,
+    previous: &url::Url,
+    target: &url::Url,
+) -> Result<(), &'static str> {
+    if previous.scheme() == "https" && target.scheme() != "https" {
+        return Err("refusing a redirect from HTTPS to an insecure URL");
+    }
+    if is_internal(target) && !is_internal(origin) {
+        return Err("refusing a redirect from a public host to a local network address");
+    }
+    Ok(())
+}
+
+fn is_internal(url: &url::Url) -> bool {
+    use std::net::{Ipv4Addr, Ipv6Addr};
+    fn v4(ip: Ipv4Addr) -> bool {
+        let [a, b, ..] = ip.octets();
+        ip.is_loopback()
+            || ip.is_private()
+            || ip.is_link_local()
+            || ip.is_unspecified()
+            || ip.is_broadcast()
+            // Carrier-grade NAT, 100.64.0.0/10.
+            || (a == 100 && (64..128).contains(&b))
+    }
+    fn v6(ip: Ipv6Addr) -> bool {
+        let first = ip.segments()[0];
+        ip.is_loopback()
+            || ip.is_unspecified()
+            || (first & 0xfe00) == 0xfc00
+            || (first & 0xffc0) == 0xfe80
+            || ip.to_ipv4_mapped().is_some_and(v4)
+    }
+    match url.host() {
+        Some(url::Host::Ipv4(ip)) => v4(ip),
+        Some(url::Host::Ipv6(ip)) => v6(ip),
+        Some(url::Host::Domain(domain)) => {
+            let domain = domain.trim_end_matches('.');
+            domain.eq_ignore_ascii_case("localhost")
+                || domain
+                    .rsplit_once('.')
+                    .is_some_and(|(_, top)| top.eq_ignore_ascii_case("localhost"))
+        }
+        None => true,
+    }
+}
+
 /// Removing an offscreen image cancels its download instead of leaving detached work.
 struct CancelOnDrop(tokio::task::JoinHandle<Result<Response<AsyncBody>>>);
 impl Drop for CancelOnDrop {
@@ -172,6 +239,34 @@ mod tests {
             let client = Client::new().unwrap();
             drop(client);
         });
+    }
+
+    #[test]
+    fn redirects_cannot_downgrade_or_reach_the_local_network_from_public_hosts() {
+        let url = |text: &str| url::Url::parse(text).unwrap();
+        let public = url("https://example.com/a.png");
+        for target in [
+            "http://example.com/a.png",
+            "https://127.0.0.1/a.png",
+            "https://169.254.169.254/latest/meta-data",
+            "https://10.0.0.1/a.png",
+            "https://192.168.1.1/a.png",
+            "https://[::1]/a.png",
+            "https://[fd00::1]/a.png",
+            "https://[::ffff:127.0.0.1]/a.png",
+            "https://localhost/a.png",
+            "https://printer.localhost/a.png",
+        ] {
+            assert!(
+                redirect_allowed(&public, &public, &url(target)).is_err(),
+                "{target}"
+            );
+        }
+        assert!(redirect_allowed(&public, &public, &url("https://cdn.example.net/a.png")).is_ok());
+        let plain = url("http://example.com/a.png");
+        assert!(redirect_allowed(&plain, &plain, &url("https://example.com/a.png")).is_ok());
+        let local = url("http://127.0.0.1:8080/a.png");
+        assert!(redirect_allowed(&local, &local, &url("http://localhost:8080/b.png")).is_ok());
     }
 
     #[test]

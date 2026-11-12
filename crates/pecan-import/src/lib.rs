@@ -4,6 +4,11 @@ use std::{
     fs,
     io::Read as _,
     path::{Path, PathBuf},
+    sync::{
+        Arc, Condvar, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
 };
 
 use anydoc::{
@@ -16,6 +21,11 @@ use thiserror::Error;
 
 /// Total extracted image bytes per imported document, independent of compressed input size.
 const MAX_IMAGE_BYTES: usize = 32 * 1024 * 1024;
+/// Longest wait for one conversion. Legitimate 32 MiB inputs finish well within it.
+const CONVERSION_DEADLINE: Duration = Duration::from_secs(120);
+/// Conversions still running after their deadline; new ones wait until these finish.
+const MAX_OVERDUE: usize = 2;
+static OVERDUE: AtomicUsize = AtomicUsize::new(0);
 
 /// The reading presentation available for the source file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,6 +96,12 @@ enum ErrorKind {
     Conversion(#[from] anydoc::ConvertError),
     #[error("重排内容超过阅读预算：{0}")]
     Index(#[from] pecan_document::ParseDocumentError),
+    #[error("文档转换超过 2 分钟，已停止等待；文件可能过于复杂或已损坏")]
+    Timeout,
+    #[error("仍有超时的文档在后台转换，请稍后再试")]
+    Busy,
+    #[error("文档转换程序异常")]
+    Crashed,
 }
 
 /// Whether a path names one of the formats supported by local reading.
@@ -144,6 +160,14 @@ fn load_inner(path: &Path) -> Result<LoadedDocument, ErrorKind> {
     let format = Format::from_bytes(&bytes)
         .or_else(|| Format::from_path(path))
         .ok_or(ErrorKind::Unsupported)?;
+    // Converters parse untrusted archives and PDFs without cancellation points, so a
+    // pathological file runs on its own thread and the caller stops waiting at the deadline.
+    run_with_deadline(CONVERSION_DEADLINE, move || {
+        convert(bytes, format, original)
+    })
+}
+
+fn convert(bytes: Vec<u8>, format: Format, original: PathBuf) -> Result<LoadedDocument, ErrorKind> {
     // Release each intermediate as soon as its successor exists; conversions run
     // two at a time, so source bytes and extracted assets would otherwise overlap.
     if format == Format::Pdf {
@@ -210,6 +234,59 @@ fn load_inner(path: &Path) -> Result<LoadedDocument, ErrorKind> {
     })
 }
 
+enum Slot<T> {
+    Pending,
+    Done(Result<T, ErrorKind>),
+    Abandoned,
+}
+
+/// Run `job` on a dedicated thread and give up waiting after `deadline`.
+///
+/// An abandoned job keeps running until it returns, then drops its result. At most
+/// [`MAX_OVERDUE`] abandoned jobs may exist, which bounds their CPU and memory use.
+fn run_with_deadline<T: Send + 'static>(
+    deadline: Duration,
+    job: impl FnOnce() -> Result<T, ErrorKind> + Send + 'static,
+) -> Result<T, ErrorKind> {
+    if OVERDUE.load(Ordering::SeqCst) >= MAX_OVERDUE {
+        return Err(ErrorKind::Busy);
+    }
+    let shared = Arc::new((Mutex::new(Slot::Pending), Condvar::new()));
+    let worker = shared.clone();
+    std::thread::Builder::new()
+        .name("pecan-import".into())
+        // Nested document structures recurse in the converters.
+        .stack_size(16 * 1024 * 1024)
+        .spawn(move || {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job))
+                .unwrap_or(Err(ErrorKind::Crashed));
+            let (slot, ready) = &*worker;
+            let mut slot = slot
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if matches!(*slot, Slot::Abandoned) {
+                OVERDUE.fetch_sub(1, Ordering::SeqCst);
+            } else {
+                *slot = Slot::Done(result);
+                ready.notify_one();
+            }
+        })?;
+    let (slot, ready) = &*shared;
+    let slot = slot
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let (mut slot, _) = ready
+        .wait_timeout_while(slot, deadline, |slot| matches!(slot, Slot::Pending))
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    match std::mem::replace(&mut *slot, Slot::Abandoned) {
+        Slot::Done(result) => result,
+        _ => {
+            OVERDUE.fetch_add(1, Ordering::SeqCst);
+            Err(ErrorKind::Timeout)
+        }
+    }
+}
+
 fn image_extension(media_type: &str) -> Option<&'static str> {
     Some(match media_type {
         "image/png" => "png",
@@ -268,5 +345,35 @@ fn adapt_inlines(inlines: &mut [Inline], targets: &[Option<String>], original: &
             Inline::Link { content, .. } => adapt_inlines(content, targets, original),
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn slow_conversions_time_out_and_release_their_overdue_slot() {
+        assert_eq!(
+            run_with_deadline(Duration::from_secs(5), || Ok(7)).unwrap(),
+            7
+        );
+        let started = std::time::Instant::now();
+        let result = run_with_deadline(Duration::from_millis(50), || {
+            std::thread::sleep(Duration::from_millis(300));
+            Ok(())
+        });
+        assert!(matches!(result, Err(ErrorKind::Timeout)));
+        assert!(started.elapsed() < Duration::from_millis(250));
+        assert!(OVERDUE.load(Ordering::SeqCst) >= 1);
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while OVERDUE.load(Ordering::SeqCst) > 0 && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(
+            OVERDUE.load(Ordering::SeqCst),
+            0,
+            "a finished job frees its slot"
+        );
     }
 }

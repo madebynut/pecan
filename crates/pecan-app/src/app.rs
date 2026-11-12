@@ -1,6 +1,8 @@
 mod editing;
 mod exports;
-pub(crate) use editing::{request_close_window, request_quit};
+pub(crate) use editing::{
+    install_recovery, offer_recovery, open_in_front, request_close_window, request_quit,
+};
 mod history;
 #[cfg(test)]
 mod regression;
@@ -97,6 +99,9 @@ pub(crate) struct Reader {
     _watch_task: Task<()>,
     edit_job: Option<Task<()>>,
     close_prompt: bool,
+    /// Files from the command line or a drop that open one after another, last first.
+    queued: Vec<PathBuf>,
+    drafts: editing::Drafts,
 }
 
 /// The bundled guide is immutable and references no local files; reopened Help tabs share it.
@@ -119,7 +124,7 @@ fn welcome_view(
 
 impl Reader {
     pub(crate) fn new(
-        initial: Option<PathBuf>,
+        initial: impl IntoIterator<Item = PathBuf>,
         launch: pecan_config::startup::Launch,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -243,16 +248,34 @@ impl Reader {
             _watch_task: watch_task,
             edit_job: None,
             close_prompt: false,
+            queued: Vec::new(),
+            drafts: editing::Drafts::new(cx),
         };
         editing::register(window, cx);
-        if let Some(path) = initial {
-            if path.is_dir() {
-                reader.open_folder(path, cx);
-            } else {
-                reader.open_file(path, cx);
+        reader.open_paths(initial.into_iter().collect(), cx);
+        reader
+    }
+    /// Open the first folder as the workspace and every file as a tab, in order.
+    fn open_paths(&mut self, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
+        let (folders, files): (Vec<_>, Vec<_>) = paths.into_iter().partition(|path| path.is_dir());
+        if let Some(folder) = folders.into_iter().next() {
+            self.open_folder(folder, cx);
+        }
+        // A tab load supersedes the previous one, so files open sequentially.
+        let pending = std::mem::take(&mut self.queued);
+        self.queued = files.into_iter().rev().collect();
+        self.queued.extend(pending);
+        if self.load_job.is_none() {
+            self.open_queued(cx);
+        }
+    }
+    fn open_queued(&mut self, cx: &mut Context<Self>) {
+        while let Some(path) = self.queued.pop() {
+            self.open_file(path, cx);
+            if self.load_job.is_some() {
+                break;
             }
         }
-        reader
     }
     fn dialog(&mut self, target: PathKind, cx: &mut Context<Self>) {
         let selection = cx.prompt_for_paths(PathPromptOptions {
@@ -306,7 +329,7 @@ impl Reader {
         let worker_path = path.clone();
         let background = cx.background_spawn(async move {
             let _permit = workspace::CONVERSION_SLOTS.acquire().await;
-            let identity = std::fs::canonicalize(&worker_path)?;
+            let identity = pecan_document::files::canonicalize(&worker_path)?;
             workspace::load(&worker_path).map(|loaded| (identity, loaded))
         });
         self.load_job = Some(cx.spawn(async move |weak, cx| {
@@ -386,25 +409,10 @@ impl Reader {
                             if let Some(tab) = reader.tabs.get(reader.active) {
                                 tab.view.update(cx, |view, cx| view.suspend(cx));
                             }
-                            while reader.tabs.len() >= MAX_TABS
-                                || reader
-                                    .tabs
-                                    .iter()
-                                    .map(|tab| tab.source_bytes(cx))
-                                    .sum::<usize>()
-                                    + bytes
-                                    > MAX_OPEN_BYTES
-                            {
-                                if reader.tabs.is_empty() {
-                                    break;
-                                }
-                                let Some(index) = reader.tabs.iter().position(|tab| !tab.protected()) else {
-                                    reader.status = "打开文档已达预算，请先保存并关闭部分标签".into();
-                                    cx.notify();
-                                    return;
-                                };
-                                reader.tabs.remove(index);
-                                if index < reader.active { reader.active -= 1; }
+                            if !reader.make_room(bytes, cx) {
+                                reader.status = "打开文档已达预算，请先保存并关闭部分标签".into();
+                                cx.notify();
+                                return;
                             }
                             reader.tabs.push(Tab {
                                 path: Some(path.clone()),
@@ -442,7 +450,37 @@ impl Reader {
                 }
                 cx.notify();
             });
+            let _ = weak.update(cx, |reader, cx| {
+                if reader.load_revision == revision {
+                    reader.load_job = None;
+                    reader.open_queued(cx);
+                }
+            });
         }));
+    }
+    /// Close unprotected tabs until one more document of `bytes` fits the tab and byte budgets.
+    fn make_room(&mut self, bytes: usize, cx: &mut Context<Self>) -> bool {
+        while self.tabs.len() >= MAX_TABS
+            || self
+                .tabs
+                .iter()
+                .map(|tab| tab.source_bytes(cx))
+                .sum::<usize>()
+                + bytes
+                > MAX_OPEN_BYTES
+        {
+            if self.tabs.is_empty() {
+                break;
+            }
+            let Some(index) = self.tabs.iter().position(|tab| !tab.protected()) else {
+                return false;
+            };
+            self.tabs.remove(index);
+            if index < self.active {
+                self.active -= 1;
+            }
+        }
+        true
     }
     fn watch(&mut self, path: &std::path::Path) {
         // Each watcher owns an FSEvents stream and thread; reuse it across tab switches and reloads.
@@ -457,12 +495,26 @@ impl Reader {
         self.changed = Arc::new(AtomicBool::new(false));
         let changed = self.changed.clone();
         let watched = path.to_path_buf();
+        // Backends may report the resolved directory (macOS reports `/private/var` for
+        // `/var`), so also match the file name inside the canonical parent.
+        let resolved = std::sync::OnceLock::new();
         let watcher = notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
             if let Ok(event) = result
                 && (event.kind.is_modify() || event.kind.is_create() || event.kind.is_remove())
             {
+                let resolved: &Option<PathBuf> = resolved.get_or_init(|| {
+                    let parent = watched.parent()?;
+                    let name = watched.file_name()?;
+                    pecan_document::files::canonicalize(parent)
+                        .ok()
+                        .map(|parent| parent.join(name))
+                });
                 // Editors often save through a temporary file and atomic rename.
-                if event.paths.iter().any(|p| p == &watched) {
+                if event
+                    .paths
+                    .iter()
+                    .any(|p| p == &watched || resolved.as_ref() == Some(p))
+                {
                     changed.store(true, Ordering::Relaxed);
                 }
             }
@@ -503,7 +555,7 @@ impl Reader {
         let worker_path = path.clone();
         let background = cx.background_spawn(async move {
             let _permit = workspace::DIRECTORY_SLOTS.acquire().await;
-            let identity = std::fs::canonicalize(&worker_path)?;
+            let identity = pecan_document::files::canonicalize(&worker_path)?;
             workspace::entries(&worker_path, 0).map(|entries| (identity, entries))
         });
         self.folder_job = Some(cx.spawn(async move |weak, cx| {
@@ -1453,6 +1505,11 @@ impl Render for Reader {
                     }
                 }),
             )
+            .on_drop(
+                cx.listener(|reader, paths: &gpui_kit::ExternalPaths, _, cx| {
+                    reader.open_paths(paths.paths().to_vec(), cx);
+                }),
+            )
             .on_action(cx.listener(|reader, _: &Open, _, cx| reader.dialog(PathKind::File, cx)))
             .on_action(cx.listener(|reader, _: &OriginalPdf, _, cx| reader.show_original_pdf(cx)))
             .on_action(
@@ -1587,6 +1644,7 @@ impl Render for Reader {
                             .truncate()
                             .child(self.status.clone()),
                     )
+                    .children(crate::update::status_notice(cx))
                     .when(!self.tabs.is_empty(), |bar| {
                         bar.child(
                             div()
@@ -1605,6 +1663,73 @@ impl Render for Reader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[cfg(target_os = "macos")]
+    #[ignore = "Requires a Metal graphical session; set PECAN_METAL_OUTPUT to keep the frames"]
+    fn failed_network_image_renders_a_skeleton_with_corner_reload() {
+        use gpui_kit::{AppContext, HeadlessAppContext, WindowOptions};
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("network.md");
+        // Port 9 (discard) refuses connections, so the download fails at once.
+        std::fs::write(
+            &path,
+            "# 网络图片\n\n加载失败的网络图片：\n\n![失败](http://127.0.0.1:9/missing.png)\n\n后面的正文。\n",
+        )
+        .unwrap();
+        let mut headless = HeadlessAppContext::with_platform(
+            Arc::new(gpui_apple::AppleTextSystem::new()),
+            Arc::new(crate::assets::ReaderAssets),
+            gpui_platform::current_headless_renderer,
+        );
+        headless.allow_parking();
+        let (handle, _) = headless.update(|cx| {
+            gpui_kit::init(cx);
+            crate::fonts::install(cx);
+            cx.set_http_client(crate::network::client());
+            gpui_kit::open_window(
+                WindowOptions {
+                    window_bounds: Some(gpui_kit::WindowBounds::Windowed(gpui_kit::Bounds::new(
+                        Default::default(),
+                        gpui_kit::size(px(1100.), px(760.)),
+                    ))),
+                    ..Default::default()
+                },
+                cx,
+                |window, cx| {
+                    cx.new(|cx| {
+                        Reader::new(
+                            Some(path.clone()),
+                            pecan_config::startup::Launch::Returning,
+                            window,
+                            cx,
+                        )
+                    })
+                },
+            )
+            .unwrap()
+        });
+        for theme in ["light", "dark"] {
+            headless.update(|cx| {
+                Preferences::shared(cx).update(cx, |prefs, cx| {
+                    prefs.change(|data| data.theme = theme.into(), cx)
+                });
+            });
+            for _ in 0..20 {
+                std::thread::sleep(Duration::from_millis(50));
+                headless.run_until_parked();
+                headless
+                    .update_window(handle, |_, window, cx| window.draw(cx).clear(cx))
+                    .unwrap();
+            }
+            let image = headless.capture_screenshot(handle).unwrap();
+            if let Ok(output) = std::env::var("PECAN_METAL_OUTPUT") {
+                image
+                    .save(PathBuf::from(output).join(format!("image-skeleton-{theme}.png")))
+                    .unwrap();
+            }
+        }
+    }
+
     #[test]
     #[cfg(target_os = "macos")]
     #[ignore = "Requires a Metal graphical session"]

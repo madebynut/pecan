@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use pecan_document::MAX_DOCUMENT_BYTES;
+use pecan_document::{MAX_DOCUMENT_BYTES, files};
 
 /// A source save failed without deliberately replacing a newer external edit.
 #[derive(Debug, thiserror::Error)]
@@ -34,7 +34,7 @@ pub fn save(path: &Path, previous: &str, source: &str) -> Result<PathBuf, SaveEr
     if source.len() > MAX_DOCUMENT_BYTES {
         return Err(SaveError::TooLarge);
     }
-    let target = fs::canonicalize(path)?;
+    let target = files::canonicalize(path)?;
     let metadata = fs::metadata(&target)?;
     if metadata.permissions().readonly() {
         return Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied).into());
@@ -68,7 +68,7 @@ pub fn save(path: &Path, previous: &str, source: &str) -> Result<PathBuf, SaveEr
     if length != previous.len() || current.finalize() != blake3::hash(previous.as_bytes()) {
         return Err(SaveError::Conflict);
     }
-    temporary.persist(&target).map_err(|error| error.error)?;
+    files::persist(temporary, &target)?;
     Ok(target)
 }
 

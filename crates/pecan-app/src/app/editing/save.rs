@@ -135,7 +135,9 @@ impl Reader {
                     );
                     let checked = path.clone();
                     let identity = cx
-                        .background_spawn(async move { std::fs::canonicalize(checked).ok() })
+                        .background_spawn(async move {
+                            pecan_document::files::canonicalize(&checked).ok()
+                        })
                         .await;
                     let duplicate = weak.update(cx, |reader, _| {
                         reader.tabs.iter().any(|tab| {
@@ -164,7 +166,7 @@ impl Reader {
                         .await?;
                         let loaded = pecan_import::load(&path)?;
                         Ok(Some(Saved {
-                            identity: std::fs::canonicalize(&path)?,
+                            identity: pecan_document::files::canonicalize(&path)?,
                             path,
                             document: Arc::new(loaded.document),
                             resources: Some(Arc::new(loaded.resources)),
@@ -267,7 +269,8 @@ impl Reader {
 /// Drop trailing spaces and tabs on save, the way Cursor's `trimTrailingWhitespace` does.
 ///
 /// Whitespace the caret is still inside is kept, so saving does not eat the end of the line
-/// being edited. `caret` is a UTF-8 byte offset. Returns the cleaned text and the deleted
+/// being edited. A line of text ending in two or more spaces is a Markdown hard line break,
+/// so its trailing whitespace is kept as written. `caret` is a UTF-8 byte offset. Returns the cleaned text and the deleted
 /// byte ranges in the original.
 fn trim_trailing_whitespace(text: &str, caret: usize) -> Option<Trimmed> {
     let mut cleaned = String::with_capacity(text.len());
@@ -284,7 +287,13 @@ fn trim_trailing_whitespace(text: &str, caret: usize) -> Option<Trimmed> {
             body_end -= 1;
         }
         let body = &text[line_start..body_end];
-        let content_len = body.trim_end_matches([' ', '\t']).len();
+        let trimmed = body.trim_end_matches([' ', '\t']);
+        // Two or more trailing spaces after text are a Markdown hard line break.
+        let content_len = if !trimmed.is_empty() && body.ends_with("  ") {
+            body.len()
+        } else {
+            trimmed.len()
+        };
         let caret_on_line = caret >= line_start && caret <= body_end;
         let keep = if caret_on_line && caret > line_start + content_len {
             caret - line_start
@@ -357,18 +366,25 @@ mod tests {
 
     #[test]
     fn trailing_spaces_and_tabs_are_removed_except_around_the_caret() {
-        let trimmed = trim_trailing_whitespace("alpha  \nbeta\t \n\t \nend ", 0).unwrap();
+        let trimmed = trim_trailing_whitespace("alpha \nbeta\t \n\t \nend ", 0).unwrap();
         assert_eq!(trimmed.cleaned, "alpha\nbeta\n\nend");
         assert_eq!(trimmed.map_offset(0), 0);
-        assert_eq!(trimmed.map_offset(7), 5);
+        assert_eq!(trimmed.map_offset(6), 5);
 
-        let kept = trim_trailing_whitespace("alpha  \nbeta\t \n", 7).unwrap();
-        assert_eq!(kept.cleaned, "alpha  \nbeta\n");
-        assert!(trim_trailing_whitespace("alpha  \nbeta\n", 7).is_none());
+        let kept = trim_trailing_whitespace("alpha \nbeta\t \n", 6).unwrap();
+        assert_eq!(kept.cleaned, "alpha \nbeta\n");
+        assert!(trim_trailing_whitespace("alpha \nbeta\n", 6).is_none());
 
-        let partial = trim_trailing_whitespace("alpha   \r\n", 6).unwrap();
+        let partial = trim_trailing_whitespace("alpha \t \r\n", 6).unwrap();
         assert_eq!(partial.cleaned, "alpha \r\n");
         assert_eq!(partial.map_offset(6), 6);
         assert_eq!(partial.map_offset(8), 6);
+    }
+
+    #[test]
+    fn markdown_hard_breaks_survive_the_save_trim() {
+        assert!(trim_trailing_whitespace("first  \nsecond   \r\nthird\t  \nlast", 0).is_none());
+        let trimmed = trim_trailing_whitespace("first  \n   \nsecond \n", 0).unwrap();
+        assert_eq!(trimmed.cleaned, "first  \n\nsecond\n");
     }
 }
