@@ -143,6 +143,11 @@ struct FontSelect {
     get: fn(&PreferencesData) -> &str,
 }
 
+struct FontField {
+    get: fn(&PreferencesData) -> &str,
+    set: fn(&mut PreferencesData, String),
+}
+
 struct SettingsPanel {
     prefs: Entity<Preferences>,
     fonts: [FontSelect; 7],
@@ -153,42 +158,39 @@ impl SettingsPanel {
         let prefs = Preferences::shared(cx);
         let choices = font_choices(cx.text_system().all_font_names());
         let data = prefs.read(cx).data.clone();
-        let fields: [(
-            fn(&PreferencesData) -> &str,
-            fn(&mut PreferencesData, String),
-        ); 7] = [
-            (
-                |data| data.ui_chinese_font.as_str(),
-                |data, value| data.ui_chinese_font = value,
-            ),
-            (
-                |data| data.ui_font.as_str(),
-                |data, value| data.ui_font = value,
-            ),
-            (
-                |data| data.chinese_font.as_str(),
-                |data, value| data.chinese_font = value,
-            ),
-            (
-                |data| data.english_font.as_str(),
-                |data, value| data.english_font = value,
-            ),
-            (
-                |data| data.code_font.as_str(),
-                |data, value| data.code_font = value,
-            ),
-            (
-                |data| data.mermaid_chinese_font.as_str(),
-                |data, value| data.mermaid_chinese_font = value,
-            ),
-            (
-                |data| data.mermaid_english_font.as_str(),
-                |data, value| data.mermaid_english_font = value,
-            ),
+        let fields = [
+            FontField {
+                get: |data| data.ui_chinese_font.as_str(),
+                set: |data, value| data.ui_chinese_font = value,
+            },
+            FontField {
+                get: |data| data.ui_font.as_str(),
+                set: |data, value| data.ui_font = value,
+            },
+            FontField {
+                get: |data| data.chinese_font.as_str(),
+                set: |data, value| data.chinese_font = value,
+            },
+            FontField {
+                get: |data| data.english_font.as_str(),
+                set: |data, value| data.english_font = value,
+            },
+            FontField {
+                get: |data| data.code_font.as_str(),
+                set: |data, value| data.code_font = value,
+            },
+            FontField {
+                get: |data| data.mermaid_chinese_font.as_str(),
+                set: |data, value| data.mermaid_chinese_font = value,
+            },
+            FontField {
+                get: |data| data.mermaid_english_font.as_str(),
+                set: |data, value| data.mermaid_english_font = value,
+            },
         ];
         let mut subscriptions = vec![cx.observe(&prefs, |_, _, cx| cx.notify())];
         let mut fonts = Vec::with_capacity(fields.len());
-        for (get, set) in fields {
+        for FontField { get, set } in fields {
             let current: SharedString = get(&data).to_string().into();
             let selected = choices
                 .iter()
