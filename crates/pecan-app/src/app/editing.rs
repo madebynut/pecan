@@ -155,6 +155,7 @@ enum Finish {
     Window,
     Quit,
     Reload,
+    Reading,
 }
 
 pub(super) struct ClosePlan {
@@ -263,7 +264,15 @@ impl Reader {
             return;
         };
         if self.tabs[self.active].source_mode() {
-            self.prepare_reading(id, PreviewRequest::Reading, window, cx);
+            let dirty = self.tabs[self.active]
+                .edit
+                .as_ref()
+                .is_some_and(|edit| edit.dirty);
+            if dirty {
+                self.confirm_reading(id, window, cx);
+            } else {
+                self.prepare_reading(id, PreviewRequest::Reading, window, cx);
+            }
         } else {
             self.search_open = false;
             self.search_revision += 1;
@@ -275,6 +284,53 @@ impl Reader {
             edit.editor.focus_handle(cx).focus(window, cx);
             cx.notify();
         }
+    }
+
+    /// Leaving a dirty source asks with the same choices as closing a tab.
+    fn confirm_reading(&mut self, id: EntityId, window: &mut Window, cx: &mut Context<Self>) {
+        if self.close_prompt {
+            return;
+        }
+        if self.edit_job.is_some() {
+            self.status = "正在处理源码，请稍候".into();
+            cx.notify();
+            return;
+        }
+        let Some(title) = self
+            .tabs
+            .iter()
+            .find(|tab| tab.view.entity_id() == id)
+            .map(|tab| tab.title.clone())
+        else {
+            return;
+        };
+        let prompt = window.prompt(
+            PromptLevel::Warning,
+            &format!("要保存对“{title}”的修改吗？"),
+            Some("未保存的修改不会写入文件。选择“不保存”仍会进入阅读模式，源码草稿会保留。"),
+            &["保存", "不保存", "取消"],
+            cx,
+        );
+        self.close_prompt = true;
+        cx.spawn_in(window, async move |weak, cx| {
+            let answer = prompt.await.ok();
+            let _ = weak.update_in(cx, |reader, window, cx| {
+                reader.close_prompt = false;
+                match answer {
+                    Some(0) => {
+                        let mut plan = ClosePlan::tabs(vec![id]);
+                        plan.finish = Finish::Reading;
+                        reader.save_source(id, SaveMode::Existing, Some(plan), window, cx);
+                    }
+                    Some(1) => {
+                        reader.prepare_reading(id, PreviewRequest::Reading, window, cx);
+                    }
+                    _ => {}
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     pub(super) fn prepare_reading(
@@ -372,6 +428,8 @@ impl Reader {
         match request {
             PreviewRequest::Reading => {
                 edit.show_source = false;
+                // The green check is only a confirmation of the save just made.
+                edit.saved_revision = None;
                 self.focus.focus(window, cx);
             }
             PreviewRequest::Export(format) => self.export_document(format, window, cx),
@@ -526,6 +584,11 @@ impl Reader {
             Finish::Reload => {
                 if let Some(id) = plan.ids.first() {
                     self.reload_source(*id, window, cx);
+                }
+            }
+            Finish::Reading => {
+                if let Some(id) = plan.ids.first() {
+                    self.prepare_reading(*id, PreviewRequest::Reading, window, cx);
                 }
             }
         }

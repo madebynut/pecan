@@ -825,18 +825,8 @@ impl Reader {
         }
     }
     fn resize_text(&mut self, delta: f64, cx: &mut Context<Self>) {
-        let source = self.tabs.get(self.active).is_some_and(Tab::source_mode);
         self.prefs.update(cx, |prefs, cx| {
-            prefs.change(
-                |data| {
-                    if source {
-                        data.code_size += delta;
-                    } else {
-                        data.font_size += delta;
-                    }
-                },
-                cx,
-            )
+            prefs.change(|data| data.font_size += delta, cx)
         });
     }
     fn toggle_theme(&mut self, cx: &mut Context<Self>) {
@@ -896,11 +886,9 @@ impl Reader {
         });
     }
     fn render_titlebar(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let source_tools = self.source_tools(cx);
-        // Keep the centered title clear of each additional 28px tool and its 4px gap.
-        let title_width = (window.viewport_size().width
-            - px(crate::platform::choose(640., 844.) + source_tools.len() as f32 * 64.))
-        .max(px(0.));
+        // Keep the centered title clear of the permanent tools.
+        let title_width =
+            (window.viewport_size().width - px(crate::platform::choose(640., 844.))).max(px(0.));
         div()
             .debug_selector(|| "reader-titlebar".into())
             .relative()
@@ -994,7 +982,6 @@ impl Reader {
                                         reader.reload_action(window, cx)
                                     })),
                             )
-                            .children(source_tools)
                             .child(
                                 Button::new("reading-focus")
                                     .small()
@@ -1400,7 +1387,18 @@ impl Render for Reader {
             .when(self.search_open, |column| {
                 column.child(self.render_search_bar(cx))
             })
-            .child(document_body);
+            .child(
+                v_flex()
+                    .id("document-surface")
+                    .relative()
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .child(document_body)
+                    .when(active_tab.is_some_and(Tab::source_mode), |surface| {
+                        surface.child(self.reading_corner(cx))
+                    }),
+            );
         let body = h_flex()
             .relative()
             .flex_1()
@@ -1545,16 +1543,9 @@ impl Render for Reader {
             .on_action(cx.listener(|reader, _: &IncreaseText, _, cx| reader.resize_text(1., cx)))
             .on_action(cx.listener(|reader, _: &DecreaseText, _, cx| reader.resize_text(-1., cx)))
             .on_action(cx.listener(|reader, _: &ResetText, _, cx| {
-                let source = reader.tabs.get(reader.active).is_some_and(Tab::source_mode);
                 reader.prefs.update(cx, |prefs, cx| {
                     prefs.change(
-                        |data| {
-                            if source {
-                                data.code_size = PreferencesData::default().code_size;
-                            } else {
-                                data.font_size = PreferencesData::default().font_size;
-                            }
-                        },
+                        |data| data.font_size = PreferencesData::default().font_size,
                         cx,
                     )
                 })
@@ -1597,14 +1588,12 @@ impl Render for Reader {
                             .child(self.status.clone()),
                     )
                     .when(!self.tabs.is_empty(), |bar| {
-                        bar.child(div().flex_shrink_0().pl_3().child(format!(
-                            "{} px · {reading_mode}",
-                            if source_mode {
-                                prefs.code_size
-                            } else {
-                                prefs.font_size
-                            }
-                        )))
+                        bar.child(
+                            div()
+                                .flex_shrink_0()
+                                .pl_3()
+                                .child(format!("{} px · {reading_mode}", prefs.font_size)),
+                        )
                     }),
             )
             .when_some(drag_cursor, |root, cursor| {

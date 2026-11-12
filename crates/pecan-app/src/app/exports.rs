@@ -1,8 +1,7 @@
 //! Shared export actions and useful reading context-menu commands.
 use super::Reader;
 use crate::{
-    CopyDocument, CopyFilePath, ExportHtml, ExportPdf, ExportWord, Find, FocusReading, Reload,
-    RevealFile,
+    CopyFilePath, ExportHtml, ExportPdf, ExportWord, Find, FocusReading, Reload, RevealFile,
     export::{self, DocumentFormat, Snapshot},
     reading::DocumentView,
 };
@@ -89,9 +88,8 @@ impl Reader {
                                 cx.write_to_clipboard(ClipboardItem::new_string(selected.clone()));
                             }),
                     )
-                    .menu("复制 Markdown 全文", Box::new(CopyDocument))
-                    .menu("查找…", Box::new(Find))
                     .menu("查看源码", Box::new(crate::ToggleSource))
+                    .menu("查找…", Box::new(Find))
                     .separator()
                     .submenu("导出文档", window, cx, |menu, _, _| {
                         menu.menu("PDF…", Box::new(ExportPdf))
@@ -169,14 +167,11 @@ mod tests {
         });
         // GPUI Kit 0.9 skips the disabled selection item on the first Down.
         visual.simulate_keystrokes("down enter");
-        visual.update(|_, cx| {
+        visual.run_until_parked();
+        reader.read_with(&visual.cx, |reader, _| {
             assert!(
-                cx.read_from_clipboard()
-                    .unwrap()
-                    .text()
-                    .unwrap()
-                    .contains("碧果"),
-                "the selected context action copies the full document"
+                reader.tabs[reader.active].source_mode(),
+                "查看源码 opens the Markdown source"
             );
         });
     }

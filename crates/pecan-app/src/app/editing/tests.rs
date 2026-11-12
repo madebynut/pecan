@@ -64,6 +64,8 @@ fn editing_preview_saving_and_reopening_preserve_exact_markdown(cx: &mut TestApp
             reader.toggle_source(window, cx);
         })
     });
+    assert!(visual.cx.has_pending_prompt());
+    visual.cx.simulate_prompt_answer("不保存");
     super::super::tests::settle(&visual.cx);
     visual.update(|window, cx| {
         let state = reader.read(cx);
@@ -97,6 +99,91 @@ fn editing_preview_saving_and_reopening_preserve_exact_markdown(cx: &mut TestApp
 }
 
 #[gpui_kit::test]
+fn dirty_source_asks_before_switching_to_reading(cx: &mut TestAppContext) {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("leave.md");
+    std::fs::write(&path, "# Original").unwrap();
+    let (handle, reader) = open(cx, Some(path.clone()));
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.toggle_source(window, cx));
+        replace(&reader, "# Draft", window, cx);
+    })
+    .unwrap();
+    super::super::tests::settle(cx);
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.toggle_source(window, cx));
+    })
+    .unwrap();
+    assert!(cx.has_pending_prompt());
+    cx.simulate_prompt_answer("取消");
+    super::super::tests::settle(cx);
+    reader.read_with(cx, |state, cx| {
+        let tab = &state.tabs[state.active];
+        assert!(tab.source_mode());
+        assert_eq!(
+            tab.edit
+                .as_ref()
+                .unwrap()
+                .editor
+                .read(cx)
+                .text()
+                .to_string(),
+            "# Draft"
+        );
+    });
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "# Original");
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.toggle_source(window, cx));
+    })
+    .unwrap();
+    cx.simulate_prompt_answer("保存");
+    super::super::tests::settle(cx);
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "# Draft");
+    reader.read_with(cx, |state, _| {
+        assert!(!state.tabs[state.active].source_mode());
+    });
+}
+
+#[gpui_kit::test]
+fn save_trims_trailing_whitespace_and_keeps_the_caret_line(cx: &mut TestAppContext) {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("trim.md");
+    std::fs::write(&path, "alpha  \nbeta\t \n").unwrap();
+    let (handle, reader) = open(cx, Some(path.clone()));
+    let mut visual = VisualTestContext::from_window(handle, cx);
+    visual.dispatch_action(crate::ToggleSource);
+    visual.update(|window, cx| {
+        let editor = reader.read(cx).tabs[reader.read(cx).active]
+            .edit
+            .as_ref()
+            .unwrap()
+            .editor
+            .clone();
+        editor.update(cx, |editor, cx| editor.set_selected_range(7..7, cx));
+        reader.update(cx, |reader, cx| {
+            reader.save_active(SaveMode::Existing, window, cx);
+        });
+    });
+    super::super::tests::settle(&visual.cx);
+    visual.update(|window, cx| window.draw(cx).clear(cx));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "alpha  \nbeta\n");
+    reader.read_with(&visual.cx, |state, cx| {
+        assert_eq!(text(&reader, cx), "alpha  \nbeta\n");
+        assert_eq!(
+            state.tabs[state.active]
+                .edit
+                .as_ref()
+                .unwrap()
+                .editor
+                .read(cx)
+                .selected_range(),
+            7..7
+        );
+    });
+    assert!(visual.debug_bounds("source-saved").is_some());
+}
+
+#[gpui_kit::test]
 fn top_toolbar_tracks_real_save_success_and_reload_keeps_the_unsaved_guard(
     cx: &mut TestAppContext,
 ) {
@@ -114,14 +201,30 @@ fn top_toolbar_tracks_real_save_success_and_reload_keeps_the_unsaved_guard(
     let mut visual = VisualTestContext::from_window(handle, cx);
     visual.update(|window, cx| window.draw(cx).clear(cx));
     let toolbar = visual.debug_bounds("reader-titlebar").unwrap();
-    let toggle = visual.debug_bounds("toggle-source").unwrap();
-    assert!(toolbar.contains(&toggle.center()));
+    let column = visual.debug_bounds("document-column").unwrap();
+    assert!(visual.debug_bounds("toggle-source").is_none());
+    assert!(visual.debug_bounds("reading-eye").is_none());
     assert!(visual.debug_bounds("source-save").is_none());
     assert!(visual.debug_bounds("source-saved").is_none());
-    click(&mut visual, "toggle-source");
+    visual.dispatch_action(crate::ToggleSource);
+    visual.update(|window, cx| window.draw(cx).clear(cx));
+    let eye = visual.debug_bounds("reading-eye").unwrap();
+    assert!(
+        column.contains(&eye.center()) && !toolbar.contains(&eye.center()),
+        "the eye stays at the source corner"
+    );
+    assert!(eye.center().x > column.right() - px(64.));
+    assert!(eye.center().y < column.top() + px(96.));
+    assert!(visual.debug_bounds("source-save").is_none());
     assert!(reader.read_with(&visual.cx, |r, _| r.tabs[r.active].source_mode()));
     visual.update(|window, cx| replace(&reader, "# Edited", window, cx));
     super::super::tests::settle(&visual.cx);
+    visual.update(|window, cx| window.draw(cx).clear(cx));
+    let eye = visual.debug_bounds("reading-eye").unwrap();
+    let save = visual.debug_bounds("source-save").unwrap();
+    assert_eq!(eye.size, size(px(20.), px(20.)));
+    assert_eq!(save.size, size(px(16.), px(16.)));
+    assert!(visual.debug_bounds("source-saved").is_none());
     click(&mut visual, "source-save");
     super::super::tests::settle(&visual.cx);
     visual.update(|window, cx| window.draw(cx).clear(cx));
@@ -132,15 +235,29 @@ fn top_toolbar_tracks_real_save_success_and_reload_keeps_the_unsaved_guard(
         reader.read_with(&visual.cx, |reader, _| reader.status.clone())
     );
     let saved = visual.debug_bounds("source-saved").unwrap();
-    assert!(toolbar.contains(&saved.center()));
+    let eye = visual.debug_bounds("reading-eye").unwrap();
+    assert!(
+        column.contains(&saved.center()) && !toolbar.contains(&saved.center()),
+        "the saved check stays beside the eye"
+    );
+    assert!(saved.center().x < eye.center().x);
+    assert_eq!(saved.size, size(px(16.), px(16.)));
     assert!(visual.debug_bounds("source-save").is_none());
-    click(&mut visual, "toggle-source");
+    click(&mut visual, "reading-eye");
     visual.update(|window, cx| window.draw(cx).clear(cx));
     assert!(
-        visual.debug_bounds("source-saved").is_some(),
-        "saved status follows the tab into reading"
+        visual.debug_bounds("source-saved").is_none()
+            && visual.debug_bounds("reading-eye").is_none(),
+        "source corner controls hide in reading mode"
     );
-    click(&mut visual, "toggle-source");
+    assert!(!reader.read_with(&visual.cx, |r, _| r.tabs[r.active].source_mode()));
+    visual.dispatch_action(crate::ToggleSource);
+    visual.update(|window, cx| window.draw(cx).clear(cx));
+    assert!(
+        visual.debug_bounds("source-saved").is_none()
+            && visual.debug_bounds("source-save").is_none(),
+        "returning to source clears the saved check"
+    );
     visual.update(|window, cx| replace(&reader, "# Another edit", window, cx));
     super::super::tests::settle(&visual.cx);
     visual.update(|window, cx| window.draw(cx).clear(cx));
@@ -155,6 +272,7 @@ fn top_toolbar_tracks_real_save_success_and_reload_keeps_the_unsaved_guard(
         "a failed save cannot show success"
     );
     assert!(visual.debug_bounds("source-save").is_some());
+    assert!(visual.debug_bounds("reading-eye").is_some());
     click(&mut visual, "titlebar-reload");
     assert!(visual.cx.has_pending_prompt());
     visual.cx.simulate_prompt_answer("取消");
@@ -809,10 +927,25 @@ fn source_editor_native_frames_have_readable_highlights_in_both_themes() {
                 state.status
             );
         });
+        let scale = image.width() / 1280;
+        let top = (34 + 34) * scale;
+        let height = 48 * scale;
+        let outline = 230 * scale;
+        let left = image.width().saturating_sub(outline + 96 * scale);
+        let right = image.width().saturating_sub(outline);
         let green = image
             .rows()
-            .take(68)
-            .flatten()
+            .enumerate()
+            .filter(|(y, _)| {
+                let y = *y as u32;
+                y >= top && y < top + height
+            })
+            .flat_map(|(_, row)| {
+                row.enumerate().filter_map(|(x, pixel)| {
+                    let x = x as u32;
+                    (x >= left && x < right).then_some(pixel)
+                })
+            })
             .filter(|pixel| {
                 let [r, g, b, _] = pixel.0;
                 g > r.saturating_add(25) && g > b.saturating_add(15)
@@ -820,7 +953,7 @@ fn source_editor_native_frames_have_readable_highlights_in_both_themes() {
             .count();
         assert!(
             green > 20,
-            "{theme} must show the green saved icon in the top toolbar: {green}"
+            "{theme} must show the green saved check at the document corner: {green}"
         );
         let colors = image
             .rows()

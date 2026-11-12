@@ -3,9 +3,10 @@ use gpui_kit::{
     AnyWindowHandle, App, AppContext, Bounds, Context, Entity, Global, IntoElement, Render,
     SharedString, Subscription, Window, WindowBounds,
     component::{
-        ActiveTheme, IconName, Sizable, TitleBar,
+        ActiveTheme, IconName, IndexPath, Sizable, TitleBar,
         button::{Button, ButtonVariants},
         h_flex,
+        select::{SearchableVec, Select, SelectEvent, SelectItem, SelectState},
         setting::{
             NumberFieldOptions, SettingField, SettingGroup, SettingItem, SettingPage, Settings,
         },
@@ -112,21 +113,164 @@ impl Render for AboutPanel {
     }
 }
 
+#[derive(Clone)]
+struct FontChoice {
+    value: SharedString,
+    label: SharedString,
+}
+
+impl SelectItem for FontChoice {
+    type Value = SharedString;
+
+    fn title(&self) -> SharedString {
+        self.label.clone()
+    }
+
+    fn value(&self) -> &Self::Value {
+        &self.value
+    }
+
+    fn matches(&self, query: &str) -> bool {
+        let query = query.to_lowercase();
+        self.label.to_lowercase().contains(&query) || self.value.to_lowercase().contains(&query)
+    }
+}
+
+struct FontSelect {
+    state: Entity<SelectState<SearchableVec<FontChoice>>>,
+    /// Last preference value applied to the menu, so a render does not clear an in-progress search.
+    synced: SharedString,
+    get: fn(&PreferencesData) -> &str,
+}
+
 struct SettingsPanel {
     prefs: Entity<Preferences>,
-    installed_fonts: Vec<(SharedString, SharedString)>,
-    _subscription: Subscription,
+    fonts: [FontSelect; 7],
+    _subscriptions: Vec<Subscription>,
 }
 impl SettingsPanel {
-    fn new(_: &mut Window, cx: &mut Context<Self>) -> Self {
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let prefs = Preferences::shared(cx);
-        let subscription = cx.observe(&prefs, |_, _, cx| cx.notify());
-        let installed_fonts = font_options(cx.text_system().all_font_names());
+        let choices = font_choices(cx.text_system().all_font_names());
+        let data = prefs.read(cx).data.clone();
+        let fields: [(
+            fn(&PreferencesData) -> &str,
+            fn(&mut PreferencesData, String),
+        ); 7] = [
+            (
+                |data| data.ui_chinese_font.as_str(),
+                |data, value| data.ui_chinese_font = value,
+            ),
+            (
+                |data| data.ui_font.as_str(),
+                |data, value| data.ui_font = value,
+            ),
+            (
+                |data| data.chinese_font.as_str(),
+                |data, value| data.chinese_font = value,
+            ),
+            (
+                |data| data.english_font.as_str(),
+                |data, value| data.english_font = value,
+            ),
+            (
+                |data| data.code_font.as_str(),
+                |data, value| data.code_font = value,
+            ),
+            (
+                |data| data.mermaid_chinese_font.as_str(),
+                |data, value| data.mermaid_chinese_font = value,
+            ),
+            (
+                |data| data.mermaid_english_font.as_str(),
+                |data, value| data.mermaid_english_font = value,
+            ),
+        ];
+        let mut subscriptions = vec![cx.observe(&prefs, |_, _, cx| cx.notify())];
+        let mut fonts = Vec::with_capacity(fields.len());
+        for (get, set) in fields {
+            let current: SharedString = get(&data).to_string().into();
+            let selected = choices
+                .iter()
+                .position(|item| item.value == current)
+                .map(|row| IndexPath::default().row(row));
+            let state = cx.new(|cx| {
+                SelectState::new(SearchableVec::new(choices.clone()), selected, window, cx)
+                    .searchable(true)
+            });
+            subscriptions.push(cx.subscribe(
+                &state,
+                move |panel, _, event: &SelectEvent<SearchableVec<FontChoice>>, cx| {
+                    let SelectEvent::Confirm(Some(value)) = event else {
+                        return;
+                    };
+                    if get(&panel.prefs.read(cx).data) == value.as_ref() {
+                        return;
+                    }
+                    let value = value.to_string();
+                    panel.prefs.update(cx, |prefs, cx| {
+                        prefs.change(|data| set(data, value), cx);
+                    });
+                },
+            ));
+            fonts.push(FontSelect {
+                state,
+                synced: current,
+                get,
+            });
+        }
+        let Ok(fonts) = fonts.try_into() else {
+            panic!("seven font menus");
+        };
         Self {
             prefs,
-            installed_fonts,
-            _subscription: subscription,
+            fonts,
+            _subscriptions: subscriptions,
         }
+    }
+
+    /// Keep each font menu on the saved preference without rebuilding it every frame.
+    fn sync_fonts(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let current: Vec<SharedString> = {
+            let data = &self.prefs.read(cx).data;
+            self.fonts
+                .iter()
+                .map(|font| (font.get)(data).to_string().into())
+                .collect()
+        };
+        for (font, value) in self.fonts.iter_mut().zip(current) {
+            if font.synced == value {
+                continue;
+            }
+            font.state.update(cx, |state, cx| {
+                state.set_selected_value(&value, window, cx);
+            });
+            font.synced = value;
+        }
+    }
+
+    fn font_item(&self, index: usize, title: &str) -> SettingItem {
+        let state = self.fonts[index].state.clone();
+        let label = SharedString::from(title.to_string());
+        SettingItem::new(
+            title.to_string(),
+            SettingField::render(move |options, _, _| {
+                Select::new(&state)
+                    .accessibility_label(label.clone())
+                    .search_placeholder("搜索字体")
+                    .w(px(240.))
+                    .with_size(options.size())
+                    .disabled(options.is_disabled())
+                    .empty(|_, cx| {
+                        div()
+                            .px_3()
+                            .py_6()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("没有匹配的字体")
+                    })
+            }),
+        )
     }
     fn choice(
         &self,
@@ -174,27 +318,34 @@ impl SettingsPanel {
     }
 }
 
-fn font_options(mut names: Vec<String>) -> Vec<(SharedString, SharedString)> {
+fn font_choices(mut names: Vec<String>) -> Vec<FontChoice> {
     names.sort();
     names.dedup();
     let mut options = vec![
-        (pecan_mermaid::SYSTEM_UI_FONT.into(), "系统默认字体".into()),
-        (
-            pecan_mermaid::SYSTEM_MONO_FONT.into(),
-            "系统默认等宽字体".into(),
-        ),
+        FontChoice {
+            value: pecan_mermaid::SYSTEM_UI_FONT.into(),
+            label: "系统默认字体".into(),
+        },
+        FontChoice {
+            value: pecan_mermaid::SYSTEM_MONO_FONT.into(),
+            label: "系统默认等宽字体".into(),
+        },
     ];
     options.extend(
         names
             .into_iter()
             .filter(|name| !name.starts_with('.') && !name.trim().is_empty())
-            .map(|name| (name.clone().into(), name.into())),
+            .map(|name| FontChoice {
+                label: name.clone().into(),
+                value: name.into(),
+            }),
     );
     options
 }
 
 impl Render for SettingsPanel {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.sync_fonts(window, cx);
         let prefs = &self.prefs.read(cx).data;
         let ui_style = crate::ui::font_style(prefs);
         let ui_size = prefs.ui_size;
@@ -211,24 +362,24 @@ impl Render for SettingsPanel {
             ])),
             SettingPage::new("外观").icon(IconName::Sun).group(SettingGroup::new().title("界面").items([
                 self.choice("主题", vec![("system".into(),"跟随系统".into()),("light".into(),"浅色".into()),("dark".into(),"深色".into())], |p| &p.theme, |p,v| p.theme=v),
-                self.choice("界面中文字体", self.installed_fonts.clone(), |p| &p.ui_chinese_font, |p,v| p.ui_chinese_font=v),
-                self.choice("界面英文字体", self.installed_fonts.clone(), |p| &p.ui_font, |p,v| p.ui_font=v).description("默认中文跟随系统，英文使用系统等宽字体；可分别选择系统安装的字体。"),
+                self.font_item(0, "界面中文字体"),
+                self.font_item(1, "界面英文字体").description("默认中文跟随系统，英文使用系统等宽字体；可分别选择系统安装的字体。"),
                 self.number("界面字号",11.,20.,1.,|p|p.ui_size,|p,v|p.ui_size=v),
             ])),
             SettingPage::new("阅读").icon(IconName::BookOpen).group(SettingGroup::new().title("正文排版").items([
-                self.choice("中文字体", self.installed_fonts.clone(), |p| &p.chinese_font, |p,v|p.chinese_font=v),
-                self.choice("英文字体", self.installed_fonts.clone(), |p| &p.english_font, |p,v|p.english_font=v).description("默认中文跟随系统，英文使用系统等宽字体。中文作为回退；所选英文字体自带汉字时优先使用其字形。"),
+                self.font_item(2, "中文字体"),
+                self.font_item(3, "英文字体").description("默认中文跟随系统，英文使用系统等宽字体。中文作为回退；所选英文字体自带汉字时优先使用其字形。"),
                 self.number("正文字号",12.,32.,1.,|p|p.font_size,|p,v|p.font_size=v).description("默认 16px，独立于代码块字号。"),
                 self.number("行高",1.2,2.6,0.1,|p|p.line_height,|p,v|p.line_height=v),
                 self.number("正文宽度",480.,1600.,40.,|p|p.reading_width,|p,v|p.reading_width=v).description("默认 960px；窗口较窄时自动收缩，图片跟随正文可用宽度。"),
             ])).group(SettingGroup::new().title("代码块").items([
-                self.choice("代码字体", self.installed_fonts.clone(), |p| &p.code_font, |p,v|p.code_font=v).description("独立于正文字体，也用于行内 code 胶囊。"),
+                self.font_item(4, "代码字体").description("独立于正文字体，也用于行内 code 胶囊。"),
                 self.number("代码块字号",10.,32.,1.,|p|p.code_size,|p,v|p.code_size=v).description("默认 14px；不自动换行，长行支持水平滚动。"),
                 self.choice("缩进与 Tab 宽度", vec![("auto".into(),"自动识别".into()),("2".into(),"2 列".into()),("4".into(),"4 列".into()),("8".into(),"8 列".into())], |p| &p.code_tab_size, |p,v|p.code_tab_size=v).description("加载时按此宽度自动格式化支持的代码；块内可单独切换宽度。自动识别无法推断时使用 4 列。源 Markdown 不改写，未支持的语言保留原排版。"),
             ])),
             SettingPage::new("Mermaid").icon(gpui_kit::assets::IconName::Network).group(SettingGroup::new().title("图表字体").items([
-                self.choice("中文字体", self.installed_fonts.clone(), |p| &p.mermaid_chinese_font, |p,v|p.mermaid_chinese_font=v),
-                self.choice("英文字体", self.installed_fonts.clone(), |p| &p.mermaid_english_font, |p,v|p.mermaid_english_font=v).description("使用系统安装的字体；中英文分别排版，同时应用于正文图表和放大预览。"),
+                self.font_item(5, "中文字体"),
+                self.font_item(6, "英文字体").description("使用系统安装的字体；中英文分别排版，同时应用于正文图表和放大预览。"),
             ])),
             SettingPage::new("LaTeX").icon(gpui_kit::assets::IconName::Sigma).group(SettingGroup::new().title("LaTeX 排版").items([
                 self.choice("LaTeX 字体", vec![("stix".into(),"STIX Two Math".into()),("modern".into(),"Latin Modern Math".into())],|p|&p.math_font,|p,v|p.math_font=v).description("内置 OpenType MATH 字体，独立于正文；支持分式、矩阵、mhchem 与 chemfig。"),
@@ -271,6 +422,7 @@ impl Render for SettingsPanel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui_kit::component::select::SelectItem;
     #[gpui_kit::test]
     fn reading_navigation_toggles_and_keeps_the_active_page(cx: &mut gpui_kit::TestAppContext) {
         cx.update(gpui_kit::init);
@@ -302,14 +454,14 @@ mod tests {
 
     #[test]
     fn installed_font_options_keep_all_public_families_and_remove_duplicates() {
-        let options = font_options(vec![
+        let options = font_choices(vec![
             "DIN Alternate".into(),
             "Custom CJK".into(),
             "DIN Alternate".into(),
             ".Hidden".into(),
             "".into(),
         ]);
-        let values: Vec<_> = options.iter().map(|(value, _)| value.as_ref()).collect();
+        let values: Vec<_> = options.iter().map(|choice| choice.value.as_ref()).collect();
         assert_eq!(
             values,
             [
@@ -319,5 +471,16 @@ mod tests {
                 "DIN Alternate"
             ]
         );
+    }
+
+    #[test]
+    fn font_search_matches_the_visible_label_and_the_family_name() {
+        let choice = FontChoice {
+            value: "PingFang SC".into(),
+            label: "系统默认字体".into(),
+        };
+        assert!(SelectItem::matches(&choice, "默认"));
+        assert!(SelectItem::matches(&choice, "pingfang"));
+        assert!(!SelectItem::matches(&choice, "menlo"));
     }
 }

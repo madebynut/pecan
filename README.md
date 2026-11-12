@@ -4,7 +4,6 @@
   <p><strong>让技术文档，回归阅读。</strong></p>
   <p>以 Rust 与 GPUI 构建的原生桌面阅读器。<br />清晰的排版、流畅的图表、可分享的文档，收在一个安静的窗口里。</p>
   <p>
-    <a href="https://github.com/madebynut/pecan/releases">下载应用</a> ·
     <a href="docs/guide.md">使用指南</a> ·
     <a href="samples/welcome.md">功能示例</a> ·
     <a href="https://github.com/madebynut/pecan/issues">反馈问题</a>
@@ -65,17 +64,7 @@ PDF 保留可选择文字，Mermaid 和公式保留矢量；Word 输出原生可
 
 ## 开始使用
 
-1. 从 [Releases](https://github.com/madebynut/pecan/releases) 下载对应平台与架构的 ZIP，并核对 `SHA256SUMS.txt`。
-2. **macOS**：解压得到 `Pecan.app`，移入应用程序目录。**Windows**：解压整个目录后运行 `Pecan.exe`。
-3. 打开 Markdown 文档或文件夹，也可导入 Word、PDF；在设置中选择字体、主题和正文宽度。
-4. 使用大纲与搜索定位内容，切换「查看源码」编辑并保存，或通过「文件」菜单导出 PDF、Word、HTML。
-
-| 平台 | 架构 | 环境要求 |
-| :--- | :--- | :--- |
-| macOS | Apple Silicon / Intel | macOS 12+ |
-| Windows | x86_64 | Windows 10 / Windows 11；支持 DirectX 11 的图形环境 |
-
-发布包附第三方许可证与 SHA-256 校验文件。当前 macOS 包使用 ad-hoc 签名，尚未经过 Apple 公证；Windows 包尚未进行 Authenticode 签名，系统可能显示来源确认。
+打开 Markdown 文档或文件夹，也可导入 Word、PDF；在设置中选择字体、主题和正文宽度。使用大纲与搜索定位内容，切换「查看源码」编辑并保存，或通过「文件」菜单导出 PDF、Word、HTML。
 
 常用操作在 macOS 使用 `⌘`，Windows 使用 `Ctrl`：打开 `O`、查找 `F`、文件栏 `B`、大纲 `L`、关闭标签 `W`、设置 `,`。Windows 全屏使用 `F11`。首次启动显示欢迎文档；关闭最后一个标签默认保留空窗口，可在通用设置中更改。
 
@@ -103,8 +92,8 @@ cargo run --locked --release --bin Pecan
 
 ## 参与与致谢
 
-欢迎提交可复现的问题、排版样例和改进建议。阅读效果问题请附应用版本、操作系统、缩放比例以及去除敏感内容后的最小文档。
+欢迎提交可复现的问题、排版样例和改进建议。阅读效果问题请附操作系统、缩放比例以及去除敏感内容后的最小文档。
 
-Pecan 由 [GPUI Kit](https://github.com/longbridge/gpui-kit)、pulldown-cmark、Tree-sitter、mermaid-rs-renderer、resvg、mathra、krilla 和 anydoc 等开源项目支持；图标采用 Lucide 与 Devicon。完整许可证随源码及应用包提供，见 [licenses](licenses)。
+Pecan 由 [GPUI Kit](https://github.com/longbridge/gpui-kit)、pulldown-cmark、Tree-sitter、mermaid-rs-renderer、resvg、mathra、krilla 和 anydoc 等开源项目支持；图标采用 Lucide 与 Devicon。完整许可证随源码提供，见 [licenses](licenses)。
 
 项目以 [MIT License](LICENSE) 开源。
