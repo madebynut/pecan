@@ -278,7 +278,7 @@ mod tests {
             .unwrap()
         });
         settle(cx);
-        let identity = std::fs::canonicalize(&a).unwrap();
+        let identity = pecan_document::files::canonicalize(&a).unwrap();
         cx.update_window(handle, |_, window, cx| {
             window.draw(cx).clear(cx);
             let state = reader.read(cx);
@@ -412,7 +412,7 @@ mod tests {
                 for path in [&a, &b] {
                     recent.record(
                         Entry {
-                            path: std::fs::canonicalize(path).unwrap(),
+                            path: pecan_document::files::canonicalize(path).unwrap(),
                             kind: Kind::File,
                         },
                         cx,
@@ -452,7 +452,7 @@ mod tests {
             let state = reader.read(cx);
             assert_eq!(
                 state.tabs[state.active].identity,
-                Some(std::fs::canonicalize(&a).unwrap()),
+                Some(pecan_document::files::canonicalize(&a).unwrap()),
                 "uppercase filename search selects alpha"
             );
         });
@@ -465,7 +465,7 @@ mod tests {
             assert_eq!(state.tabs.len(), 3);
             assert_eq!(
                 state.tabs[state.active].identity,
-                Some(std::fs::canonicalize(&b).unwrap()),
+                Some(pecan_document::files::canonicalize(&b).unwrap()),
                 "arrow keys select beta"
             );
         });
