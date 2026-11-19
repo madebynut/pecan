@@ -74,6 +74,8 @@ try {
         # The zip is the primary package; an installer failure is reported without blocking it.
         if ($LASTEXITCODE -ne 0) {
             Write-Output "::warning::Inno Setup failed ($LASTEXITCODE); only the zip archive was built"
+            # Do not let the installer's exit code fail the step after the zip succeeded.
+            $global:LASTEXITCODE = 0
         } else {
             $Installer = Join-Path $Installers "$Name-Setup.exe"
             Invoke-Sign $Installer
@@ -88,3 +90,4 @@ try {
     if (Test-Path $StageRoot) { Remove-Item $StageRoot -Recurse -Force }
     Pop-Location
 }
+exit 0

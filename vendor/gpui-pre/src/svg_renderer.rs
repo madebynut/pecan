@@ -408,10 +408,11 @@ fn load_bundled_fonts(asset_source: &dyn AssetSource, db: &mut usvg::fontdb::Dat
         "fonts/lilex/Lilex-Regular.ttf",
     ];
     for path in font_paths {
+        // These fonts are optional: applications that ship none use system fonts instead.
         match asset_source.load(path) {
             Ok(Some(data)) => db.load_font_data(data.into_owned()),
-            Ok(None) => log::warn!("Bundled font not found: {path}"),
-            Err(error) => log::warn!("Failed to load bundled font {path}: {error}"),
+            Ok(None) => log::debug!("Bundled font not found: {path}"),
+            Err(error) => log::debug!("Bundled font unavailable {path}: {error}"),
         }
     }
 }

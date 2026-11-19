@@ -23,8 +23,10 @@ AppVersion={#Version}
 AppPublisher=madebynut
 AppPublisherURL=https://github.com/madebynut/pecan
 AppSupportURL=https://github.com/madebynut/pecan/issues
+; File version resources accept only four numbers; the full SemVer goes in the text field.
 VersionInfoVersion={#NumericVersion}
-VersionInfoProductVersion={#Version}
+VersionInfoProductVersion={#NumericVersion}
+VersionInfoProductTextVersion={#Version}
 DefaultDirName={autopf}\Pecan
 DefaultGroupName=Pecan
 DisableProgramGroupPage=yes
@@ -48,7 +50,10 @@ CloseApplications=yes
 RestartApplications=no
 
 [Languages]
+; Simplified Chinese is an unofficial translation that not every Inno Setup install ships.
+#if FileExists(AddBackslash(CompilerPath) + "Languages\ChineseSimplified.isl")
 Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+#endif
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
