@@ -6,7 +6,6 @@ target=${1:-$(rustc -vV | sed -n 's/^host: //p')}
 version=$(python3 scripts/release-version.py)
 cargo build --locked --release --bin Pecan --target "$target"
 arch=$(printf '%s' "$target" | cut -d- -f1)
-[ "$arch" != aarch64 ] || arch=arm64
 bundle="$project_root/dist/Pecan.app"
 mkdir -p "$project_root/dist"
 # Fresh inodes avoid stale macOS code-signing pages when replacing a previously launched binary.

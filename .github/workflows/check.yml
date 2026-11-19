@@ -40,6 +40,9 @@ jobs:
           - platform: Linux
             os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
+          - platform: Linux-aarch64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     steps:
