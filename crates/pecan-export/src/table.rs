@@ -119,13 +119,28 @@ fn cell_events<'src>(
                 )
             })
         };
-        Parser::new_with_broken_link_callback(
-            markdown.trim(),
-            options() - Options::ENABLE_TABLES,
-            Some(resolve),
-        )
-        .map(Event::into_static)
-        .collect::<Vec<_>>()
+        // GFM footnotes need their definitions, which live outside the cell. The
+        // document parse already resolved them: keep exactly the references it found.
+        let footnotes: Vec<_> = original
+            .iter()
+            .filter_map(|(event, _)| match event {
+                Event::FootnoteReference(label) => Some(label.to_lowercase()),
+                _ => None,
+            })
+            .collect();
+        let options = if footnotes.is_empty() {
+            options() - Options::ENABLE_TABLES
+        } else {
+            (options() - Options::ENABLE_TABLES) | Options::ENABLE_OLD_FOOTNOTES
+        };
+        Parser::new_with_broken_link_callback(markdown.trim(), options, Some(resolve))
+            .map(|event| match event {
+                Event::FootnoteReference(label) if !footnotes.contains(&label.to_lowercase()) => {
+                    Event::Text(format!("[^{label}]").into())
+                }
+                event => event.into_static(),
+            })
+            .collect::<Vec<_>>()
     };
     events.push(Event::End(TagEnd::TableCell));
     events
@@ -135,6 +150,26 @@ fn cell_events<'src>(
 mod tests {
     use super::*;
 
+    #[test]
+    fn rich_cells_keep_defined_footnote_references_only() {
+        let source = "| 内容 |\n| --- |\n| - 一[^Note]<br>- 二[^missing] |\n\n[^note]: 脚注正文\n";
+        let events: Vec<_> = events(source).collect();
+        assert!(
+            events.iter().any(|e| matches!(e, Event::Start(Tag::Item))),
+            "the cell is reparsed as a list"
+        );
+        assert!(events.contains(&Event::FootnoteReference("Note".into())));
+        assert!(
+            !events.iter().any(
+                |e| matches!(e, Event::FootnoteReference(label) if label.as_ref() == "missing")
+            )
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, Event::Text(text) if text.contains("[^missing]")))
+        );
+    }
     #[test]
     fn rich_cells_use_block_markdown_without_reinterpreting_code_or_escaped_html() {
         let source = "| 内容 |\n| --- |\n| 前言<br><br>- **bold**<br>- *italic*与~~removed~~、`<br>`<br><br>结尾 |\n| <ol start=\"3\"><li>第一项</li><li>第二项</li></ol> |\n| `* literal<br>`和\\<br> |\n| a\\|b |\n";

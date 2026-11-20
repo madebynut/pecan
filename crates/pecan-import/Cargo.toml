@@ -11,6 +11,7 @@ anydoc.workspace = true
 pecan-document.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
+url.workspace = true
 
 [lints]
 workspace = true

@@ -465,7 +465,8 @@ impl Pager<'_> {
             inlines,
             role: Role::Body,
             size: BODY_SIZE,
-            width: LIST_STEP,
+            // Right-aligned against the item; a long number such as `2024.` must not wrap.
+            width: f32::INFINITY,
             max_height: self.bottom() - self.top(),
             line_height: self.line_height,
             justify: false,
@@ -1781,6 +1782,33 @@ mod tests {
             .collect()
     }
 
+    #[test]
+    fn long_list_numbers_are_drawn_whole_on_one_line() {
+        let mut fonts = fonts();
+        let mut pager = pager(&mut fonts);
+        let rows = [Row {
+            head: false,
+            cells: vec![vec![cell_para(
+                cell_text("Item"),
+                ParaKind::Item,
+                LIST_STEP,
+                Some("2024."),
+            )]],
+        }];
+        pager.table(&[Alignment::None], &rows, 0.).unwrap();
+        let runs = runs(&pager.pages[0]);
+        let item = runs.iter().find(|(_, _, run)| *run == "Item").unwrap();
+        let marker: Vec<_> = runs
+            .iter()
+            .filter(|(_, baseline, run)| (baseline - item.1).abs() < 0.01 && *run != "Item")
+            .collect();
+        assert_eq!(
+            marker.iter().map(|(_, _, run)| *run).collect::<String>(),
+            "2024.",
+            "{runs:?}"
+        );
+        assert!(marker.iter().all(|(x, _, _)| *x < item.0));
+    }
     #[test]
     fn table_cell_paragraphs_stack_with_markers_and_hanging_indents() {
         let mut fonts = fonts();

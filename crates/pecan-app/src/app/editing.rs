@@ -48,6 +48,11 @@ impl Session {
         !self.dirty && self.revision > 0 && self.saved_revision == Some(self.revision)
     }
 
+    /// The document as last loaded or saved, which is what the file should contain.
+    pub(super) fn saved_document(&self) -> Arc<Document> {
+        self.saved.clone()
+    }
+
     pub(super) fn preview_pending(&self) -> bool {
         self.preview_revision != self.revision
     }
@@ -349,13 +354,18 @@ impl Reader {
     }
 
     pub(super) fn toggle_source(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self
+        if let Some(tab) = self
             .tabs
             .get(self.active)
-            .is_some_and(|tab| !tab.source_mode() && !tab.has_markdown_source())
+            .filter(|tab| !tab.source_mode() && !tab.has_markdown_source())
         {
-            self.status =
-                "仅 Markdown 文件支持查看源码；可在右键菜单「导出文档」中导出 Markdown".into();
+            // Only point at the export entry when the context menu actually offers it.
+            self.status = if tab.markdown_exportable() {
+                "仅 Markdown 文件支持查看源码；可在右键菜单「导出文档」中导出 Markdown"
+            } else {
+                "仅 Markdown 文件支持查看源码；这份文档无法完整转换为 Markdown，请使用原版查看"
+            }
+            .into();
             cx.notify();
             return;
         }

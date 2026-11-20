@@ -135,7 +135,7 @@ fn every_anydoc_format_opens_as_converted_markdown() {
             assert!(!is_markdown(path), "{name} has no Markdown source");
         }
     }
-    for name in ["note.md", "note.markdown", "note.mdown"] {
+    for name in ["note.md", "note.markdown", "note.mdown", "NOTE.MKD"] {
         assert!(supports(Path::new(name)));
         assert!(!is_convertible(Path::new(name)), "{name} is read directly");
     }
@@ -161,4 +161,26 @@ fn every_anydoc_format_opens_as_converted_markdown() {
         "{}",
         loaded.document.source()
     );
+}
+
+#[test]
+fn embedded_images_are_referenced_by_file_urls_that_resolve_to_their_assets() {
+    let loaded = load(&fixture("rich.docx")).unwrap();
+    let source = loaded.document.source();
+    let urls: Vec<_> = source
+        .match_indices("](")
+        .map(|(start, _)| {
+            let rest = &source[start + 2..];
+            let rest = rest.strip_prefix('<').unwrap_or(rest);
+            &rest[..rest.find(['>', ')', ' ']).unwrap()]
+        })
+        .collect();
+    assert!(!urls.is_empty(), "{source}");
+    for url in urls {
+        assert!(url.starts_with("file://"), "{url}");
+        assert!(!url.contains('\\'), "no native separators: {url}");
+        let path = url::Url::parse(url).unwrap().to_file_path().unwrap();
+        assert!(path.starts_with(loaded.resources.directory()), "{url}");
+        assert!(path.is_file(), "{url}");
+    }
 }

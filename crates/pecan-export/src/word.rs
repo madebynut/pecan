@@ -97,7 +97,14 @@ pub(super) async fn docx(snapshot: &Snapshot, client: Arc<dyn HttpClient>) -> Re
     );
     let source = super::document::export_markdown(snapshot.document.source());
     let mut parser = super::table::events(source.as_ref());
+    // An HTML block arrives one line per event; its tags, comments and
+    // `script`/`style` bodies may span lines, so lines are read as one fragment.
+    let mut html = String::new();
     while let Some(event) = parser.next() {
+        if !html.is_empty() && !matches!(event, Event::Html(_)) {
+            out.html(&std::mem::take(&mut html), &mut images, renderer)
+                .await?;
+        }
         match event {
             Event::Start(Tag::CodeBlock(kind)) => {
                 let language = match kind {
@@ -198,8 +205,13 @@ pub(super) async fn docx(snapshot: &Snapshot, client: Arc<dyn HttpClient>) -> Re
                     );
                 }
             }
-            Event::Html(raw) | Event::InlineHtml(raw) => {
-                if let Some(marker) = highlight_edge(&raw) {
+            Event::Html(ref raw) | Event::InlineHtml(ref raw) => {
+                let is_block = matches!(event, Event::Html(_));
+                if let Some(marker) = highlight_edge(raw) {
+                    if !html.is_empty() {
+                        out.html(&std::mem::take(&mut html), &mut images, renderer)
+                            .await?;
+                    }
                     match marker {
                         super::document::NoteMarker::Open { kind, titled } => {
                             ensure!(
@@ -215,8 +227,10 @@ pub(super) async fn docx(snapshot: &Snapshot, client: Arc<dyn HttpClient>) -> Re
                             out.note_end();
                         }
                     }
+                } else if is_block {
+                    html.push_str(raw);
                 } else {
-                    out.html(&raw, &mut images, renderer).await?;
+                    out.html(raw, &mut images, renderer).await?;
                 }
             }
             Event::Start(Tag::BlockQuote(kind)) => {
@@ -229,6 +243,9 @@ pub(super) async fn docx(snapshot: &Snapshot, client: Arc<dyn HttpClient>) -> Re
             event => out.event(event),
         }
         ensure!(out.size() <= MAX_OUTPUT, "Word 文档超过 128 MiB 导出预算");
+    }
+    if !html.is_empty() {
+        out.html(&html, &mut images, renderer).await?;
     }
     out.finish(snapshot)
 }
@@ -496,7 +513,8 @@ impl Docx {
                     self.frame_start(FrameStyle::Quote);
                 }
                 Tag::List(start) => {
-                    let level = self.list_depth();
+                    // numbering.xml defines Word's nine levels, 0 through 8.
+                    let level = self.list_depth().min(8);
                     let num = match start {
                         Some(start) => {
                             self.ordered
@@ -1203,14 +1221,8 @@ impl Docx {
 
     /// Raw HTML has no Word equivalent; keep its text, images, breaks and basic emphasis.
     async fn html(&mut self, raw: &str, images: &mut Images, renderer: &Renderer) -> Result<()> {
-        static TAG: LazyLock<regex::Regex> = LazyLock::new(|| {
-            regex::Regex::new(
-                r#"(?is)<!--.*?-->|<(/?)([a-z][a-z0-9]*)\b(?:[^>"']|"[^"]*"|'[^']*')*>"#,
-            )
-            .expect("valid pattern")
-        });
         let mut end = 0;
-        for tag in TAG.captures_iter(raw) {
+        for tag in super::document::HTML_TOKEN.captures_iter(raw) {
             let whole = tag.get(0).expect("regex has a full match");
             self.html_text(&raw[end..whole.start()]);
             end = whole.end();
@@ -1643,6 +1655,53 @@ mod tests {
         read_part(&mut export(&fixture(source)), "word/document.xml")
     }
 
+    #[test]
+    fn deep_lists_stay_within_words_nine_levels() {
+        let source: String = (0..12)
+            .map(|depth| format!("{}1. 第 {depth} 层\n", "   ".repeat(depth)))
+            .collect();
+        let mut package = export(&fixture(&source));
+        let pattern = regex::Regex::new(r#"w:ilvl(?: w:val)?="(\d+)""#).unwrap();
+        for part in ["word/document.xml", "word/numbering.xml"] {
+            let xml = read_part(&mut package, part);
+            let levels: Vec<u32> = pattern
+                .captures_iter(&xml)
+                .map(|c| c[1].parse().unwrap())
+                .collect();
+            assert!(!levels.is_empty(), "{part} has list levels");
+            assert!(levels.iter().all(|level| *level <= 8), "{part}: {levels:?}");
+        }
+        let xml = read_part(&mut package, "word/document.xml");
+        assert!(xml.contains("第 11 层"), "the deepest item is kept");
+    }
+    #[test]
+    fn raw_html_spanning_lines_drops_comments_and_styles_and_keeps_its_image() {
+        let directory = tempfile::tempdir().unwrap();
+        image::DynamicImage::new_rgb8(2, 2)
+            .save(directory.path().join("pixel.png"))
+            .unwrap();
+        let mut snapshot = fixture(super::super::RAW_HTML_FIXTURE);
+        snapshot.directory = directory.path().into();
+        let xml = read_part(&mut export(&snapshot), "word/document.xml");
+        let document = roxmltree::Document::parse(&xml).unwrap();
+        let text: String = document
+            .descendants()
+            .filter(|node| node.has_tag_name("t"))
+            .filter_map(|node| node.text())
+            .collect();
+        assert!(text.contains("Intro") && text.contains("Outro"), "{text}");
+        for hidden in ["secret", "missing", "color", "<img", "width="] {
+            assert!(!text.contains(hidden), "{hidden} leaked into {text}");
+        }
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| node.has_tag_name("blip"))
+                .count(),
+            1,
+            "the multi-line image is embedded"
+        );
+    }
     #[test]
     fn oversized_note_rows_allow_native_pagination_without_splitting_short_notes() {
         let xml = document_xml(include_str!("../../../samples/callout-pagination.md"));

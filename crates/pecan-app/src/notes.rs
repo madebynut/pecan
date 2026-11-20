@@ -155,18 +155,23 @@ fn marker(source: &str) -> Option<(AlertKind, &str)> {
 
 /// Drop the `[!TYPE]` line and one quote marker from the rest, leaving Markdown
 /// the nested reader can parse as lists and paragraphs.
-fn alert_body(source: &str) -> String {
+///
+/// `base` is the column the quote starts at. Inside a list item every later line
+/// repeats that indentation before its `>`; left in place, four or more spaces would
+/// turn the body into an indented code block.
+fn alert_body(source: &str, base: usize) -> String {
     let mut lines = source.lines();
     let _ = lines.next();
     let mut body = String::new();
     for line in lines {
         let indent = line.bytes().take_while(|byte| *byte == b' ').count();
-        let content = if indent <= 3
+        let content = if indent <= base + 3
             && let Some(rest) = line[indent..].strip_prefix('>')
         {
             rest.strip_prefix(' ').unwrap_or(rest)
         } else {
-            line
+            // A lazy continuation line: only the container's indentation is removed.
+            &line[indent.min(base)..]
         };
         body.push_str(content);
         body.push('\n');
@@ -191,7 +196,10 @@ impl MarkdownPlugin for Alerts {
         }
         let raw = cx.node_source(node)?;
         let (kind, title) = marker(raw)?;
-        let body = alert_body(raw);
+        let base = node
+            .position()
+            .map_or(0, |position| position.start.column.saturating_sub(1));
+        let body = alert_body(raw, base);
         let title = if title.is_empty() {
             kind.label().to_owned()
         } else {
@@ -658,6 +666,14 @@ mod tests {
     #[test]
     fn alert_body_keeps_lists_after_the_marker_line() {
         let source = "> [!WARNING] 注意\n> 第一段\n>\n> - 甲\n> - 乙\n";
-        assert_eq!(alert_body(source), "第一段\n\n- 甲\n- 乙\n");
+        assert_eq!(alert_body(source, 0), "第一段\n\n- 甲\n- 乙\n");
+        // Nested in a list, each line repeats the item's indentation before `>`.
+        let nested = "> [!WARNING]\n     > 注意事项\n     >\n     > - 子项\n     lazy";
+        assert_eq!(alert_body(nested, 5), "注意事项\n\n- 子项\nlazy\n");
+        assert_eq!(
+            alert_body("> [!NOTE]\n    > code-like", 0),
+            "    > code-like\n",
+            "a top-level line indented four spaces is not a quote line"
+        );
     }
 }

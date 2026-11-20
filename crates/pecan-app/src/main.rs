@@ -98,13 +98,7 @@ fn main() {
         os = std::env::consts::OS,
         "starting Pecan"
     );
-    // File managers pass every selected document; Windows Explorer and `.desktop` `%F`
-    // both deliver plain paths, while unknown `-flags` are ignored.
-    let initial: Vec<std::path::PathBuf> = std::env::args_os()
-        .skip(1)
-        .filter(|argument| !argument.to_string_lossy().starts_with('-'))
-        .map(std::path::PathBuf::from)
-        .collect();
+    let initial = launch_paths(std::env::args_os().skip(1), std::path::Path::exists);
     let application = gpui_kit::application()
         .with_http_client(network::client())
         .with_assets(assets::ReaderAssets)
@@ -158,6 +152,8 @@ fn main() {
         cx.bind_keys([
             KeyBinding::new("escape", diagram::CloseDiagram, Some("DiagramViewer")),
             KeyBinding::new("+", diagram::ZoomIn, Some("DiagramViewer")),
+            // `=` is the unshifted `+` key, as in the image viewer.
+            KeyBinding::new("=", diagram::ZoomIn, Some("DiagramViewer")),
             KeyBinding::new("-", diagram::ZoomOut, Some("DiagramViewer")),
             KeyBinding::new("escape", media::CloseImage, Some("ImageViewer")),
             KeyBinding::new("+", media::ZoomImageIn, Some("ImageViewer")),
@@ -336,12 +332,46 @@ fn native_window_options(title: &str, cx: &App, dimensions: Size<Pixels>) -> Win
     options
 }
 
+/// Documents named on the command line. File managers pass every selected document;
+/// Windows Explorer and `.desktop` `%F` both deliver plain paths. Unknown `-flags`
+/// (such as macOS `-psn_…`) are ignored, unless they name an existing file; after
+/// `--` every argument is a path.
+fn launch_paths(
+    arguments: impl IntoIterator<Item = std::ffi::OsString>,
+    exists: impl Fn(&std::path::Path) -> bool,
+) -> Vec<std::path::PathBuf> {
+    let mut paths_only = false;
+    arguments
+        .into_iter()
+        .filter(|argument| {
+            if paths_only {
+                return true;
+            }
+            if argument == "--" {
+                paths_only = true;
+                return false;
+            }
+            !argument.to_string_lossy().starts_with('-') || exists(std::path::Path::new(argument))
+        })
+        .map(std::path::PathBuf::from)
+        .collect()
+}
+/// Focused overlays that close themselves on Escape: popup and context menus, select
+/// and searchable-list dropdowns, the date picker, the app menu bar and the command list.
+const ESCAPE_OWNERS: [&str; 5] = ["PopupMenu", "List", "DatePicker", "AppMenuBar", "Command"];
+/// Whether Escape belongs to an open overlay rather than to fullscreen.
+fn overlay_owns_escape(context_stack: &[gpui_kit::KeyContext]) -> bool {
+    context_stack
+        .iter()
+        .any(|context| ESCAPE_OWNERS.iter().any(|owner| context.contains(owner)))
+}
 fn install_fullscreen_escape(cx: &mut App) {
     cx.intercept_keystrokes(|event, window, cx| {
         if event.keystroke.key == "escape"
             && window.is_fullscreen()
             && !window.has_active_dialog(cx)
             && !viewer::is_media_window(window, cx)
+            && !overlay_owns_escape(&event.context_stack)
         {
             window.toggle_fullscreen();
             cx.stop_propagation();
@@ -411,6 +441,65 @@ mod tests {
         );
     }
 
+    #[test]
+    fn launch_arguments_skip_flags_but_keep_dash_named_files() {
+        let arguments = ["-psn_0_12345", "note.md", "-笔记.md", "--", "-later.md"].map(Into::into);
+        let paths = launch_paths(arguments, |path| path == std::path::Path::new("-笔记.md"));
+        assert_eq!(
+            paths,
+            ["note.md", "-笔记.md", "-later.md"].map(std::path::PathBuf::from)
+        );
+    }
+    #[gpui_kit::test]
+    fn an_open_menu_takes_escape_before_fullscreen(cx: &mut TestAppContext) {
+        use gpui_kit::{Focusable as _, InteractiveElement as _};
+        struct Menu(gpui_kit::FocusHandle);
+        impl gpui_kit::Render for Menu {
+            fn render(
+                &mut self,
+                _: &mut gpui_kit::Window,
+                _: &mut gpui_kit::Context<Self>,
+            ) -> impl gpui_kit::IntoElement {
+                gpui_kit::div()
+                    .key_context("PopupMenu")
+                    .track_focus(&self.0)
+            }
+        }
+        impl gpui_kit::Focusable for Menu {
+            fn focus_handle(&self, _: &gpui_kit::App) -> gpui_kit::FocusHandle {
+                self.0.clone()
+            }
+        }
+        let (handle, menu) = cx.update(|cx| {
+            gpui_kit::init(cx);
+            install_fullscreen_escape(cx);
+            gpui_kit::open_window(TitleBar::window_options(), cx, |_, cx| {
+                cx.new(|cx| Menu(cx.focus_handle()))
+            })
+            .unwrap()
+        });
+        cx.update_window(handle, |_, window, cx| {
+            window.toggle_fullscreen();
+            menu.read(cx).focus_handle(cx).focus(window, cx);
+            window.draw(cx).clear(cx);
+        })
+        .unwrap();
+        cx.simulate_keystrokes(handle, "escape");
+        cx.update_window(handle, |_, window, cx| {
+            assert!(window.is_fullscreen(), "the focused menu owns Escape");
+            window.blur(cx);
+            window.draw(cx).clear(cx);
+        })
+        .unwrap();
+        cx.simulate_keystrokes(handle, "escape");
+        cx.update_window(handle, |_, window, _| {
+            assert!(
+                !window.is_fullscreen(),
+                "without a menu Escape exits fullscreen"
+            )
+        })
+        .unwrap();
+    }
     #[gpui_kit::test]
     fn escape_closes_dialog_before_exiting_fullscreen(cx: &mut TestAppContext) {
         let (handle, _) = cx.update(|cx| {

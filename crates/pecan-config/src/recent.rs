@@ -95,6 +95,7 @@ pub fn read(path: &Path) -> std::io::Result<History> {
 }
 fn save_inner(path: &Path, data: &History) -> anyhow::Result<()> {
     use std::io::Write as _;
+    let path = &crate::preferences::write_target(path)?;
     let parent = path
         .parent()
         .ok_or_else(|| anyhow::anyhow!("recent history path has no parent"))?;

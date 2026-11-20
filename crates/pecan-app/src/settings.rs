@@ -44,11 +44,23 @@ pub(crate) fn open(cx: &mut App) {
     }
 }
 
+#[derive(Default)]
+struct AboutWindow(Option<AnyWindowHandle>);
+impl Global for AboutWindow {}
+/// Show About, bringing an already open About window forward instead of adding another.
 pub(crate) fn about(cx: &mut App) {
+    if let Some(handle) = cx.try_global::<AboutWindow>().and_then(|about| about.0)
+        && handle
+            .update(cx, |_, window, _| window.activate_window())
+            .is_ok()
+    {
+        return;
+    }
     let mut options = crate::native_window_options("关于碧果", cx, size(px(460.), px(390.)));
     options.window_min_size = None;
-    if let Err(error) = gpui_kit::open_window(options, cx, |_, cx| cx.new(|_| AboutPanel)) {
-        tracing::error!(%error, "unable to open About window");
+    match gpui_kit::open_window(options, cx, |_, cx| cx.new(|_| AboutPanel)) {
+        Ok((handle, _)) => cx.set_global(AboutWindow(Some(handle))),
+        Err(error) => tracing::error!(%error, "unable to open About window"),
     }
 }
 
@@ -427,6 +439,23 @@ impl Render for SettingsPanel {
 mod tests {
     use super::*;
     use gpui_kit::component::select::SelectItem;
+    #[gpui_kit::test]
+    fn about_opens_once_and_reopens_after_closing(cx: &mut gpui_kit::TestAppContext) {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            about(cx);
+            about(cx);
+            assert_eq!(cx.windows().len(), 1, "a second About raises the first");
+        });
+        let handle = cx.update(|cx| cx.windows()[0]);
+        cx.update_window(handle, |_, window, _| window.remove_window())
+            .unwrap();
+        cx.run_until_parked();
+        cx.update(|cx| {
+            about(cx);
+            assert_eq!(cx.windows().len(), 1, "About opens again after it closed");
+        });
+    }
     #[gpui_kit::test]
     fn reading_navigation_toggles_and_keeps_the_active_page(cx: &mut gpui_kit::TestAppContext) {
         cx.update(gpui_kit::init);

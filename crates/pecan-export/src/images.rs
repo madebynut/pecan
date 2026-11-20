@@ -135,10 +135,10 @@ impl Images {
         let svg = svg_text(bytes)?;
         self.count_svg_resource(bytes)?;
         self.count_svg_parse(bytes.len())?;
-        let directory = if uri.starts_with("data:")
-            || uri.starts_with("http://")
-            || uri.starts_with("https://")
-        {
+        // A downloaded SVG is third-party content: its own data URLs still render,
+        // but its paths must never read files from this computer into the export.
+        let remote = uri.starts_with("http://") || uri.starts_with("https://");
+        let directory = if uri.starts_with("data:") || remote {
             self.directory.clone()
         } else {
             image_path(&self.directory, uri)?
@@ -158,6 +158,9 @@ impl Images {
                 svg_resource(&state, mime, data, options, None)
             }),
             resolve_string: Box::new(|href, options| {
+                if remote {
+                    return None;
+                }
                 let (data, directory) = {
                     let mut state = state.lock().expect("SVG resource lock poisoned");
                     if state.error.is_some() {
@@ -666,6 +669,39 @@ mod tests {
         assert_svg_image_visible(&diagram);
     }
 
+    #[test]
+    fn downloaded_svgs_cannot_embed_local_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let secret = directory.path().join("secret.png");
+        std::fs::write(&secret, colored_png()).unwrap();
+        let file_url = url::Url::from_file_path(&secret).unwrap().to_string();
+        let data = format!("data:image/png;base64,{}", STANDARD.encode(colored_png()));
+        for href in ["secret.png", file_url.as_str(), data.as_str()] {
+            let mut images = Images::new(directory.path(), crate::network::client());
+            let diagram = images
+                .svg_image(
+                    &Renderer::new(),
+                    "https://example.com/badge.svg",
+                    svg_with_image(href).as_bytes(),
+                )
+                .unwrap();
+            if href.starts_with("data:") {
+                assert_svg_image_visible(&diagram);
+            } else {
+                assert!(images.svg_rasters.is_empty(), "{href} was read");
+            }
+        }
+        // The same reference from a local SVG is the user's own file.
+        let mut images = Images::new(directory.path(), crate::network::client());
+        let diagram = images
+            .svg_image(
+                &Renderer::new(),
+                "local.svg",
+                svg_with_image("secret.png").as_bytes(),
+            )
+            .unwrap();
+        assert_svg_image_visible(&diagram);
+    }
     #[test]
     fn svg_data_and_local_images_cannot_bypass_the_decode_budget() {
         let directory = tempfile::tempdir().unwrap();

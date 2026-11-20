@@ -197,6 +197,17 @@ impl Reader {
                 draft: edit.editor.read(cx).text().clone(),
             });
         }
+        if !writes.is_empty() {
+            // A tab that stays open after its draft was discarded (reloading from disk
+            // keeps the same view) records again under the same name. No batch is in
+            // flight here, so no stale write can recreate the old draft any more.
+            let mut discarded = discarded
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            for write in &writes {
+                discarded.remove(&write.file);
+            }
+        }
         let mut removals = Vec::new();
         self.drafts.recorded.retain(|id, (file, _)| {
             let keep = dirty.contains(id);
@@ -526,12 +537,22 @@ fn prepare(file: PathBuf, snapshot: Snapshot) -> anyhow::Result<Option<Prepared>
     let draft_document = Document::parse(snapshot.draft.clone())?;
     let original = match (&snapshot.path, current) {
         (Some(path), Some(current)) if current == snapshot.saved_hash => {
-            let identity = pecan_document::files::canonicalize(path)?;
-            Some(Original {
-                path: path.clone(),
-                identity,
-                loaded: crate::workspace::load(path)?,
-            })
+            // The draft itself is intact; if its file cannot be indexed now, reopen the
+            // draft on its own rather than losing it.
+            match pecan_document::files::canonicalize(path)
+                .map_err(anyhow::Error::from)
+                .and_then(|identity| Ok((identity, crate::workspace::load(path)?)))
+            {
+                Ok((identity, loaded)) => Some(Original {
+                    path: path.clone(),
+                    identity,
+                    loaded,
+                }),
+                Err(error) => {
+                    tracing::warn!(%error, path = %path.display(), "reopening a draft without its file");
+                    None
+                }
+            }
         }
         _ => None,
     };
@@ -611,9 +632,10 @@ pub(crate) fn offer(cx: &mut App) {
                     .iter_mut()
                     .flat_map(|orphan| std::mem::take(&mut orphan.snapshots))
                     .collect();
-                let prepared = cx
+                let (prepared, failed) = cx
                     .background_spawn(async move {
-                        snapshots
+                        let mut failed = 0_usize;
+                        let prepared = snapshots
                             .into_iter()
                             .filter_map(|(file, snapshot)| match prepare(file.clone(), snapshot) {
                                 Ok(Some(prepared)) => Some(prepared),
@@ -622,15 +644,28 @@ pub(crate) fn offer(cx: &mut App) {
                                     None
                                 }
                                 Err(error) => {
+                                    // Set aside like an unreadable snapshot: kept on disk,
+                                    // but not offered again at every launch.
                                     tracing::warn!(%error, file = %file.display(), "unable to reopen a draft");
+                                    let _ = fs::rename(&file, file.with_extension("corrupt"));
+                                    failed += 1;
                                     None
                                 }
                             })
-                            .collect::<Vec<_>>()
+                            .collect::<Vec<_>>();
+                        (prepared, failed)
                     })
                     .await;
                 let _ = handle.update(cx, |_, window, cx| {
-                    reader.update(cx, |reader, cx| reader.restore_drafts(prepared, window, cx))
+                    reader.update(cx, |reader, cx| {
+                        reader.restore_drafts(prepared, window, cx);
+                        if failed > 0 {
+                            reader.status = format!(
+                                "{failed} 份草稿无法打开，已保留在恢复目录中"
+                            );
+                            cx.notify();
+                        }
+                    })
                 });
                 cx.background_spawn(async move {
                     for orphan in &mut orphans {
@@ -852,6 +887,63 @@ mod tests {
         );
     }
 
+    #[gpui_kit::test]
+    fn drafts_keep_being_recorded_after_a_reload_discards_the_old_one(cx: &mut TestAppContext) {
+        let root = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("note.md");
+        fs::write(&path, "# Saved\n").unwrap();
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::menus::install(cx);
+            install(root.path().to_path_buf(), cx);
+        });
+        let session = cx.update(|cx| cx.global::<DraftStore>().session.clone());
+        let (window, reader) = reader_window(cx, Some(path.clone()));
+        let edit = |text: &'static str, cx: &mut TestAppContext| {
+            cx.update_window(window, |_, window, cx| {
+                let editor = reader.read(cx).tabs[0]
+                    .edit
+                    .as_ref()
+                    .unwrap()
+                    .editor
+                    .clone();
+                editor.update(cx, |editor, cx| {
+                    let end = editor.text().to_string().encode_utf16().count();
+                    editor.replace_text_in_range(Some(0..end), text, window, cx);
+                });
+            })
+            .unwrap();
+            settle(cx);
+            reader.update(cx, |reader, cx| reader.sync_drafts(cx));
+            settle(cx);
+        };
+        cx.update_window(window, |_, window, cx| {
+            reader.update(cx, |reader, cx| reader.toggle_source(window, cx));
+        })
+        .unwrap();
+        edit("# First draft\n", cx);
+        assert_eq!(json_files(&session).len(), 1);
+        // Reload from disk and decline the draft: the tab and its view stay open.
+        cx.update_window(window, |_, window, cx| {
+            reader.update(cx, |reader, cx| reader.reload_action(window, cx));
+        })
+        .unwrap();
+        assert!(cx.has_pending_prompt());
+        cx.simulate_prompt_answer("不保存");
+        settle(cx);
+        assert!(
+            json_files(&session).is_empty(),
+            "the declined draft is gone"
+        );
+        edit("# Second draft\n", cx);
+        let recorded = json_files(&session);
+        assert_eq!(recorded.len(), 1, "later edits are still protected");
+        assert_eq!(
+            read_snapshot(&recorded[0]).unwrap().draft,
+            "# Second draft\n"
+        );
+    }
     #[test]
     fn drafts_reopen_in_place_only_when_the_file_is_unchanged() {
         let directory = tempfile::tempdir().unwrap();

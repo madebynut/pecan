@@ -77,7 +77,7 @@ impl Reader {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let active = self.tabs[self.active].view.entity_id();
+        let active = self.tabs.get(self.active).map(|tab| tab.view.entity_id());
         let old_index = self.active;
         self.tabs.retain(|tab| {
             let retained = !ids.contains(&tab.view.entity_id());
@@ -90,6 +90,8 @@ impl Reader {
             self.active = 0;
             self.load_revision += 1;
             self.load_job = None;
+            self.reload_revision += 1;
+            self.reload_job = None;
             self.queued.clear();
             self.search_revision += 1;
             self.search_job = None;
@@ -110,11 +112,11 @@ impl Reader {
             cx.notify();
             return;
         }
-        if let Some(index) = self
-            .tabs
-            .iter()
-            .position(|tab| tab.view.entity_id() == active)
-        {
+        if let Some(index) = active.and_then(|active| {
+            self.tabs
+                .iter()
+                .position(|tab| tab.view.entity_id() == active)
+        }) {
             self.active = index;
             cx.notify();
         } else {
@@ -134,14 +136,16 @@ impl Reader {
         if target >= self.tabs.len() || from == target {
             return;
         }
-        let active = self.tabs[self.active].view.entity_id();
+        let active = self.tabs.get(self.active).map(|tab| tab.view.entity_id());
         let tab = self.tabs.remove(from);
         self.tabs.insert(target, tab);
-        self.active = self
-            .tabs
-            .iter()
-            .position(|tab| tab.view.entity_id() == active)
-            .expect("moving a tab retains the active document");
+        self.active = active
+            .and_then(|active| {
+                self.tabs
+                    .iter()
+                    .position(|tab| tab.view.entity_id() == active)
+            })
+            .unwrap_or(target);
         cx.notify();
     }
     pub(super) fn render_tabs(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
@@ -295,9 +299,8 @@ impl Reader {
         if index >= self.tabs.len() {
             return;
         }
-        if index != self.active
-            && let Some(tab) = self.tabs.get(self.active)
-        {
+        let switched = index != self.active;
+        if switched && let Some(tab) = self.tabs.get(self.active) {
             tab.view.update(cx, |view, cx| view.suspend(cx));
         }
         self.active = index;
@@ -318,6 +321,17 @@ impl Reader {
         self.match_index = 0;
         if self.search_open {
             self.start_search(cx);
+        }
+        // Only the active tab is watched, so a Markdown file edited while its tab was in
+        // the background is compared now; an unchanged file costs one background read.
+        // Converted documents would need a full conversion to compare and are skipped.
+        let tab = &self.tabs[self.active];
+        if switched
+            && tab.path.is_some()
+            && tab.has_markdown_source()
+            && self.prefs.read(cx).data.auto_reload
+        {
+            self.external_change(cx);
         }
         cx.notify();
     }

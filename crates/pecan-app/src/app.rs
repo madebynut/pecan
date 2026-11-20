@@ -54,9 +54,6 @@ const MAX_OPEN_BYTES: usize = 64 * 1024 * 1024;
 /// One title-bar click; the 960px default reaches both limits in whole steps.
 const READING_WIDTH_STEP: f64 = 80.;
 
-/// Title-bar buttons own their presses. Without this, `TitleBar` sees a mouse
-/// down and click under every button: two quick clicks zoom the window as a
-/// title-bar double click, and a press that moves starts a window drag.
 /// Shown after the status-bar width resets, until the width changes again.
 fn width_reset_message() -> String {
     format!(
@@ -68,6 +65,9 @@ fn width_reset_message() -> String {
 fn width_label(width: f64) -> String {
     format!("页面宽度 {width:.0} px")
 }
+/// Title-bar buttons own their presses. Without this, `TitleBar` sees a mouse
+/// down and click under every button: two quick clicks zoom the window as a
+/// title-bar double click, and a press that moves starts a window drag.
 fn titlebar_controls() -> gpui_kit::Div {
     h_flex()
         .items_center()
@@ -107,13 +107,20 @@ pub(crate) struct Reader {
     search_open: bool,
     search: Entity<InputState>,
     matches: Arc<[SearchMatch]>,
+    /// The document `matches` index into; a source edit, save or reload replaces it.
+    matched: Option<Arc<pecan_document::Document>>,
     match_index: usize,
     status: String,
     load_revision: u64,
+    /// Reloads of an open tab run beside tab opens: neither may cancel the other.
+    reload_revision: u64,
     search_revision: u64,
     folder_revision: u64,
     _subscriptions: Vec<Subscription>,
     load_job: Option<Task<()>>,
+    reload_job: Option<Task<()>>,
+    /// Compares the watched file with the open text before an automatic reload.
+    change_job: Option<Task<()>>,
     search_job: Option<Task<()>>,
     tree_jobs: HashMap<PathBuf, Task<()>>,
     folder_job: Option<Task<()>>,
@@ -223,7 +230,7 @@ impl Reader {
                         if reader.changed.swap(false, Ordering::Relaxed)
                             && reader.prefs.read(cx).data.auto_reload
                         {
-                            reader.reload(cx);
+                            reader.external_change(cx);
                         }
                     })
                     .is_err()
@@ -257,9 +264,11 @@ impl Reader {
             search_open: false,
             search,
             matches: Arc::default(),
+            matched: None,
             match_index: 0,
             status: "就绪 · 本地文件 · 原生图表".into(),
             load_revision: 0,
+            reload_revision: 0,
             search_revision: 0,
             folder_revision: 0,
             _subscriptions: vec![
@@ -270,6 +279,8 @@ impl Reader {
                 bounds_subscription,
             ],
             load_job: None,
+            reload_job: None,
+            change_job: None,
             search_job: None,
             tree_jobs: HashMap::new(),
             folder_job: None,
@@ -338,19 +349,38 @@ impl Reader {
         if let Some(index) = self.tabs.iter().position(|tab| {
             tab.path.as_ref() == Some(&path) || tab.identity.as_ref() == Some(&path)
         }) {
+            // The latest open wins: a slower open still in flight would take focus later.
             self.load_revision += 1;
-            self.load_job = None;
+            let interrupted = self.load_job.take().is_some();
             let identity = self.tabs[index].identity.clone().unwrap_or(path);
             self.record_recent(identity, crate::recent::Kind::File, cx);
             self.activate(index, cx);
             self.status = format!("已打开 {}", self.tabs[index].title);
+            // The interrupted open would have started the next queued file; do it here.
+            if interrupted {
+                self.open_queued(cx);
+            }
             return;
         }
         self.load(path, LoadMode::NewTab, cx);
     }
     fn load(&mut self, path: PathBuf, mode: LoadMode, cx: &mut Context<Self>) {
-        self.load_revision += 1;
-        let revision = self.load_revision;
+        let replace = mode == LoadMode::Replace;
+        let revision = if replace {
+            self.reload_revision += 1;
+            self.reload_revision
+        } else {
+            self.load_revision += 1;
+            self.load_revision
+        };
+        let current = move |reader: &Self| {
+            revision
+                == if replace {
+                    reader.reload_revision
+                } else {
+                    reader.load_revision
+                }
+        };
         self.status = format!(
             "正在读取 {}…",
             path.file_name().unwrap_or_default().to_string_lossy()
@@ -362,10 +392,10 @@ impl Reader {
             let identity = pecan_document::files::canonicalize(&worker_path)?;
             workspace::load(&worker_path).map(|loaded| (identity, loaded))
         });
-        self.load_job = Some(cx.spawn(async move |weak, cx| {
+        let job = cx.spawn(async move |weak, cx| {
             let result = background.await;
             let _ = weak.update(cx, |reader, cx| {
-                if reader.load_revision != revision {
+                if !current(reader) {
                     return;
                 }
                 match result {
@@ -387,7 +417,10 @@ impl Reader {
                                 return;
                             };
                             // A late watcher result must never replace a source editing session.
-                            if reader.tabs[index].edit.is_some() {
+                            // A clean session left from earlier source viewing holds nothing to
+                            // keep; it restarts from the new text next time.
+                            let tab = &reader.tabs[index];
+                            if tab.protected() || tab.source_mode() {
                                 reader.status = "文件有外部变更，源码草稿已保留；保存时会检查冲突".into();
                                 cx.notify();
                                 return;
@@ -427,6 +460,8 @@ impl Reader {
                             let offset = tab.view.read(cx).scroll.logical_scroll_top();
                             view.read(cx).scroll.scroll_to(offset);
                             tab.view = view;
+                            // Its editor and saved snapshot describe the replaced text.
+                            tab.edit = None;
                             tab.identity = Some(identity);
                             tab.resources = Some(resources);
                             if index != reader.active {
@@ -475,35 +510,57 @@ impl Reader {
                 cx.notify();
             });
             let _ = weak.update(cx, |reader, cx| {
-                if reader.load_revision == revision {
+                if !current(reader) {
+                    return;
+                }
+                if replace {
+                    reader.reload_job = None;
+                } else {
                     reader.load_job = None;
                     reader.open_queued(cx);
                 }
             });
-        }));
+        });
+        if replace {
+            self.reload_job = Some(job);
+        } else {
+            self.load_job = Some(job);
+        }
     }
-    /// Close unprotected tabs until one more document of `bytes` fits the tab and byte budgets.
+    /// Close unprotected tabs, oldest first, until one more document of `bytes` fits the
+    /// tab and byte budgets. When even closing all of them would not be enough, nothing
+    /// is closed and `false` is returned.
     fn make_room(&mut self, bytes: usize, cx: &mut Context<Self>) -> bool {
-        while self.tabs.len() >= MAX_TABS
-            || self
-                .tabs
-                .iter()
-                .map(|tab| tab.source_bytes(cx))
-                .sum::<usize>()
-                + bytes
-                > MAX_OPEN_BYTES
-        {
-            if self.tabs.is_empty() {
+        let sizes: Vec<usize> = self.tabs.iter().map(|tab| tab.source_bytes(cx)).collect();
+        let mut count = self.tabs.len();
+        let mut total = sizes.iter().sum::<usize>().saturating_add(bytes);
+        let fits = |count: usize, total: usize| count < MAX_TABS && total <= MAX_OPEN_BYTES;
+        let mut closing = Vec::new();
+        for (index, tab) in self.tabs.iter().enumerate() {
+            if fits(count, total) {
                 break;
             }
-            let Some(index) = self.tabs.iter().position(|tab| !tab.protected()) else {
-                return false;
-            };
-            self.tabs.remove(index);
-            if index < self.active {
-                self.active -= 1;
+            if !tab.protected() {
+                closing.push(index);
+                count -= 1;
+                total -= sizes[index];
             }
         }
+        // An empty window always accepts the document; the caller checks its own size.
+        if count > 0 && !fits(count, total) {
+            return false;
+        }
+        let active = self.tabs.get(self.active).map(|tab| tab.view.entity_id());
+        for index in closing.into_iter().rev() {
+            self.tabs.remove(index);
+        }
+        self.active = active
+            .and_then(|active| {
+                self.tabs
+                    .iter()
+                    .position(|tab| tab.view.entity_id() == active)
+            })
+            .unwrap_or_else(|| self.active.min(self.tabs.len().saturating_sub(1)));
         true
     }
     fn watch(&mut self, path: &std::path::Path) {
@@ -554,14 +611,57 @@ impl Reader {
             Err(error) => tracing::warn!(%error, "file watcher unavailable"),
         }
     }
+    /// The watcher saw the active file change. Saving from Pecan, or an editor that
+    /// rewrites identical bytes, also reports a change; only different content reloads.
+    fn external_change(&mut self, cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
+        let Some(path) = tab.path.clone() else {
+            return;
+        };
+        let id = tab.view.entity_id();
+        let open = tab.edit.as_ref().map_or_else(
+            || tab.view.read(cx).document.clone(),
+            |edit| edit.saved_document(),
+        );
+        let unchanged = cx.background_spawn(async move {
+            // Bounded like loading; a larger file is never equal to an open document.
+            use std::io::Read as _;
+            let mut bytes = Vec::new();
+            std::fs::File::open(&path)
+                .and_then(|file| {
+                    file.take(pecan_document::MAX_DOCUMENT_BYTES as u64 + 1)
+                        .read_to_end(&mut bytes)
+                })
+                .is_ok_and(|_| bytes == open.source().as_bytes())
+        });
+        self.change_job = Some(cx.spawn(async move |weak, cx| {
+            if unchanged.await {
+                return;
+            }
+            let _ = weak.update(cx, |reader, cx| {
+                reader.change_job = None;
+                if reader
+                    .tabs
+                    .get(reader.active)
+                    .is_some_and(|tab| tab.view.entity_id() == id)
+                {
+                    reader.reload(cx);
+                }
+            });
+        }));
+    }
     fn reload(&mut self, cx: &mut Context<Self>) {
-        if self
-            .tabs
-            .get(self.active)
-            .is_some_and(|tab| tab.edit.is_some())
+        if let Some(tab) = self.tabs.get(self.active)
+            && (tab.protected() || tab.source_mode())
         {
-            self.status =
-                "源码会话已保留；如需丢弃草稿并重新读取，请使用顶部工具栏的重新加载".into();
+            self.status = if tab.protected() {
+                "源码会话已保留；如需丢弃草稿并重新读取，请使用顶部工具栏的重新加载"
+            } else {
+                "文件有外部变更；源码模式下请使用顶部工具栏的重新加载读取新内容"
+            }
+            .into();
             cx.notify();
             return;
         }
@@ -681,6 +781,7 @@ impl Reader {
             return;
         };
         let document = tab.view.read(cx).document.clone();
+        let searched = document.clone();
         let view = tab.view.clone();
         let executor = cx.background_executor().clone();
         let background = cx.background_spawn(async move {
@@ -695,6 +796,7 @@ impl Reader {
                 }
                 view.update(cx, |view, cx| view.search(matches.clone(), cx));
                 reader.matches = matches;
+                reader.matched = Some(searched);
                 reader.match_index = 0;
                 if !reader.matches.is_empty() {
                     reader.reveal_match(cx);
@@ -703,7 +805,32 @@ impl Reader {
             });
         }));
     }
+    /// Whether `matches` were found in the document the active tab shows now.
+    fn matches_current(&self, cx: &gpui_kit::App) -> bool {
+        self.tabs.get(self.active).is_some_and(|tab| {
+            self.matched
+                .as_ref()
+                .is_some_and(|matched| Arc::ptr_eq(matched, &tab.view.read(cx).document))
+        })
+    }
+    /// Drop results whose byte ranges belong to a replaced document, and search again.
+    fn refresh_stale_matches(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.matches.is_empty() || self.matches_current(cx) {
+            return false;
+        }
+        self.matches = Arc::default();
+        self.matched = None;
+        self.match_index = 0;
+        if self.search_open {
+            self.start_search(cx);
+        }
+        cx.notify();
+        true
+    }
     fn reveal_match(&mut self, cx: &mut Context<Self>) {
+        if self.refresh_stale_matches(cx) {
+            return;
+        }
         if let Some(found) = self.matches.get(self.match_index)
             && let Some(tab) = self.tabs.get(self.active)
         {
@@ -713,6 +840,9 @@ impl Reader {
         }
     }
     fn step_match(&mut self, backward: bool, cx: &mut Context<Self>) {
+        if self.refresh_stale_matches(cx) {
+            return;
+        }
         let count = self.matches.len();
         if count == 0 {
             return;
@@ -797,6 +927,8 @@ impl Reader {
             return;
         }
         self.search_open = true;
+        // Reopening keeps the query; results from before a source edit are recomputed.
+        self.refresh_stale_matches(cx);
         self.search.read(cx).focus_handle(cx).focus(window, cx);
         cx.notify();
     }

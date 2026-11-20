@@ -196,7 +196,14 @@ impl Builder {
         let source = super::document::export_markdown(snapshot.document.source());
         // Cells with lists, tasks or breaks arrive as block events, as in Word and HTML.
         let mut parser = super::table::events(source.as_ref());
+        // An HTML block arrives one line per event; its tags, comments and
+        // `script`/`style` bodies may span lines, so lines are read as one fragment.
+        let mut html = String::new();
         while let Some(event) = parser.next() {
+            if !html.is_empty() && !matches!(event, Event::Html(_)) {
+                self.html(&std::mem::take(&mut html), &mut images, renderer)
+                    .await?;
+            }
             match event {
                 Event::Start(Tag::CodeBlock(kind)) => {
                     let language = match kind {
@@ -290,8 +297,13 @@ impl Builder {
                         self.object(object, width * scale, height * scale, drop);
                     }
                 }
-                Event::Html(raw) | Event::InlineHtml(raw) => {
-                    if let Some(marker) = highlight_edge(&raw) {
+                Event::Html(ref raw) | Event::InlineHtml(ref raw) => {
+                    let is_block = matches!(event, Event::Html(_));
+                    if let Some(marker) = highlight_edge(raw) {
+                        if !html.is_empty() {
+                            self.html(&std::mem::take(&mut html), &mut images, renderer)
+                                .await?;
+                        }
                         match marker {
                             super::document::NoteMarker::Open { kind, titled } => {
                                 ensure!(
@@ -313,13 +325,18 @@ impl Builder {
                                 self.close_note();
                             }
                         }
+                    } else if is_block {
+                        html.push_str(raw);
                     } else {
-                        self.html(&raw, &mut images, renderer).await?;
+                        self.html(raw, &mut images, renderer).await?;
                     }
                 }
                 event => self.event(event),
             }
             ensure!(self.bytes <= MAX_OUTPUT, "PDF 超过 128 MiB 导出预算");
+        }
+        if !html.is_empty() {
+            self.html(&html, &mut images, renderer).await?;
         }
         self.close();
         while !self.notes.is_empty() {
@@ -758,14 +775,8 @@ impl Builder {
 
     /// Raw HTML keeps its text, images, breaks and basic emphasis.
     async fn html(&mut self, raw: &str, images: &mut Images, renderer: &Renderer) -> Result<()> {
-        static TAG: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-            regex::Regex::new(
-                r#"(?is)<!--.*?-->|<(/?)([a-z][a-z0-9]*)\b(?:[^>"']|"[^"]*"|'[^']*')*>"#,
-            )
-            .expect("valid pattern")
-        });
         let mut end = 0;
-        for tag in TAG.captures_iter(raw) {
+        for tag in super::document::HTML_TOKEN.captures_iter(raw) {
             let whole = tag.get(0).expect("regex has a full match");
             self.html_text(&raw[end..whole.start()]);
             end = whole.end();
@@ -1246,6 +1257,48 @@ mod tests {
         });
     }
 
+    #[test]
+    fn raw_html_spanning_lines_drops_comments_and_styles_and_keeps_its_image() {
+        futures_lite::future::block_on(async {
+            let directory = tempfile::tempdir().unwrap();
+            image::DynamicImage::new_rgb8(2, 2)
+                .save(directory.path().join("pixel.png"))
+                .unwrap();
+            let mut snapshot = snapshot(super::super::RAW_HTML_FIXTURE);
+            snapshot.directory = directory.path().into();
+            let blocks = Builder::default()
+                .build(&snapshot, crate::network::client())
+                .await
+                .unwrap();
+            let inlines: Vec<_> = blocks
+                .iter()
+                .filter_map(|block| match block {
+                    Block::Paragraph(para) => Some(para.inlines.as_slice()),
+                    _ => None,
+                })
+                .flatten()
+                .collect();
+            let text: String = inlines
+                .iter()
+                .filter_map(|inline| match inline {
+                    Inline::Text(text, _) => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert!(text.contains("Intro") && text.contains("Outro"), "{text}");
+            for hidden in ["secret", "missing", "color", "<img", "width="] {
+                assert!(!text.contains(hidden), "{hidden} leaked into {text}");
+            }
+            assert_eq!(
+                inlines
+                    .iter()
+                    .filter(|inline| matches!(inline, Inline::Object { .. }))
+                    .count(),
+                1,
+                "the multi-line image is drawn"
+            );
+        });
+    }
     #[test]
     fn repeated_markdown_and_html_images_share_the_resource_budget() {
         futures_lite::future::block_on(async {

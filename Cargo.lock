@@ -5917,6 +5917,7 @@ dependencies = [
  "pecan-document",
  "tempfile",
  "thiserror 2.0.21",
+ "url",
 ]
 
 [[package]]

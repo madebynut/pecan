@@ -66,6 +66,8 @@ try {
     Move-Item -Path $StagedArchive -Destination $Archive -Force
     Write-Output $Archive
 
+    # A version tag publishes a release, which must include its installer.
+    $Release = "$env:GITHUB_REF" -like "refs/tags/v*"
     $Iscc = Find-Iscc
     if ($Iscc) {
         Copy-Item assets/brand/pecan.ico "$Staging/pecan.ico" -Force
@@ -73,6 +75,7 @@ try {
         & $Iscc /Q "/DVersion=$Version" "/DNumericVersion=$Numeric" "/DSource=$Staging" "/DOutput=$Installers" scripts/pecan.iss
         # The zip is the primary package; an installer failure is reported without blocking it.
         if ($LASTEXITCODE -ne 0) {
+            if ($Release) { throw "Inno Setup failed ($LASTEXITCODE); a release needs its installer" }
             Write-Output "::warning::Inno Setup failed ($LASTEXITCODE); only the zip archive was built"
             # Do not let the installer's exit code fail the step after the zip succeeded.
             $global:LASTEXITCODE = 0
@@ -84,6 +87,7 @@ try {
             Write-Output $Destination
         }
     } else {
+        if ($Release) { throw "Inno Setup 6 was not found; a release needs its installer" }
         Write-Warning "Inno Setup 6 not found; only the zip archive was built"
     }
 } finally {

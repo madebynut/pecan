@@ -6,7 +6,7 @@
 <key>CFBundleExecutable</key><string>Pecan</string>
 <key>CFBundleIdentifier</key><string>com.pecan.reader</string>
 <key>CFBundleIconFile</key><string>Pecan</string>
-<key>CFBundleVersion</key><string>@VERSION@</string>
+<key>CFBundleVersion</key><string>@BUNDLE_VERSION@</string>
 <key>CFBundleShortVersionString</key><string>@VERSION@</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>NSHighResolutionCapable</key><true/>

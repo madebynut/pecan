@@ -74,58 +74,83 @@ Name: "{autodesktop}\Pecan"; Filename: "{app}\Pecan.exe"; AppUserModelID: "com.p
 [Registry]
 ; One ProgID opens every supported type. Types are offered under "Open with" without
 ; replacing the user's current default; Windows asks the user before changing it.
+; Uninstalling removes Pecan's value, then an extension key only if nothing else uses it.
 Root: HKA; Subkey: "Software\Classes\{#ProgId}"; ValueType: string; ValueData: "Pecan 文档"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\{#ProgId}\DefaultIcon"; ValueType: string; ValueData: """{app}\Pecan.exe"",0"
 Root: HKA; Subkey: "Software\Classes\{#ProgId}\shell\open\command"; ValueType: string; ValueData: """{app}\Pecan.exe"" ""%1"""
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe"; ValueType: string; ValueName: "FriendlyAppName"; ValueData: "Pecan"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\shell\open\command"; ValueType: string; ValueData: """{app}\Pecan.exe"" ""%1"""
-Root: HKA; Subkey: "Software\Classes\.md\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.md"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.md\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".md"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.markdown\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.markdown"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.markdown\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".markdown"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.mdown\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.mdown"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.mdown\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".mdown"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.docx\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.docx"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.docx\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".docx"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.docm\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.docm"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.docm\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".docm"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.doc\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.doc"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.doc\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".doc"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.odt\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.odt"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.odt\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".odt"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.rtf\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.rtf"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.rtf\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".rtf"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.epub\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.epub"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.epub\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".epub"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.pdf\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.pdf"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.pdf\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".pdf"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.pptx\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.pptx"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.pptx\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".pptx"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.pptm\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.pptm"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.pptm\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".pptm"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.ppsx\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.ppsx"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.ppsx\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".ppsx"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.ppsm\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.ppsm"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.ppsm\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".ppsm"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.ppt\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.ppt"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.ppt\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".ppt"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.pps\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.pps"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.pps\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".pps"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.pot\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.pot"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.pot\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".pot"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.odp\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.odp"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.odp\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".odp"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.xlsx\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.xlsx"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.xlsx\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".xlsx"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.xlsm\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.xlsm"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.xlsm\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".xlsm"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.xlsb\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.xlsb"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.xlsb\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".xlsb"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.xls\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.xls"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.xls\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".xls"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.ods\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.ods"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.ods\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".ods"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.csv\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\.csv"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.csv\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKA; Subkey: "Software\Classes\Applications\Pecan.exe\SupportedTypes"; ValueType: string; ValueName: ".csv"; ValueData: ""
 
 [Run]
