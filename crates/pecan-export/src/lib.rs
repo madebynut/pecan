@@ -115,10 +115,13 @@ pub(crate) fn shared_permissions(directory: bool) -> std::fs::Permissions {
 }
 fn atomic_write_inner(path: &Path, bytes: &[u8]) -> Result<()> {
     let parent = path.parent().context("导出路径没有父目录")?;
-    let mut builder = tempfile::Builder::new();
     #[cfg(unix)]
-    builder.permissions(shared_permissions(false));
-    let mut file = builder.tempfile_in(parent).context("创建导出临时文件")?;
+    let file = tempfile::Builder::new()
+        .permissions(shared_permissions(false))
+        .tempfile_in(parent);
+    #[cfg(not(unix))]
+    let file = tempfile::NamedTempFile::new_in(parent);
+    let mut file = file.context("创建导出临时文件")?;
     // Replacing an existing export keeps the mode the user gave it.
     #[cfg(unix)]
     if let Ok(existing) = std::fs::metadata(path)
