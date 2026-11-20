@@ -1798,7 +1798,7 @@ mod tests {
         let mut out = Docx::default();
         out.frame_start(FrameStyle::Note(Some(AlertKind::Tip)));
         out.highlight = true;
-        out.code_span("needAddress=false");
+        out.code_span("strict=false");
         out.frame_end();
         let xml = format!(
             "<root xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">{}</root>",

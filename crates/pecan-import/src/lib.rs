@@ -106,7 +106,12 @@ enum ErrorKind {
 
 /// Whether a path names one of the formats supported by local reading.
 pub fn supports(path: &Path) -> bool {
-    is_markdown(path) || Format::from_path(path).is_some()
+    is_markdown(path) || is_convertible(path)
+}
+
+/// Whether a path names a document that AnyDoc converts to Markdown for reading.
+pub fn is_convertible(path: &Path) -> bool {
+    !is_markdown(path) && Format::from_path(path).is_some()
 }
 
 /// Whether a path names a Markdown source, rather than an imported document.

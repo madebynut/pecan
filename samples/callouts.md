@@ -3,14 +3,14 @@
 无标题高亮让正文紧跟图标，适合补充说明；其中的行内代码、加粗、链接和列表仍按 Markdown 排版。
 
 :::
-`location_time` 取 SDK 返回的 `rtc_time` 字段值。
+`updated_at` 取文件系统返回的 `mtime` 字段值。
 :::
 
 :::
 **参考文档**
 
-- 地理定位：[Geolocation API](https://developers.google.com/maps/documentation/geolocation/requests-geolocation?hl=zh-cn)
-- 反向地理编码：[Geocoding API](https://developers.google.com/maps/documentation/geocoding/requests-reverse-geocoding?hl=zh-cn)
+- Markdown 规范：[CommonMark Spec](https://spec.commonmark.org/0.31.2/#introduction)
+- 基础写作语法：[GitHub 写作格式](https://docs.github.com/zh/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax)
 :::
 
 :::

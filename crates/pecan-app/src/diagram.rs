@@ -1195,7 +1195,7 @@ mod tests {
             gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
                 let card = cx.new(|cx| {
                     DiagramCard::new(
-                        "sequenceDiagram\n participant A as 客户端\n participant B as 接入服务\n participant C as 消息队列\n participant D as 存储服务\n participant E as 查询服务\n participant F as 管理服务\n participant G as 远控服务\n participant H as 终端组件\n A->>B: 上报结果\n B->>C: 发布定位消息\n C->>D: 订阅并存储\n E->>D: 查询最新位置\n".into(),
+                        "sequenceDiagram\n participant A as 客户端\n participant B as 接入服务\n participant C as 消息队列\n participant D as 存储服务\n participant E as 查询服务\n participant F as 管理服务\n participant G as 导出服务\n participant H as 阅读组件\n A->>B: 提交文档\n B->>C: 发布转换消息\n C->>D: 订阅并存储\n E->>D: 查询最新版本\n".into(),
                         RenderQueue::new(), window, cx,
                     )
                 });

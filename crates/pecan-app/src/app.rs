@@ -23,7 +23,7 @@ use gpui_kit::{
     AnyElement, Context, Entity, FocusHandle, Focusable, IntoElement, PathPromptOptions, Render,
     Subscription, Task, UniformListScrollHandle, Window,
     component::{
-        ActiveTheme, IconName, Selectable, Sizable, TitleBar,
+        ActiveTheme, Disableable, IconName, Selectable, Sizable, TitleBar,
         button::{Button, ButtonVariants},
         h_flex,
         input::{Input, InputEvent, InputState},
@@ -51,7 +51,30 @@ use crate::{
 /// Limits independent source buffers, in addition to bounded per-document UI caches.
 const MAX_TABS: usize = 8;
 const MAX_OPEN_BYTES: usize = 64 * 1024 * 1024;
+/// One title-bar click; the 960px default reaches both limits in whole steps.
+const READING_WIDTH_STEP: f64 = 80.;
 
+/// Title-bar buttons own their presses. Without this, `TitleBar` sees a mouse
+/// down and click under every button: two quick clicks zoom the window as a
+/// title-bar double click, and a press that moves starts a window drag.
+/// Shown after the status-bar width resets, until the width changes again.
+fn width_reset_message() -> String {
+    format!(
+        "已恢复默认页面宽度 {:.0} px",
+        PreferencesData::default().reading_width
+    )
+}
+/// Status-bar text for the configured reading column width.
+fn width_label(width: f64) -> String {
+    format!("页面宽度 {width:.0} px")
+}
+fn titlebar_controls() -> gpui_kit::Div {
+    h_flex()
+        .items_center()
+        .on_mouse_down(gpui_kit::MouseButton::Left, |_, _, cx| {
+            cx.stop_propagation()
+        })
+}
 struct Tab {
     path: Option<PathBuf>,
     identity: Option<PathBuf>,
@@ -133,6 +156,13 @@ impl Reader {
         let presented = prefs.read(cx).data.clone();
         let pref_subscription = cx.observe(&prefs, |reader, prefs, cx| {
             let data = prefs.read(cx).data.clone();
+            // The reset confirmation describes the width; drop it once the width moves on,
+            // whether from the title bar, Settings or another window.
+            if data.reading_width != PreferencesData::default().reading_width
+                && reader.status == width_reset_message()
+            {
+                reader.status = "就绪".into();
+            }
             let rebuild = !reader.presented.same_presentation(&data);
             reader.presented = data;
             if rebuild {
@@ -312,8 +342,8 @@ impl Reader {
             self.load_job = None;
             let identity = self.tabs[index].identity.clone().unwrap_or(path);
             self.record_recent(identity, crate::recent::Kind::File, cx);
-            self.status = format!("已打开 {}", self.tabs[index].title);
             self.activate(index, cx);
+            self.status = format!("已打开 {}", self.tabs[index].title);
             return;
         }
         self.load(path, LoadMode::NewTab, cx);
@@ -347,8 +377,8 @@ impl Reader {
                                 .iter()
                                 .position(|tab| tab.identity.as_ref() == Some(&identity))
                             {
-                                reader.status = format!("已打开 {}", reader.tabs[index].title);
                                 reader.activate(index, cx);
+                                reader.status = format!("已打开 {}", reader.tabs[index].title);
                                 return;
                             }
                         }
@@ -375,7 +405,6 @@ impl Reader {
                             None
                         };
                         let resources = Arc::new(loaded.resources);
-                        let notice = resources.notice().map(str::to_owned);
                         let document = Arc::new(loaded.document);
                         let bytes = document.source().len();
                         let directory = resources.directory().to_path_buf();
@@ -424,14 +453,9 @@ impl Reader {
                             });
                             reader.active = reader.tabs.len() - 1;
                         }
-                        reader.status = notice.unwrap_or_else(|| {
-                            format!(
-                                "{} KiB · {} 阅读块 · {} 个标题",
-                                bytes / 1024,
-                                document.blocks().len(),
-                                document.headings().len()
-                            )
-                        });
+                        if let Some(summary) = reader.document_summary(cx) {
+                            reader.status = summary;
+                        }
                         reader.watch(&path);
                         if reader.root.is_none() && reader.folder_job.is_none() {
                             reader.set_folder(
@@ -881,6 +905,105 @@ impl Reader {
             prefs.change(|data| data.font_size += delta, cx)
         });
     }
+    /// The active document's size and structure, or its reflow notice when one applies.
+    pub(super) fn document_summary(&self, cx: &gpui_kit::App) -> Option<String> {
+        let tab = self.tabs.get(self.active)?;
+        if let Some(notice) = tab
+            .resources
+            .as_ref()
+            .and_then(|resources| resources.notice())
+        {
+            return Some(notice.to_owned());
+        }
+        let document = &tab.view.read(cx).document;
+        Some(format!(
+            "{} KiB · {} 阅读块 · {} 个标题",
+            document.source().len() / 1024,
+            document.blocks().len(),
+            document.headings().len()
+        ))
+    }
+    fn reset_width(&mut self, cx: &mut Context<Self>) {
+        let default = PreferencesData::default().reading_width;
+        if self.prefs.read(cx).data.reading_width == default {
+            return;
+        }
+        self.prefs.update(cx, |prefs, cx| {
+            prefs.change(|data| data.reading_width = default, cx)
+        });
+        self.status = width_reset_message();
+        cx.notify();
+    }
+    /// The active document's full path. Long paths drop their start, keeping the file
+    /// name visible; the tooltip always shows the whole path.
+    fn active_path_label(&self) -> Option<String> {
+        self.tabs
+            .get(self.active)
+            .and_then(|tab| tab.path.as_ref())
+            .map(|path| path.display().to_string())
+    }
+    fn render_path_status(&self) -> AnyElement {
+        let path = self.active_path_label();
+        div()
+            .id("document-path-status")
+            .debug_selector(|| "document-path-status".into())
+            .flex_1()
+            .flex_basis(px(0.))
+            .min_w_0()
+            .px_3()
+            .text_center()
+            .whitespace_nowrap()
+            .overflow_hidden()
+            .text_ellipsis_start()
+            .when_some(path, |status, path| {
+                let tooltip = path.clone();
+                status.child(path).tooltip(move |window, cx| {
+                    gpui_kit::component::tooltip::Tooltip::new(tooltip.clone()).build(window, cx)
+                })
+            })
+            .into_any_element()
+    }
+    /// The configured column width; clicking a non-default value restores the default.
+    fn render_width_status(&self, width: f64, cx: &mut Context<Self>) -> AnyElement {
+        let default = PreferencesData::default().reading_width;
+        let custom = width != default;
+        let tooltip = if custom {
+            format!("点击恢复默认页面宽度 {default:.0} px")
+        } else {
+            "默认页面宽度；可用顶部栏 + − 调整".to_owned()
+        };
+        div()
+            .id("reading-width-status")
+            .debug_selector(|| "reading-width-status".into())
+            .flex_shrink_0()
+            .pl_3()
+            .child(width_label(width))
+            .tooltip(move |window, cx| {
+                gpui_kit::component::tooltip::Tooltip::new(tooltip.clone()).build(window, cx)
+            })
+            .when(custom, |status| {
+                status
+                    .cursor_pointer()
+                    .text_color(cx.theme().foreground)
+                    .hover(|style| style.underline())
+                    .on_click(cx.listener(|reader, _, _, cx| reader.reset_width(cx)))
+            })
+            .into_any_element()
+    }
+    /// Step the reading column width within the limits shared with Settings.
+    fn resize_width(&mut self, delta: f64, cx: &mut Context<Self>) {
+        let width = self.prefs.read(cx).data.reading_width;
+        let next = (width + delta).clamp(
+            pecan_config::MIN_READING_WIDTH,
+            pecan_config::MAX_READING_WIDTH,
+        );
+        if next == width {
+            return;
+        }
+        self.prefs.update(cx, |prefs, cx| {
+            prefs.change(|data| data.reading_width = next, cx)
+        });
+    }
     fn toggle_theme(&mut self, cx: &mut Context<Self>) {
         let theme = if cx.theme().is_dark() {
             "light"
@@ -938,6 +1061,9 @@ impl Reader {
         });
     }
     fn render_titlebar(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let reading_width = self.prefs.read(cx).data.reading_width;
+        let narrowest = reading_width <= pecan_config::MIN_READING_WIDTH;
+        let widest = reading_width >= pecan_config::MAX_READING_WIDTH;
         // Keep the centered title clear of the permanent tools.
         let title_width =
             (window.viewport_size().width - px(crate::platform::choose(640., 844.))).max(px(0.));
@@ -956,7 +1082,7 @@ impl Reader {
                             .pr_2()
                             .items_center()
                             .child(
-                                div()
+                                titlebar_controls()
                                     .debug_selector(|| "titlebar-sidebar-toggle".into())
                                     .child(
                                         Button::new("toggle-sidebar")
@@ -981,156 +1107,179 @@ impl Reader {
                             )
                             .child(div().flex_1())
                             .child(
-                                Button::new("open-file")
-                                    .small()
-                                    .ghost()
-                                    .cursor_pointer()
-                                    .child(crate::ui::icon(IconName::FileText))
-                                    .tooltip(crate::platform::choose(
-                                        "打开文档 · ⌘O",
-                                        "打开文档 · Ctrl+O",
-                                    ))
-                                    .on_click(cx.listener(|reader, _, _, cx| {
-                                        reader.dialog(PathKind::File, cx)
-                                    })),
-                            )
-                            .child(
-                                Button::new("open-folder")
-                                    .small()
-                                    .ghost()
-                                    .cursor_pointer()
-                                    .child(crate::ui::icon(IconName::FolderOpen))
-                                    .tooltip(crate::platform::choose(
-                                        "打开文件夹 · ⇧⌘O",
-                                        "打开文件夹 · Ctrl+Shift+O",
-                                    ))
-                                    .on_click(cx.listener(|reader, _, _, cx| {
-                                        reader.dialog(PathKind::Folder, cx)
-                                    })),
-                            )
-                            .child(
-                                Button::new("find")
-                                    .small()
-                                    .ghost()
-                                    .cursor_pointer()
-                                    .child(crate::ui::icon(IconName::Search))
-                                    .tooltip(crate::platform::choose("搜索 · ⌘F", "搜索 · Ctrl+F"))
-                                    .on_click(cx.listener(|reader, _, window, cx| {
-                                        reader.search_focus(window, cx)
-                                    })),
-                            )
-                            .child(
-                                Button::new("reload")
-                                    .debug_selector(|| "titlebar-reload".into())
-                                    .small()
-                                    .ghost()
-                                    .cursor_pointer()
-                                    .child(crate::ui::icon(IconName::RefreshCw))
-                                    .tooltip(crate::platform::choose(
-                                        "重新加载 · ⌘R",
-                                        "重新加载 · Ctrl+R",
-                                    ))
-                                    .on_click(cx.listener(|reader, _, window, cx| {
-                                        reader.reload_action(window, cx)
-                                    })),
-                            )
-                            .child(
-                                Button::new("reading-focus")
-                                    .small()
-                                    .ghost()
-                                    .cursor_pointer()
-                                    .child(crate::ui::icon(IconName::BookOpen))
-                                    .tooltip(crate::platform::choose(
-                                        "专注阅读 · ⇧⌘F",
-                                        "专注阅读 · Ctrl+Shift+F",
-                                    ))
-                                    .selected(self.focus_mode)
-                                    .on_click(
-                                        cx.listener(|reader, _, _, cx| reader.focus_reading(cx)),
+                                titlebar_controls()
+                                    .debug_selector(|| "titlebar-tools".into())
+                                    .gap_1()
+                                    .child(
+                                        Button::new("open-file")
+                                            .small()
+                                            .ghost()
+                                            .cursor_pointer()
+                                            .child(crate::ui::icon(IconName::FileText))
+                                            .tooltip(crate::platform::choose(
+                                                "打开文档 · ⌘O",
+                                                "打开文档 · Ctrl+O",
+                                            ))
+                                            .on_click(cx.listener(|reader, _, _, cx| {
+                                                reader.dialog(PathKind::File, cx)
+                                            })),
+                                    )
+                                    .child(
+                                        Button::new("open-folder")
+                                            .small()
+                                            .ghost()
+                                            .cursor_pointer()
+                                            .child(crate::ui::icon(IconName::FolderOpen))
+                                            .tooltip(crate::platform::choose(
+                                                "打开文件夹 · ⇧⌘O",
+                                                "打开文件夹 · Ctrl+Shift+O",
+                                            ))
+                                            .on_click(cx.listener(|reader, _, _, cx| {
+                                                reader.dialog(PathKind::Folder, cx)
+                                            })),
+                                    )
+                                    .child(
+                                        Button::new("find")
+                                            .small()
+                                            .ghost()
+                                            .cursor_pointer()
+                                            .child(crate::ui::icon(IconName::Search))
+                                            .tooltip(crate::platform::choose(
+                                                "搜索 · ⌘F",
+                                                "搜索 · Ctrl+F",
+                                            ))
+                                            .on_click(cx.listener(|reader, _, window, cx| {
+                                                reader.search_focus(window, cx)
+                                            })),
+                                    )
+                                    .child(
+                                        Button::new("reload")
+                                            .debug_selector(|| "titlebar-reload".into())
+                                            .small()
+                                            .ghost()
+                                            .cursor_pointer()
+                                            .child(crate::ui::icon(IconName::RefreshCw))
+                                            .tooltip(crate::platform::choose(
+                                                "重新加载 · ⌘R",
+                                                "重新加载 · Ctrl+R",
+                                            ))
+                                            .on_click(cx.listener(|reader, _, window, cx| {
+                                                reader.reload_action(window, cx)
+                                            })),
+                                    )
+                                    .child(
+                                        Button::new("reading-focus")
+                                            .small()
+                                            .ghost()
+                                            .cursor_pointer()
+                                            .child(crate::ui::icon(IconName::BookOpen))
+                                            .tooltip(crate::platform::choose(
+                                                "专注阅读 · ⇧⌘F",
+                                                "专注阅读 · Ctrl+Shift+F",
+                                            ))
+                                            .selected(self.focus_mode)
+                                            .on_click(cx.listener(|reader, _, _, cx| {
+                                                reader.focus_reading(cx)
+                                            })),
+                                    )
+                                    .child(
+                                        Button::new("width-narrower")
+                                            .debug_selector(|| "titlebar-width-narrower".into())
+                                            .small()
+                                            .ghost()
+                                            .disabled(narrowest)
+                                            .when(!narrowest, |button| button.cursor_pointer())
+                                            .child(crate::ui::icon(IconName::Minus))
+                                            .tooltip(if narrowest {
+                                                "页面宽度已是最小".to_owned()
+                                            } else {
+                                                format!("减小页面宽度 · 当前 {reading_width:.0}px")
+                                            })
+                                            .on_click(cx.listener(|reader, _, _, cx| {
+                                                reader.resize_width(-READING_WIDTH_STEP, cx)
+                                            })),
+                                    )
+                                    .child(
+                                        Button::new("width-wider")
+                                            .debug_selector(|| "titlebar-width-wider".into())
+                                            .small()
+                                            .ghost()
+                                            .disabled(widest)
+                                            .when(!widest, |button| button.cursor_pointer())
+                                            .child(crate::ui::icon(IconName::Plus))
+                                            .tooltip(if widest {
+                                                "页面宽度已是最大".to_owned()
+                                            } else {
+                                                format!("增大页面宽度 · 当前 {reading_width:.0}px")
+                                            })
+                                            .on_click(cx.listener(|reader, _, _, cx| {
+                                                reader.resize_width(READING_WIDTH_STEP, cx)
+                                            })),
+                                    )
+                                    .child(
+                                        Button::new("theme")
+                                            .small()
+                                            .ghost()
+                                            .cursor_pointer()
+                                            .child(crate::ui::icon(if cx.theme().is_dark() {
+                                                IconName::Sun
+                                            } else {
+                                                IconName::Moon
+                                            }))
+                                            .tooltip("切换主题")
+                                            .on_click(cx.listener(|reader, _, _, cx| {
+                                                reader.toggle_theme(cx)
+                                            })),
+                                    )
+                                    .child(
+                                        Button::new("fullscreen")
+                                            .small()
+                                            .ghost()
+                                            .cursor_pointer()
+                                            .child(crate::ui::icon(IconName::Maximize))
+                                            .tooltip(crate::platform::choose(
+                                                "全屏 · ⌃⌘F",
+                                                "全屏 · F11",
+                                            ))
+                                            .on_click(|_, window, cx| {
+                                                window
+                                                    .dispatch_action(Box::new(ToggleFullscreen), cx)
+                                            }),
+                                    )
+                                    .child(
+                                        Button::new("settings")
+                                            .small()
+                                            .ghost()
+                                            .cursor_pointer()
+                                            .child(crate::ui::icon(IconName::Settings))
+                                            .tooltip(crate::platform::choose(
+                                                "设置 · ⌘,",
+                                                "设置 · Ctrl+,",
+                                            ))
+                                            .on_click(|_, window, cx| {
+                                                window.dispatch_action(Box::new(ShowSettings), cx)
+                                            }),
+                                    )
+                                    .child(
+                                        Button::new("toggle-outline")
+                                            .small()
+                                            .ghost()
+                                            .cursor_pointer()
+                                            .child(crate::ui::icon(
+                                                if self.outline && !self.focus_mode {
+                                                    IconName::PanelRightClose
+                                                } else {
+                                                    IconName::PanelRightOpen
+                                                },
+                                            ))
+                                            .tooltip(crate::platform::choose(
+                                                "展开／收起大纲 · ⌘L",
+                                                "展开／收起大纲 · Ctrl+L",
+                                            ))
+                                            .on_click(cx.listener(|reader, _, _, cx| {
+                                                reader.toggle_outline(cx);
+                                            })),
                                     ),
-                            )
-                            .child(
-                                Button::new("text-smaller")
-                                    .small()
-                                    .ghost()
-                                    .cursor_pointer()
-                                    .child(crate::ui::icon(IconName::Minus))
-                                    .tooltip(crate::platform::choose(
-                                        "减小正文字号 · ⌘−",
-                                        "减小正文字号 · Ctrl+−",
-                                    ))
-                                    .on_click(
-                                        cx.listener(|reader, _, _, cx| reader.resize_text(-1., cx)),
-                                    ),
-                            )
-                            .child(
-                                Button::new("text-larger")
-                                    .small()
-                                    .ghost()
-                                    .cursor_pointer()
-                                    .child(crate::ui::icon(IconName::Plus))
-                                    .tooltip(crate::platform::choose(
-                                        "增大正文字号 · ⌘+",
-                                        "增大正文字号 · Ctrl++",
-                                    ))
-                                    .on_click(
-                                        cx.listener(|reader, _, _, cx| reader.resize_text(1., cx)),
-                                    ),
-                            )
-                            .child(
-                                Button::new("theme")
-                                    .small()
-                                    .ghost()
-                                    .cursor_pointer()
-                                    .child(crate::ui::icon(if cx.theme().is_dark() {
-                                        IconName::Sun
-                                    } else {
-                                        IconName::Moon
-                                    }))
-                                    .tooltip("切换主题")
-                                    .on_click(
-                                        cx.listener(|reader, _, _, cx| reader.toggle_theme(cx)),
-                                    ),
-                            )
-                            .child(
-                                Button::new("fullscreen")
-                                    .small()
-                                    .ghost()
-                                    .cursor_pointer()
-                                    .child(crate::ui::icon(IconName::Maximize))
-                                    .tooltip(crate::platform::choose("全屏 · ⌃⌘F", "全屏 · F11"))
-                                    .on_click(|_, window, cx| {
-                                        window.dispatch_action(Box::new(ToggleFullscreen), cx)
-                                    }),
-                            )
-                            .child(
-                                Button::new("settings")
-                                    .small()
-                                    .ghost()
-                                    .cursor_pointer()
-                                    .child(crate::ui::icon(IconName::Settings))
-                                    .tooltip(crate::platform::choose("设置 · ⌘,", "设置 · Ctrl+,"))
-                                    .on_click(|_, window, cx| {
-                                        window.dispatch_action(Box::new(ShowSettings), cx)
-                                    }),
-                            )
-                            .child(
-                                Button::new("toggle-outline")
-                                    .small()
-                                    .ghost()
-                                    .cursor_pointer()
-                                    .child(crate::ui::icon(if self.outline && !self.focus_mode {
-                                        IconName::PanelRightClose
-                                    } else {
-                                        IconName::PanelRightOpen
-                                    }))
-                                    .tooltip(crate::platform::choose(
-                                        "展开／收起大纲 · ⌘L",
-                                        "展开／收起大纲 · Ctrl+L",
-                                    ))
-                                    .on_click(cx.listener(|reader, _, _, cx| {
-                                        reader.toggle_outline(cx);
-                                    })),
                             ),
                     ),
             )
@@ -1566,6 +1715,11 @@ impl Render for Reader {
             .on_action(cx.listener(|reader, _: &ExportHtml, window, cx| {
                 reader.export_document(crate::export::DocumentFormat::Html, window, cx)
             }))
+            .on_action(
+                cx.listener(|reader, _: &crate::ExportMarkdown, window, cx| {
+                    reader.export_markdown(window, cx)
+                }),
+            )
             .on_action(cx.listener(|reader, _: &CopyFilePath, _, cx| {
                 if let Some(path) = reader
                     .tabs
@@ -1637,22 +1791,32 @@ impl Render for Reader {
                     .debug_selector(|| "reader-status".into())
                     .text_size(px(crate::ui::STATUS_SIZE))
                     .text_color(cx.theme().muted_foreground)
+                    // Equal side columns keep the path centered in the window.
                     .child(
                         div()
                             .flex_1()
+                            .flex_basis(px(0.))
                             .min_w_0()
                             .truncate()
                             .child(self.status.clone()),
                     )
-                    .children(crate::update::status_notice(cx))
-                    .when(!self.tabs.is_empty(), |bar| {
-                        bar.child(
-                            div()
-                                .flex_shrink_0()
-                                .pl_3()
-                                .child(format!("{} px · {reading_mode}", prefs.font_size)),
-                        )
-                    }),
+                    .child(self.render_path_status())
+                    .child(
+                        h_flex()
+                            .flex_1()
+                            .flex_basis(px(0.))
+                            .min_w_0()
+                            .overflow_hidden()
+                            .justify_end()
+                            .items_center()
+                            .children(crate::update::status_notice(cx))
+                            .when(!self.tabs.is_empty(), |bar| {
+                                bar.child(self.render_width_status(prefs.reading_width, cx))
+                                    .child(
+                                        div().flex_shrink_0().child(format!(" · {reading_mode}")),
+                                    )
+                            }),
+                    ),
             )
             .when_some(drag_cursor, |root, cursor| {
                 root.child(div().absolute().inset_0().cursor(cursor))
@@ -1663,6 +1827,460 @@ impl Render for Reader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[gpui_kit::test]
+    fn status_summary_follows_the_active_tab(cx: &mut gpui_kit::TestAppContext) {
+        use gpui_kit::{AppContext as _, VisualTestContext, px, size};
+        let directory = tempfile::tempdir().unwrap();
+        let small = directory.path().join("small.md");
+        let large = directory.path().join("large.md");
+        std::fs::write(&small, "# 一\n\n正文").unwrap();
+        let body = "段落内容。".repeat(400);
+        std::fs::write(
+            &large,
+            format!("# 甲\n\n{body}\n\n## 乙\n\n{body}\n\n### 丙\n\n结尾"),
+        )
+        .unwrap();
+        let scan = std::path::absolute(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../pecan-import/tests/fixtures/scan.pdf"),
+        )
+        .unwrap();
+        let (handle, reader) = cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::menus::install(cx);
+            gpui_kit::open_window(
+                crate::native_window_options("状态", cx, size(px(1280.), px(860.))),
+                cx,
+                |window, cx| {
+                    cx.new(|cx| {
+                        Reader::new(None, pecan_config::startup::Launch::Returning, window, cx)
+                    })
+                },
+            )
+            .unwrap()
+        });
+        let mut visual = VisualTestContext::from_window(handle, cx);
+        for path in [&small, &large, &scan] {
+            reader.update(&mut visual, |reader, cx| reader.open_file(path.clone(), cx));
+            crate::app::tests::settle(&visual.cx);
+        }
+        let status =
+            |visual: &mut VisualTestContext| visual.update(|_, cx| reader.read(cx).status.clone());
+        let summary = |path: &PathBuf| {
+            let source = std::fs::read_to_string(path).unwrap();
+            let document = pecan_document::Document::parse(source.clone()).unwrap();
+            format!(
+                "{} KiB · {} 阅读块 · {} 个标题",
+                source.len() / 1024,
+                document.blocks().len(),
+                document.headings().len()
+            )
+        };
+        let (small_summary, large_summary) = (summary(&small), summary(&large));
+        assert_ne!(
+            small_summary, large_summary,
+            "the fixtures must be distinguishable"
+        );
+        assert!(large_summary.ends_with("3 个标题"), "{large_summary}");
+        assert!(
+            status(&mut visual).contains("原版查看"),
+            "{}",
+            status(&mut visual)
+        );
+        reader.update(&mut visual, |reader, cx| reader.activate(0, cx));
+        assert_eq!(status(&mut visual), small_summary);
+        // A transient message is replaced by the next tab's summary.
+        reader.update(&mut visual, |reader, _| {
+            reader.status = "已导出 · small.pdf".into()
+        });
+        visual.dispatch_action(NextTab);
+        assert_eq!(status(&mut visual), large_summary);
+        visual.dispatch_action(NextTab);
+        assert!(
+            status(&mut visual).contains("原版查看"),
+            "the PDF notice follows its tab"
+        );
+        visual.dispatch_action(PreviousTab);
+        assert_eq!(status(&mut visual), large_summary);
+        // Reopening an already open file still confirms it, after switching.
+        reader.update(&mut visual, |reader, cx| {
+            reader.open_file(small.clone(), cx)
+        });
+        crate::app::tests::settle(&visual.cx);
+        assert_eq!(status(&mut visual), "已打开 small.md");
+        // Closing the active tab shows the summary of the tab that takes its place.
+        visual.update(|window, cx| {
+            reader.update(cx, |reader, cx| reader.close_tab(reader.active, window, cx))
+        });
+        crate::app::tests::settle(&visual.cx);
+        let active =
+            visual.update(|_, cx| reader.read(cx).tabs[reader.read(cx).active].title.clone());
+        assert_eq!(active, "large.md");
+        assert_eq!(status(&mut visual), large_summary);
+    }
+    #[gpui_kit::test]
+    fn status_bar_centers_the_active_documents_full_path(cx: &mut gpui_kit::TestAppContext) {
+        use gpui_kit::{AppContext as _, VisualTestContext, px, size};
+        let directory = tempfile::tempdir().unwrap();
+        let first = directory.path().join("第一篇.md");
+        let nested = directory.path().join("深层 目录").join("另一个子目录");
+        std::fs::create_dir_all(&nested).unwrap();
+        let second = nested.join("second.md");
+        std::fs::write(&first, "# 一").unwrap();
+        std::fs::write(&second, "# 二").unwrap();
+        let (handle, reader) = cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::menus::install(cx);
+            gpui_kit::open_window(
+                crate::native_window_options("路径", cx, size(px(1280.), px(860.))),
+                cx,
+                |window, cx| {
+                    cx.new(|cx| Reader::new(None, pecan_config::startup::Launch::First, window, cx))
+                },
+            )
+            .unwrap()
+        });
+        let mut visual = VisualTestContext::from_window(handle, cx);
+        let label = |visual: &mut VisualTestContext| {
+            visual.update(|_, cx| reader.read(cx).active_path_label())
+        };
+        assert_eq!(
+            label(&mut visual),
+            None,
+            "the built-in guide has no file path"
+        );
+        for path in [&first, &second] {
+            reader.update(&mut visual, |reader, cx| reader.open_file(path.clone(), cx));
+            crate::app::tests::settle(&visual.cx);
+            let expected = std::path::absolute(path).unwrap().display().to_string();
+            assert_eq!(label(&mut visual).as_deref(), Some(expected.as_str()));
+        }
+        // Switching tabs follows the active document.
+        reader.update(&mut visual, |reader, cx| {
+            reader.activate(reader.active - 1, cx)
+        });
+        let expected = std::path::absolute(&first).unwrap().display().to_string();
+        assert_eq!(label(&mut visual).as_deref(), Some(expected.as_str()));
+        for width in [1280., 760.] {
+            visual.simulate_resize(size(px(width), px(860.)));
+            visual.update(|window, cx| window.draw(cx).clear(cx));
+            let bar = visual.debug_bounds("reader-status").unwrap();
+            let path = visual.debug_bounds("document-path-status").unwrap();
+            assert!(
+                (path.center().x - bar.center().x).abs() <= px(1.),
+                "the path is centered at {width}px: {path:?} in {bar:?}"
+            );
+            assert!(path.left() > bar.left() && path.right() < bar.right());
+            assert!(path.size.height <= bar.size.height, "one line at {width}px");
+        }
+    }
+    #[gpui_kit::test]
+    fn status_bar_shows_reading_width_and_click_restores_the_default(
+        cx: &mut gpui_kit::TestAppContext,
+    ) {
+        use gpui_kit::{AppContext as _, VisualTestContext, px, size};
+        assert_eq!(width_label(960.), "页面宽度 960 px");
+        assert_eq!(width_label(1040.), "页面宽度 1040 px");
+        let (handle, reader) = cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::menus::install(cx);
+            gpui_kit::open_window(
+                crate::native_window_options("状态栏宽度", cx, size(px(1280.), px(860.))),
+                cx,
+                |window, cx| {
+                    cx.new(|cx| Reader::new(None, pecan_config::startup::Launch::First, window, cx))
+                },
+            )
+            .unwrap()
+        });
+        let mut visual = VisualTestContext::from_window(handle, cx);
+        let click = |visual: &mut VisualTestContext, selector: &'static str| {
+            visual.update(|window, cx| window.draw(cx).clear(cx));
+            let point = visual.debug_bounds(selector).expect(selector).center();
+            visual.simulate_mouse_down(point, gpui_kit::MouseButton::Left, Default::default());
+            visual.simulate_mouse_up(point, gpui_kit::MouseButton::Left, Default::default());
+            visual.run_until_parked();
+        };
+        let state = |visual: &mut VisualTestContext| {
+            visual.update(|_, cx| {
+                let reader = reader.read(cx);
+                let data = reader.prefs.read(cx).data.clone();
+                (data.reading_width, data.font_size, reader.status.clone())
+            })
+        };
+        let (width, font_size, status) = state(&mut visual);
+        assert_eq!(width, 960.);
+        click(&mut visual, "reading-width-status");
+        assert_eq!(
+            state(&mut visual).2,
+            status,
+            "the default width has nothing to restore"
+        );
+        for _ in 0..3 {
+            click(&mut visual, "titlebar-width-wider");
+        }
+        assert_eq!(state(&mut visual).0, 1200.);
+        click(&mut visual, "reading-width-status");
+        let (width, size_after, status) = state(&mut visual);
+        assert_eq!(width, 960., "clicking the width restores the default");
+        assert_eq!(size_after, font_size, "font size is untouched");
+        assert_eq!(status, "已恢复默认页面宽度 960 px");
+        // The confirmation describes the width, so it leaves once the width changes.
+        click(&mut visual, "titlebar-width-wider");
+        assert_eq!(
+            state(&mut visual).2,
+            "就绪",
+            "widening clears the reset message"
+        );
+        click(&mut visual, "reading-width-status");
+        click(&mut visual, "titlebar-width-narrower");
+        assert_eq!(
+            state(&mut visual).2,
+            "就绪",
+            "narrowing clears the reset message"
+        );
+        click(&mut visual, "reading-width-status");
+        assert_eq!(state(&mut visual).0, 960.);
+        visual.update(|_, cx| {
+            let prefs = reader.read(cx).prefs.clone();
+            prefs.update(cx, |prefs, cx| {
+                prefs.change(|data| data.reading_width = 1120., cx)
+            });
+        });
+        visual.run_until_parked();
+        assert_eq!(
+            state(&mut visual).2,
+            "就绪",
+            "a Settings change clears it too"
+        );
+        // Other messages are left alone by later width changes.
+        visual
+            .update(|_, cx| reader.update(cx, |reader, _| reader.status = "已导出 · a.pdf".into()));
+        click(&mut visual, "titlebar-width-wider");
+        assert_eq!(state(&mut visual).2, "已导出 · a.pdf");
+    }
+    #[gpui_kit::test]
+    fn titlebar_button_double_clicks_never_reach_the_title_bar(cx: &mut gpui_kit::TestAppContext) {
+        use gpui_kit::base::InteractiveElementExt as _;
+        use gpui_kit::{
+            Modifiers, MouseButton, MouseDownEvent, MouseUpEvent, VisualTestContext, point, px,
+        };
+        use std::{cell::Cell, rc::Rc};
+        struct Harness {
+            button: Rc<Cell<usize>>,
+            presses: Rc<Cell<usize>>,
+            zooms: Rc<Cell<usize>>,
+        }
+        impl gpui_kit::Render for Harness {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                let (button, presses, zooms) = (
+                    self.button.clone(),
+                    self.presses.clone(),
+                    self.zooms.clone(),
+                );
+                // The same listeners `TitleBar` uses for window moves and zoom.
+                gpui_kit::div()
+                    .id("title-bar")
+                    .size(px(200.))
+                    .on_double_click(move |_, _, _| zooms.set(zooms.get() + 1))
+                    .on_mouse_down(MouseButton::Left, move |_, _, _| {
+                        presses.set(presses.get() + 1)
+                    })
+                    .child(
+                        titlebar_controls().child(
+                            Button::new("wider")
+                                .debug_selector(|| "wider".into())
+                                .small()
+                                .ghost()
+                                .child("+")
+                                .on_click(move |_, _, _| button.set(button.get() + 1)),
+                        ),
+                    )
+            }
+        }
+        cx.update(gpui_kit::init);
+        let (button, presses, zooms) = (Rc::default(), Rc::default(), Rc::default());
+        let (_, cx) = cx.add_window_view({
+            let (button, presses, zooms) =
+                (Rc::clone(&button), Rc::clone(&presses), Rc::clone(&zooms));
+            move |_, _| Harness {
+                button,
+                presses,
+                zooms,
+            }
+        });
+        let visual: &mut VisualTestContext = cx;
+        visual.update(|window, cx| window.draw(cx).clear(cx));
+        let position = visual.debug_bounds("wider").unwrap().center();
+        for click_count in [1, 2] {
+            visual.simulate_event(MouseDownEvent {
+                position,
+                modifiers: Modifiers::default(),
+                button: MouseButton::Left,
+                click_count,
+                first_mouse: false,
+            });
+            visual.simulate_event(MouseUpEvent {
+                position,
+                modifiers: Modifiers::default(),
+                button: MouseButton::Left,
+                click_count,
+            });
+        }
+        assert_eq!(button.get(), 2, "both clicks reach the button");
+        assert_eq!(presses.get(), 0, "no press can start a window move");
+        assert_eq!(
+            zooms.get(),
+            0,
+            "a quick second click is not a title-bar double click"
+        );
+        // The bare bar outside the buttons still zooms on double click.
+        let bar = point(px(190.), px(190.));
+        visual.simulate_event(MouseDownEvent {
+            position: bar,
+            modifiers: Modifiers::default(),
+            button: MouseButton::Left,
+            click_count: 2,
+            first_mouse: false,
+        });
+        visual.simulate_event(MouseUpEvent {
+            position: bar,
+            modifiers: Modifiers::default(),
+            button: MouseButton::Left,
+            click_count: 2,
+        });
+        assert_eq!(zooms.get(), 1);
+    }
+    #[gpui_kit::test]
+    fn titlebar_plus_and_minus_step_reading_width_and_stop_at_the_limits(
+        cx: &mut gpui_kit::TestAppContext,
+    ) {
+        use gpui_kit::{AppContext as _, VisualTestContext, px, size};
+        let (handle, reader) = cx.update(|cx| {
+            gpui_kit::init(cx);
+            crate::menus::install(cx);
+            gpui_kit::open_window(
+                crate::native_window_options("页面宽度", cx, size(px(1280.), px(860.))),
+                cx,
+                |window, cx| {
+                    cx.new(|cx| Reader::new(None, pecan_config::startup::Launch::First, window, cx))
+                },
+            )
+            .unwrap()
+        });
+        let mut visual = VisualTestContext::from_window(handle, cx);
+        let click = |visual: &mut VisualTestContext, selector: &'static str| {
+            visual.update(|window, cx| window.draw(cx).clear(cx));
+            let point = visual.debug_bounds(selector).expect(selector).center();
+            visual.simulate_mouse_down(point, gpui_kit::MouseButton::Left, Default::default());
+            visual.simulate_mouse_up(point, gpui_kit::MouseButton::Left, Default::default());
+            visual.run_until_parked();
+        };
+        let current = |visual: &mut VisualTestContext| {
+            visual.update(|_, cx| {
+                let data = reader.read(cx).prefs.read(cx).data.clone();
+                (data.reading_width, data.font_size)
+            })
+        };
+        // A disabled ghost button paints no hover background and ignores clicks.
+        let hoverable = |visual: &mut VisualTestContext, selector: &'static str| {
+            visual.update(|window, cx| window.draw(cx).clear(cx));
+            let bounds = visual.debug_bounds(selector).expect(selector);
+            visual.simulate_mouse_move(bounds.center(), None, Default::default());
+            visual.update(|window, cx| {
+                window.draw(cx).clear(cx);
+                let scale = window.scale_factor();
+                window.painted_quads().iter().any(|quad| {
+                    let center = quad.bounds.center();
+                    let center = gpui_kit::point(px(center.x.0 / scale), px(center.y.0 / scale));
+                    bounds.contains(&center) && !quad.background.is_transparent()
+                })
+            })
+        };
+        assert!(hoverable(&mut visual, "titlebar-width-wider"));
+        assert!(hoverable(&mut visual, "titlebar-width-narrower"));
+        // A press that wobbles on the button must not start a window move; the
+        // test platform panics in `start_window_move` if the title bar sees it.
+        visual.update(|window, cx| window.draw(cx).clear(cx));
+        let plus = visual
+            .debug_bounds("titlebar-width-wider")
+            .unwrap()
+            .center();
+        visual.simulate_mouse_down(plus, gpui_kit::MouseButton::Left, Default::default());
+        visual.simulate_mouse_move(
+            plus + gpui_kit::point(px(2.), px(1.)),
+            gpui_kit::MouseButton::Left,
+            Default::default(),
+        );
+        visual.simulate_mouse_up(plus, gpui_kit::MouseButton::Left, Default::default());
+        visual.run_until_parked();
+        visual.update(|_, cx| {
+            let prefs = reader.read(cx).prefs.clone();
+            prefs.update(cx, |prefs, cx| {
+                prefs.change(|data| data.reading_width = 960., cx)
+            });
+        });
+        let (start, font_size) = current(&mut visual);
+        assert_eq!(start, 960.);
+        click(&mut visual, "titlebar-width-wider");
+        assert_eq!(
+            current(&mut visual),
+            (1040., font_size),
+            "+ widens, font unchanged"
+        );
+        click(&mut visual, "titlebar-width-narrower");
+        assert_eq!(
+            current(&mut visual),
+            (960., font_size),
+            "- narrows, font unchanged"
+        );
+        for _ in 0..20 {
+            click(&mut visual, "titlebar-width-wider");
+        }
+        assert_eq!(current(&mut visual).0, pecan_config::MAX_READING_WIDTH);
+        click(&mut visual, "titlebar-width-wider");
+        assert_eq!(
+            current(&mut visual).0,
+            pecan_config::MAX_READING_WIDTH,
+            "+ is disabled at the widest column"
+        );
+        assert!(
+            !hoverable(&mut visual, "titlebar-width-wider"),
+            "+ is greyed out"
+        );
+        assert!(hoverable(&mut visual, "titlebar-width-narrower"));
+        click(&mut visual, "titlebar-width-narrower");
+        assert_eq!(
+            current(&mut visual).0,
+            pecan_config::MAX_READING_WIDTH - READING_WIDTH_STEP,
+            "- stays enabled at the widest column"
+        );
+        for _ in 0..30 {
+            click(&mut visual, "titlebar-width-narrower");
+        }
+        assert_eq!(current(&mut visual).0, pecan_config::MIN_READING_WIDTH);
+        click(&mut visual, "titlebar-width-narrower");
+        assert_eq!(
+            current(&mut visual).0,
+            pecan_config::MIN_READING_WIDTH,
+            "- is disabled at the narrowest column"
+        );
+        assert!(
+            !hoverable(&mut visual, "titlebar-width-narrower"),
+            "- is greyed out"
+        );
+        assert!(hoverable(&mut visual, "titlebar-width-wider"));
+        // A Settings value off the 80px grid still steps and clamps at the limit.
+        visual.update(|_, cx| {
+            let prefs = reader.read(cx).prefs.clone();
+            prefs.update(cx, |prefs, cx| {
+                prefs.change(|data| data.reading_width = 1560., cx)
+            });
+        });
+        click(&mut visual, "titlebar-width-wider");
+        assert_eq!(current(&mut visual).0, pecan_config::MAX_READING_WIDTH);
+        assert_eq!(current(&mut visual).1, font_size);
+    }
     #[test]
     #[cfg(target_os = "macos")]
     #[ignore = "Requires a Metal graphical session; set PECAN_METAL_OUTPUT to keep the frames"]
@@ -1907,7 +2525,7 @@ mod tests {
                     cx.new(|cx| {
                         let mut reader =
                             Reader::new(None, pecan_config::startup::Launch::First, window, cx);
-                        reader.tabs[0].title = "设备定位SDK服务端技术方案.md".into();
+                        reader.tabs[0].title = "本地文档阅读服务端技术方案.md".into();
                         reader.tabs[0].view = cx.new(|cx| {
                             DocumentView::new(
                                 document,

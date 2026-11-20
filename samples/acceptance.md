@@ -6,9 +6,9 @@
 
 中文 `request_id` 中文，English `inline_code` English。短代码 `i`、快捷键 `⌘F`、中文代码 `设备状态` 与较长代码 `GET /api/devices/{device_id}` 都应保持适当留白。
 
-字段 `location_time` 取 SDK 返回的 `rtc_time`。两侧空格来自本页原文，代码内部没有补入用于撑宽胶囊的空格。试着选择并复制代码，检查实际文本。
+字段 `updated_at` 取文件系统返回的 `mtime`。两侧空格来自本页原文，代码内部没有补入用于撑宽胶囊的空格。试着选择并复制代码，检查实际文本。
 
-这是用于检查正文两端对齐与段落行距的长段落。阅读区应保持平稳的文字节奏，中文与 English words、**粗体文字**、*斜体说明*及 `model_setting` 能在同一行中自然排列。缩窄正文宽度后，胶囊仍应完整，最后一行应保持自然宽度。Word 导出采用适合纸面阅读的字号与行距，正文不能因混排被无故撑得很松。
+这是用于检查正文两端对齐与段落行距的长段落。阅读区应保持平稳的文字节奏，中文与 English words、**粗体文字**、*斜体说明*及 `reading_config` 能在同一行中自然排列。缩窄页面宽度后，胶囊仍应完整，最后一行应保持自然宽度。Word 导出采用适合纸面阅读的字号与行距，正文不能因混排被无故撑得很松。
 
 ## 2 标题中的 `inline_code`
 
@@ -72,14 +72,14 @@
 ## 5 无标题高亮块
 
 :::
-`location_time` 取 SDK 返回的 `rtc_time` 字段值。正文应紧跟灯泡图标，图标与第一行居中。
+`updated_at` 取文件系统返回的 `mtime` 字段值。正文应紧跟灯泡图标，图标与第一行居中。
 :::
 
 :::
 **参考文档**
 
-- 地理定位：[Geolocation API](https://developers.google.com/maps/documentation/geolocation/requests-geolocation?hl=zh-cn)
-- 反向地理编码：[Geocoding API](https://developers.google.com/maps/documentation/geocoding/requests-reverse-geocoding?hl=zh-cn)
+- Markdown 规范：[CommonMark Spec](https://spec.commonmark.org/0.31.2/#introduction)
+- 基础写作语法：[GitHub 写作格式](https://docs.github.com/zh/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax)
 
 正文与较长链接应自然换行，中文字符之间不能被拉得很开。
 :::
@@ -97,9 +97,9 @@
         "code_size": 14,
         "tab_size": 4
     },
-    "providers": [
-        { "type": "gps", "enabled": true },
-        { "type": "network", "enabled": false }
+    "plugins": [
+        { "type": "mermaid", "enabled": true },
+        { "type": "math", "enabled": false }
     ] // 保留注释，格式化只调整排版
 }
 ```
@@ -111,7 +111,7 @@
 | --- | --- | --- |
 | 行内代码 | `request_id` 与 **重要内容** | 第一行<br>第二行<br>第三行 |
 | 数学 | $E=mc^2$ | 短内容应在所在行中垂直居中 |
-| 长字段 | `GET /api/devices/{device_id}/location/history?from=2026-01-01&to=2026-12-31` | 阅读区保持内容宽度，必要时水平滚动 |
+| 长字段 | `GET /api/documents/{document_id}/revisions/history?from=2026-01-01&to=2026-12-31` | 阅读区保持内容宽度，必要时水平滚动 |
 | 链接 | [Rust 文档](https://doc.rust-lang.org/) | 只有明确的换行符才主动分行 |
 
 ## 7 代码缩进与工具栏

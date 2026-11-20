@@ -306,8 +306,8 @@ mod tests {
         }
         cx.update(gpui_kit::init);
         for source in [
-            "`location_time` 取 SDK 返回的 `rtc_time` 字段值",
-            "**参考文档**\n\n- 地理定位：[查看文档](https://example.com/location)\n- 反向地理编码：保留列表",
+            "`updated_at` 取文件系统返回的 `mtime` 字段值",
+            "**参考文档**\n\n- 语法规范：[查看文档](https://example.com/spec)\n- 基础写作语法：保留列表",
             "- **第一项**\n- 第二项 `code`",
         ] {
             let (root, visual) = cx.add_window_view(|_, cx| Fixture {
@@ -347,7 +347,7 @@ mod tests {
                         text.rendered_text()
                             .as_str()
                             .contains(if source.starts_with('`') {
-                                "location_time"
+                                "updated_at"
                             } else {
                                 "第一项"
                             })
@@ -546,7 +546,7 @@ mod tests {
             (
                 0,
                 None,
-                "业务方云端服务接收到各自终端组件上报的定位数据后，需统一数据结构后投递到 RMQ 中",
+                "碧果读取本地文档后，会统一整理标题、列表和表格，再交给阅读区与导出流程排版",
                 16.,
                 840.,
             ),

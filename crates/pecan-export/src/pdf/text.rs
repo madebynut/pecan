@@ -779,7 +779,7 @@ mod tests {
             pecan_mermaid::SYSTEM_UI_FONT,
             pecan_mermaid::SYSTEM_MONO_FONT,
         );
-        let text = "终端侧已将 DataService（DS）、RemoteControl（RC）等多套定位实现收敛为统一的定位 SDK，并约定：配置整包替换。".repeat(3);
+        let text = "阅读侧已将 MarkdownParser（MP）、OfficeImport（OI）等多套解析实现收敛为统一的文档模型，并约定：配置整包替换。".repeat(3);
         let inlines = [Inline::Text(
             text.clone(),
             Style::new(Role::Body, 11., [0; 3]),

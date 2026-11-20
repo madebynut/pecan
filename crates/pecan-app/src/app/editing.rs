@@ -75,6 +75,18 @@ impl Tab {
     pub(super) fn source_mode(&self) -> bool {
         self.edit.as_ref().is_some_and(|edit| edit.show_source)
     }
+    /// Markdown files and built-in guides have a source; converted documents do not.
+    pub(super) fn has_markdown_source(&self) -> bool {
+        self.resources
+            .as_ref()
+            .is_none_or(|resources| resources.kind() == pecan_import::SourceKind::Markdown)
+    }
+    /// A converted document whose reflow is complete can be exported as Markdown.
+    pub(super) fn markdown_exportable(&self) -> bool {
+        self.resources.as_ref().is_some_and(|resources| {
+            resources.kind() != pecan_import::SourceKind::Markdown && resources.notice().is_none()
+        })
+    }
     pub(super) fn protected(&self) -> bool {
         self.edit
             .as_ref()
@@ -337,6 +349,16 @@ impl Reader {
     }
 
     pub(super) fn toggle_source(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self
+            .tabs
+            .get(self.active)
+            .is_some_and(|tab| !tab.source_mode() && !tab.has_markdown_source())
+        {
+            self.status =
+                "仅 Markdown 文件支持查看源码；可在右键菜单「导出文档」中导出 Markdown".into();
+            cx.notify();
+            return;
+        }
         let Some(id) = self.ensure_editor(window, cx) else {
             return;
         };

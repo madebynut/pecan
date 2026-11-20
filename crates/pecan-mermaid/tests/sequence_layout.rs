@@ -239,7 +239,7 @@ fn sequence_markers_follow_actual_message_origins() {
 #[test]
 fn self_calls_keep_compact_geometry_with_long_captions() {
     let graph = mermaid_rs_renderer::parse_mermaid_strict(
-        "sequenceDiagram\n autonumber\n participant A\n participant B\n alt 首次请求\n A->>A: 初始化\n A->>A: 写入定位历史，按定位时间更新设备最新位置\n else 重复请求\n A->>A: 丢弃并计数\n end\n A->>B: 完成\n"
+        "sequenceDiagram\n autonumber\n participant A\n participant B\n alt 首次请求\n A->>A: 初始化\n A->>A: 写入版本历史，按修改时间更新文档最新版本\n else 重复请求\n A->>A: 丢弃并计数\n end\n A->>B: 完成\n"
     ).unwrap().graph;
     let layout =
         mermaid_rs_renderer::compute_layout(&graph, &Theme::modern(), &LayoutConfig::default());
@@ -377,7 +377,7 @@ fn sequence_numbers_keep_equal_circles_and_fit_their_glyphs() {
     }
 }
 
-const SOURCE: &str = "sequenceDiagram\n autonumber\n participant A as 客户端\n participant B as 数据服务\n participant C as 查询方\n A->>B: 上报结果\n B->>B: 鉴权、校验、转换为统一格式\n B->>B: 按设备编号和定位时间幂等\n alt 首次出现\n B->>B: 写入历史，按时间更新设备最新位置\n else 重复数据\n B->>B: 丢弃并计数\n end\n C->>B: 查询最新位置和历史轨迹\n";
+const SOURCE: &str = "sequenceDiagram\n autonumber\n participant A as 客户端\n participant B as 数据服务\n participant C as 查询方\n A->>B: 提交文档\n B->>B: 鉴权、校验、转换为统一格式\n B->>B: 按文档编号和修改时间幂等\n alt 首次出现\n B->>B: 写入历史，按时间更新文档最新版本\n else 重复数据\n B->>B: 丢弃并计数\n end\n C->>B: 查询最新版本和历史记录\n";
 
 #[test]
 fn chinese_self_messages_and_branch_headers_have_separate_space() {

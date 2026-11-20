@@ -2,6 +2,10 @@
 use pecan_mermaid::{SYSTEM_MONO_FONT, SYSTEM_UI_FONT};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+/// Narrowest reading column, in logical pixels.
+pub const MIN_READING_WIDTH: f64 = 480.;
+/// Widest reading column, in logical pixels.
+pub const MAX_READING_WIDTH: f64 = 1600.;
 /// Persisted reading settings; schema migrations preserve user choices.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -152,7 +156,12 @@ impl PreferencesData {
             (&mut self.ui_size, 14., 11., 20.),
             (&mut self.math_size, 18., 12., 36.),
             (&mut self.line_height, 1.6, 1.2, 2.6),
-            (&mut self.reading_width, 960., 480., 1600.),
+            (
+                &mut self.reading_width,
+                960.,
+                MIN_READING_WIDTH,
+                MAX_READING_WIDTH,
+            ),
         ] {
             *value = if value.is_finite() {
                 value.clamp(min, max)

@@ -18,18 +18,18 @@
 
 ```json-ld
 {
-    "orchMode": "chain",
+    "mode": "reading",
     "version": 1,
-    "providers": [
+    "plugins": [
         {
-            "provider": "gps",
+            "plugin": "mermaid",
             "options": {
-                "duration": "30000",
-                "needAddress": "true"
+                "timeout": "30000",
+                "cache": "true"
             }
         }
     ],
-    "compliance": { // 法案受限区域配置
+    "template": { // 导出模板配置
         "enabled": false,
         "url": "文件地址", // JSON 文件地址
         "hash": "xxx", // SHA256

@@ -651,7 +651,6 @@ fn imported_source_saves_as_portable_markdown_and_cancellation_keeps_the_origina
     let (handle, reader) = open(cx, Some(source.clone()));
     cx.update_window(handle, |_, window, cx| {
         reader.update(cx, |reader, cx| {
-            reader.toggle_source(window, cx);
             reader.save_active(SaveMode::Existing, window, cx);
         })
     })
@@ -685,6 +684,80 @@ fn imported_source_saves_as_portable_markdown_and_cancellation_keeps_the_origina
     assert_eq!(std::fs::read(source).unwrap(), original);
 }
 
+#[gpui_kit::test]
+fn converted_documents_hide_source_and_export_markdown_instead(cx: &mut TestAppContext) {
+    let source = std::path::absolute(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../pecan-import/tests/fixtures/rich.docx"),
+    )
+    .unwrap();
+    let original = std::fs::read(&source).unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let destination = directory.path().join("exported.md");
+    let (handle, reader) = open(cx, Some(source.clone()));
+    reader.read_with(cx, |state, _| {
+        let tab = &state.tabs[state.active];
+        assert!(!tab.has_markdown_source());
+        assert!(tab.markdown_exportable());
+    });
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.toggle_source(window, cx))
+    })
+    .unwrap();
+    reader.read_with(cx, |state, _| {
+        let tab = &state.tabs[state.active];
+        assert!(
+            !tab.source_mode(),
+            "a converted document has no Markdown source"
+        );
+        assert!(tab.edit.is_none());
+        assert!(state.status.contains("仅 Markdown"), "{}", state.status);
+    });
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.export_markdown(window, cx))
+    })
+    .unwrap();
+    assert!(cx.did_prompt_for_new_path());
+    cx.simulate_new_path_selection(|_| Some(destination.clone()));
+    super::super::tests::settle(cx);
+    reader.read_with(cx, |state, _| {
+        assert!(state.status.starts_with("已导出"), "{}", state.status);
+        assert_eq!(state.tabs[state.active].path.as_ref(), Some(&source));
+    });
+    let exported = std::fs::read_to_string(&destination).unwrap();
+    assert!(
+        exported.contains("pecan-assets-"),
+        "images travel with the Markdown"
+    );
+    assert_eq!(std::fs::read(&source).unwrap(), original);
+
+    let markdown = directory.path().join("note.md");
+    std::fs::write(&markdown, "# Note").unwrap();
+    reader.update(cx, |reader, cx| reader.open_file(markdown, cx));
+    super::super::tests::settle(cx);
+    reader.read_with(cx, |state, _| {
+        let tab = &state.tabs[state.active];
+        assert!(tab.has_markdown_source());
+        assert!(
+            !tab.markdown_exportable(),
+            "Markdown files are already Markdown"
+        );
+    });
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.export_markdown(window, cx))
+    })
+    .unwrap();
+    assert!(!cx.did_prompt_for_new_path());
+    reader.read_with(cx, |state, _| {
+        assert!(state.status.contains("已是 Markdown"), "{}", state.status)
+    });
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.toggle_source(window, cx))
+    })
+    .unwrap();
+    reader.read_with(cx, |state, _| {
+        assert!(state.tabs[state.active].source_mode())
+    });
+}
 #[gpui_kit::test]
 fn source_sessions_follow_tabs_and_undo_can_return_to_the_saved_state(cx: &mut TestAppContext) {
     let directory = tempfile::tempdir().unwrap();

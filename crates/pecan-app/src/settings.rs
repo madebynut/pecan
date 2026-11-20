@@ -375,7 +375,7 @@ impl Render for SettingsPanel {
                 self.font_item(3, "英文字体").description("默认中文跟随系统，英文使用系统等宽字体。中文作为回退；所选英文字体自带汉字时优先使用其字形。"),
                 self.number("正文字号",12.,32.,1.,|p|p.font_size,|p,v|p.font_size=v).description("默认 16px，独立于代码块字号。"),
                 self.number("行高",1.2,2.6,0.1,|p|p.line_height,|p,v|p.line_height=v),
-                self.number("正文宽度",480.,1600.,40.,|p|p.reading_width,|p,v|p.reading_width=v).description("默认 960px；窗口较窄时自动收缩，图片跟随正文可用宽度。"),
+                self.number("页面宽度",pecan_config::MIN_READING_WIDTH,pecan_config::MAX_READING_WIDTH,40.,|p|p.reading_width,|p,v|p.reading_width=v).description("默认 960px；窗口较窄时自动收缩，图片跟随正文可用宽度。"),
             ])).group(SettingGroup::new().title("代码块").items([
                 self.font_item(4, "代码字体").description("独立于正文字体，也用于行内 code 胶囊。"),
                 self.number("代码块字号",10.,32.,1.,|p|p.code_size,|p,v|p.code_size=v).description("默认 14px；不自动换行，长行支持水平滚动。"),

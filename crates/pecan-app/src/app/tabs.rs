@@ -301,6 +301,10 @@ impl Reader {
             tab.view.update(cx, |view, cx| view.suspend(cx));
         }
         self.active = index;
+        // Transient messages belong to the tab they came from; show the new document's summary.
+        if let Some(summary) = self.document_summary(cx) {
+            self.status = summary;
+        }
         if let Some(path) = self.tabs[self.active].path.clone() {
             self.watch(&path);
         } else {

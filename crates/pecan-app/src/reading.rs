@@ -797,8 +797,8 @@ mod tests {
     fn fenced_notes_keep_a_single_rich_column_at_different_widths(cx: &mut TestAppContext) {
         cx.update(gpui_kit::init);
         for body in [
-            "`location_time` 取 SDK 返回的 `rtc_time` 字段值",
-            "**参考文档**\n\n- 地理定位：[查看文档](https://example.com/location)\n- 反向地理编码：保留列表",
+            "`updated_at` 取文件系统返回的 `mtime` 字段值",
+            "**参考文档**\n\n- 语法规范：[查看文档](https://example.com/spec)\n- 基础写作语法：保留列表",
             "**更多 Markdown 结构**\n\n| 内容 | 示例 |\n| --- | --- |\n| 行内代码 | `request_id` |\n| 强调 | **重要结论** |\n\n```json\n{\n  \"reading\": true\n}\n```",
         ] {
             let document = Arc::new(Document::parse(format!(":::\n{body}\n:::\n")).unwrap());
@@ -835,7 +835,7 @@ mod tests {
                     };
                     let rendered = chunk.read(cx).text.read(cx).rendered_text();
                     assert!(rendered.source().starts_with(body));
-                    for word in ["location_time", "rtc_time", "参考文档", "地理定位"] {
+                    for word in ["updated_at", "mtime", "参考文档", "语法规范"] {
                         if let Some(start) = body.find(word) {
                             assert!(rendered.range_for_source(start..start + word.len()).is_some(),
                                 "inline code, strong text and list links keep search mapping: {word}");
@@ -912,8 +912,8 @@ mod tests {
         cx.update(gpui_kit::init);
         let source = r#":::
 **参考文档**
-- 地理定位：[https://developers.google.com/maps/documentation/geolocation/requests-geolocation?hl=zh-cn](https://developers.google.com/maps/documentation/geolocation/requests-geolocation?hl=zh-cn)
-- 反向地理编码：[https://developers.google.com/maps/documentation/geocoding/reverse-geocoding?hl=zh-cn](https://developers.google.com/maps/documentation/geocoding/reverse-geocoding?hl=zh-cn)
+- 语法规范：[https://docs.github.com/zh/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax](https://docs.github.com/zh/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax)
+- 基础写作语法：[https://docs.github.com/zh/get-started/writing-on-github/working-with-advanced-formatting/organizing-information-with-tables](https://docs.github.com/zh/get-started/writing-on-github/working-with-advanced-formatting/organizing-information-with-tables)
 :::
 "#;
         let document = Arc::new(Document::parse(source.into()).unwrap());
@@ -951,10 +951,10 @@ mod tests {
                 assert!(matches!(chunk.read(cx).layout, MarkdownLayout::Note));
                 chunk.read(cx).text.clone().update(cx, |text, cx| {
                     text.select_all(cx);
-                    assert!(text.selected_text().contains("地理定位"));
+                    assert!(text.selected_text().contains("语法规范"));
                     assert!(
                         text.selected_text()
-                            .contains("requests-geolocation?hl=zh-cn")
+                            .contains("basic-writing-and-formatting-syntax")
                     );
                 });
                 assert_eq!(root.read(cx).document.source(), source);

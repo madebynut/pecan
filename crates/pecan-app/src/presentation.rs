@@ -351,7 +351,7 @@ mod tests {
             }
         }
         cx.update(gpui_kit::init);
-        for code in ["", " `model setting` "] {
+        for code in ["", " `reader setting` "] {
             let prose = format!("这是测试正文两端对齐和选择复制的段落 mixed English words{code}，文字排版需要保持清晰与稳定。").repeat(5);
             let source = format!("{prose}  \n短行\n");
             let (root, visual) = cx.add_window_view(|_, cx| Fixture {
@@ -445,7 +445,7 @@ mod tests {
         for body in [16., 22.] {
             for level in 0_u8..=6 {
                 let source = format!(
-                    "{}远控 `**model setting**` 配置",
+                    "{}阅读 `**reader setting**` 配置",
                     if level == 0 {
                         String::new()
                     } else {
@@ -464,7 +464,7 @@ mod tests {
                     let text_entity = root.read(cx).text.clone();
                     text_entity.update(cx, |text, cx| {
                         text.set_range_highlights(
-                            [RangeHighlight::new(0.."远控".len(), rgb(0xff00ff))],
+                            [RangeHighlight::new(0.."阅读".len(), rgb(0xff00ff))],
                             cx,
                         )
                         .unwrap();
@@ -491,7 +491,7 @@ mod tests {
                         text.select_all(cx);
                         assert_eq!(
                             text.selected_text().trim(),
-                            "远控 **model setting** 配置",
+                            "阅读 **reader setting** 配置",
                             "inline code remains native selectable text"
                         );
                     });
@@ -525,7 +525,7 @@ mod tests {
         }
         cx.update(gpui_kit::init);
         for body in [16., 22.] {
-            let source = "# 设备定位 SDK\n\n## 背景与目标\n\n### 背景\n\n#### 四级\n\n##### 五级\n\n###### 六级\n\n正文";
+            let source = "# 文档阅读 API\n\n## 背景与目标\n\n### 背景\n\n#### 四级\n\n##### 五级\n\n###### 六级\n\n正文";
             let (_, visual) = cx.add_window_view(|_, cx| Fixture {
                 text: cx.new(|cx| {
                     let mut text = TextViewState::markdown(source, cx);
