@@ -9,10 +9,9 @@ use futures_lite::AsyncReadExt as _;
 use gpui_kit::{
     AnyElement, App, Global, InteractiveElement as _, IntoElement as _, ParentElement as _,
     StatefulInteractiveElement as _, Styled as _,
-    component::{ActiveTheme as _, Icon, IconName, h_flex},
+    component::{ActiveTheme as _, h_flex},
     div,
     http_client::{AsyncBody, HttpClient, RequestTimeout, http},
-    px,
 };
 use semver::Version;
 use serde::Deserialize;
@@ -156,7 +155,7 @@ fn dismiss(cx: &mut App) {
     cx.refresh_windows();
 }
 
-/// "新版本 X 可用" with a close button, for the reader's status bar.
+/// "新版本 X 可用" for the reader's status bar; opening the release also hides it.
 pub(crate) fn status_notice(cx: &mut App) -> Option<AnyElement> {
     if cx
         .try_global::<UpdateState>()
@@ -170,7 +169,6 @@ pub(crate) fn status_notice(cx: &mut App) -> Option<AnyElement> {
         h_flex()
             .flex_shrink_0()
             .pl_3()
-            .gap_1()
             .items_center()
             .child(
                 div()
@@ -180,19 +178,8 @@ pub(crate) fn status_notice(cx: &mut App) -> Option<AnyElement> {
                     .text_color(cx.theme().foreground)
                     .hover(|style| style.underline())
                     .child(label)
-                    .on_click(move |_, _, cx| open(&version, cx)),
-            )
-            .child(
-                div()
-                    .id("update-dismiss")
-                    .debug_selector(|| "update-dismiss".into())
-                    .cursor_pointer()
-                    .rounded(px(3.))
-                    .p(px(2.))
-                    .hover(|style| style.bg(cx.theme().muted))
-                    .child(Icon::new(IconName::Close).size(px(10.)))
-                    .on_click(|_, _, cx| {
-                        cx.stop_propagation();
+                    .on_click(move |_, _, cx| {
+                        open(&version, cx);
                         dismiss(cx);
                     }),
             )
@@ -312,7 +299,7 @@ mod tests {
     }
 
     #[gpui_kit::test]
-    fn the_status_bar_offers_the_release_until_dismissed_and_about_keeps_it(
+    fn the_status_bar_offers_the_release_until_opened_and_about_keeps_it(
         cx: &mut gpui_kit::TestAppContext,
     ) {
         use gpui_kit::{AppContext as _, VisualTestContext};
@@ -348,13 +335,16 @@ mod tests {
             "the notice sits on the right"
         );
 
-        let close = visual.debug_bounds("update-dismiss").unwrap();
-        visual.simulate_click(close.center(), Default::default());
+        visual.simulate_click(notice.center(), Default::default());
         visual.run_until_parked();
+        assert_eq!(
+            visual.opened_url().as_deref(),
+            Some("https://github.com/madebynut/pecan/releases/tag/v9.0.0")
+        );
         visual.update(|window, cx| window.draw(cx).clear(cx));
         assert!(
             visual.debug_bounds("update-notice").is_none(),
-            "× hides the notice"
+            "opening the release hides the notice"
         );
         visual.update(|_, cx| {
             assert_eq!(
