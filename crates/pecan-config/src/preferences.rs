@@ -2,6 +2,10 @@
 use pecan_mermaid::{SYSTEM_MONO_FONT, SYSTEM_UI_FONT};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+/// Narrowest reading column, in logical pixels.
+pub const MIN_READING_WIDTH: f64 = 480.;
+/// Widest reading column, in logical pixels.
+pub const MAX_READING_WIDTH: f64 = 1600.;
 /// Persisted reading settings; schema migrations preserve user choices.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -152,7 +156,12 @@ impl PreferencesData {
             (&mut self.ui_size, 14., 11., 20.),
             (&mut self.math_size, 18., 12., 36.),
             (&mut self.line_height, 1.6, 1.2, 2.6),
-            (&mut self.reading_width, 960., 480., 1600.),
+            (
+                &mut self.reading_width,
+                960.,
+                MIN_READING_WIDTH,
+                MAX_READING_WIDTH,
+            ),
         ] {
             *value = if value.is_finite() {
                 value.clamp(min, max)
@@ -319,8 +328,34 @@ fn read_config(path: &Path) -> std::io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
+/// The file a configuration write replaces. A symbolic link (for example one managed
+/// by a dotfiles tool) is followed, so the rename replaces its target and the link stays.
+pub(crate) fn write_target(path: &Path) -> std::io::Result<PathBuf> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            pecan_document::files::canonicalize(path)
+        }
+        _ => Ok(path.to_path_buf()),
+    }
+}
+/// Copy a settings file that could not be read to `<name>.bak` beside it, before the
+/// next save replaces it with defaults, and return the copy's path.
+///
+/// # Errors
+/// Returns the I/O error when the file cannot be copied.
+pub fn back_up_unreadable(path: &Path) -> std::io::Result<PathBuf> {
+    let mut name = path
+        .file_name()
+        .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::InvalidInput))?
+        .to_os_string();
+    name.push(".bak");
+    let backup = path.with_file_name(name);
+    std::fs::copy(path, &backup)?;
+    Ok(backup)
+}
 fn save(path: &Path, data: &PreferencesData) -> anyhow::Result<()> {
     use std::io::Write as _;
+    let path = &write_target(path)?;
     let parent = path
         .parent()
         .ok_or_else(|| anyhow::anyhow!("settings path has no parent"))?;
@@ -340,6 +375,37 @@ pub fn save_preferences(path: &Path, data: &PreferencesData) -> Result<(), crate
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn unreadable_settings_are_copied_before_defaults_replace_them() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("preferences.json");
+        std::fs::write(&path, "{\"font_size\": 22,}").unwrap();
+        let backup = super::back_up_unreadable(&path).unwrap();
+        assert_eq!(backup, directory.path().join("preferences.json.bak"));
+        super::save_preferences(&path, &super::PreferencesData::default()).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(backup).unwrap(),
+            "{\"font_size\": 22,}"
+        );
+    }
+    #[cfg(unix)]
+    #[test]
+    fn saving_through_a_settings_link_keeps_the_link() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("dotfiles-preferences.json");
+        std::fs::write(&target, "{}").unwrap();
+        let link = directory.path().join("preferences.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let data = super::PreferencesData {
+            font_size: 20.,
+            ..Default::default()
+        };
+        super::save_preferences(&link, &data).unwrap();
+        assert!(std::fs::symlink_metadata(&link).unwrap().is_symlink());
+        let saved: super::PreferencesData =
+            serde_json::from_slice(&std::fs::read(&target).unwrap()).unwrap();
+        assert_eq!(saved.font_size, 20.);
+    }
     #[test]
     fn last_tab_exit_defaults_off_for_existing_preferences_and_persists_when_enabled() {
         let mut data: super::PreferencesData = serde_json::from_str(r#"{"font_size":22}"#).unwrap();

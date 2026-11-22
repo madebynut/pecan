@@ -6,7 +6,6 @@ target=${1:-$(rustc -vV | sed -n 's/^host: //p')}
 version=$(python3 scripts/release-version.py)
 cargo build --locked --release --bin Pecan --target "$target"
 arch=$(printf '%s' "$target" | cut -d- -f1)
-[ "$arch" != aarch64 ] || arch=arm64
 bundle="$project_root/dist/Pecan.app"
 mkdir -p "$project_root/dist"
 # Fresh inodes avoid stale macOS code-signing pages when replacing a previously launched binary.
@@ -19,7 +18,11 @@ cp "$project_root/LICENSE" "$staged_bundle/Contents/Resources/LICENSE"
 cp "$project_root/NOTICE" "$staged_bundle/Contents/Resources/NOTICE"
 cp -R "$project_root/licenses" "$staged_bundle/Contents/Resources/licenses"
 cp "$project_root/assets/brand/pecan.icns" "$staged_bundle/Contents/Resources/Pecan.icns"
-sed "s/@VERSION@/$version/g" "$project_root/assets/macos/Info.plist" > "$staged_bundle/Contents/Info.plist"
+# CFBundleVersion is compared by LaunchServices and must be dot-separated integers;
+# the pre-release label stays in the user-visible short version string.
+bundle_version=${version%%[-+]*}
+sed -e "s/@BUNDLE_VERSION@/$bundle_version/g" -e "s/@VERSION@/$version/g" \
+    "$project_root/assets/macos/Info.plist" > "$staged_bundle/Contents/Info.plist"
 plutil -lint "$staged_bundle/Contents/Info.plist"
 # MACOS_SIGNING_IDENTITY names a Developer ID Application certificate in the keychain.
 # Without it the bundle is ad-hoc signed, which Gatekeeper rejects for downloaded apps.

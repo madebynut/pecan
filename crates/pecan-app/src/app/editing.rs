@@ -48,6 +48,11 @@ impl Session {
         !self.dirty && self.revision > 0 && self.saved_revision == Some(self.revision)
     }
 
+    /// The document as last loaded or saved, which is what the file should contain.
+    pub(super) fn saved_document(&self) -> Arc<Document> {
+        self.saved.clone()
+    }
+
     pub(super) fn preview_pending(&self) -> bool {
         self.preview_revision != self.revision
     }
@@ -74,6 +79,18 @@ impl Tab {
     }
     pub(super) fn source_mode(&self) -> bool {
         self.edit.as_ref().is_some_and(|edit| edit.show_source)
+    }
+    /// Markdown files and built-in guides have a source; converted documents do not.
+    pub(super) fn has_markdown_source(&self) -> bool {
+        self.resources
+            .as_ref()
+            .is_none_or(|resources| resources.kind() == pecan_import::SourceKind::Markdown)
+    }
+    /// A converted document whose reflow is complete can be exported as Markdown.
+    pub(super) fn markdown_exportable(&self) -> bool {
+        self.resources.as_ref().is_some_and(|resources| {
+            resources.kind() != pecan_import::SourceKind::Markdown && resources.notice().is_none()
+        })
     }
     pub(super) fn protected(&self) -> bool {
         self.edit
@@ -337,6 +354,21 @@ impl Reader {
     }
 
     pub(super) fn toggle_source(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(tab) = self
+            .tabs
+            .get(self.active)
+            .filter(|tab| !tab.source_mode() && !tab.has_markdown_source())
+        {
+            // Only point at the export entry when the context menu actually offers it.
+            self.status = if tab.markdown_exportable() {
+                "仅 Markdown 文件支持查看源码；可在右键菜单「导出文档」中导出 Markdown"
+            } else {
+                "仅 Markdown 文件支持查看源码；这份文档无法完整转换为 Markdown，请使用原版查看"
+            }
+            .into();
+            cx.notify();
+            return;
+        }
         let Some(id) = self.ensure_editor(window, cx) else {
             return;
         };

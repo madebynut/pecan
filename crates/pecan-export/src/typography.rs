@@ -334,14 +334,14 @@ impl Fonts {
                 y_offset: position.y_offset as f32 / units,
             })
             .collect();
-        // A cluster ends where the next distinct cluster starts (left-to-right text).
-        let mut end = text.len();
-        for index in (0..glyphs.len()).rev() {
-            let start = glyphs[index].cluster.start;
-            glyphs[index].cluster.end = end.max(start);
-            if index > 0 && glyphs[index - 1].cluster.start != start {
-                end = start;
-            }
+        // A cluster ends where the next cluster in the text starts. Right-to-left runs
+        // list glyphs in visual order with decreasing clusters, so look up by offset.
+        let mut starts: Vec<usize> = glyphs.iter().map(|glyph| glyph.cluster.start).collect();
+        starts.sort_unstable();
+        starts.dedup();
+        for glyph in &mut glyphs {
+            let next = starts.partition_point(|start| *start <= glyph.cluster.start);
+            glyph.cluster.end = starts.get(next).copied().unwrap_or(text.len());
         }
         let _ = size;
         glyphs

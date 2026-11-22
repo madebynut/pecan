@@ -6,7 +6,7 @@
 <key>CFBundleExecutable</key><string>Pecan</string>
 <key>CFBundleIdentifier</key><string>com.pecan.reader</string>
 <key>CFBundleIconFile</key><string>Pecan</string>
-<key>CFBundleVersion</key><string>@VERSION@</string>
+<key>CFBundleVersion</key><string>@BUNDLE_VERSION@</string>
 <key>CFBundleShortVersionString</key><string>@VERSION@</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>NSHighResolutionCapable</key><true/>
@@ -37,9 +37,16 @@
       <string>public.rtf</string>
       <string>org.idpf.epub-container</string>
       <string>org.openxmlformats.presentationml.presentation</string>
+      <string>org.openxmlformats.presentationml.presentation.macroenabled</string>
+      <string>org.openxmlformats.presentationml.slideshow</string>
+      <string>org.openxmlformats.presentationml.slideshow.macroenabled</string>
       <string>com.microsoft.powerpoint.ppt</string>
+      <string>com.microsoft.powerpoint.pps</string>
+      <string>com.microsoft.powerpoint.pot</string>
       <string>org.oasis-open.opendocument.presentation</string>
       <string>org.openxmlformats.spreadsheetml.sheet</string>
+      <string>org.openxmlformats.spreadsheetml.sheet.macroenabled</string>
+      <string>com.microsoft.excel.sheet.binary.macroenabled</string>
       <string>com.microsoft.excel.xls</string>
       <string>org.oasis-open.opendocument.spreadsheet</string>
       <string>public.comma-separated-values-text</string>

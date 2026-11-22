@@ -44,11 +44,23 @@ pub(crate) fn open(cx: &mut App) {
     }
 }
 
+#[derive(Default)]
+struct AboutWindow(Option<AnyWindowHandle>);
+impl Global for AboutWindow {}
+/// Show About, bringing an already open About window forward instead of adding another.
 pub(crate) fn about(cx: &mut App) {
+    if let Some(handle) = cx.try_global::<AboutWindow>().and_then(|about| about.0)
+        && handle
+            .update(cx, |_, window, _| window.activate_window())
+            .is_ok()
+    {
+        return;
+    }
     let mut options = crate::native_window_options("关于碧果", cx, size(px(460.), px(390.)));
     options.window_min_size = None;
-    if let Err(error) = gpui_kit::open_window(options, cx, |_, cx| cx.new(|_| AboutPanel)) {
-        tracing::error!(%error, "unable to open About window");
+    match gpui_kit::open_window(options, cx, |_, cx| cx.new(|_| AboutPanel)) {
+        Ok((handle, _)) => cx.set_global(AboutWindow(Some(handle))),
+        Err(error) => tracing::error!(%error, "unable to open About window"),
     }
 }
 
@@ -375,7 +387,7 @@ impl Render for SettingsPanel {
                 self.font_item(3, "英文字体").description("默认中文跟随系统，英文使用系统等宽字体。中文作为回退；所选英文字体自带汉字时优先使用其字形。"),
                 self.number("正文字号",12.,32.,1.,|p|p.font_size,|p,v|p.font_size=v).description("默认 16px，独立于代码块字号。"),
                 self.number("行高",1.2,2.6,0.1,|p|p.line_height,|p,v|p.line_height=v),
-                self.number("正文宽度",480.,1600.,40.,|p|p.reading_width,|p,v|p.reading_width=v).description("默认 960px；窗口较窄时自动收缩，图片跟随正文可用宽度。"),
+                self.number("页面宽度",pecan_config::MIN_READING_WIDTH,pecan_config::MAX_READING_WIDTH,40.,|p|p.reading_width,|p,v|p.reading_width=v).description("默认 960px；窗口较窄时自动收缩，图片跟随正文可用宽度。"),
             ])).group(SettingGroup::new().title("代码块").items([
                 self.font_item(4, "代码字体").description("独立于正文字体，也用于行内 code 胶囊。"),
                 self.number("代码块字号",10.,32.,1.,|p|p.code_size,|p,v|p.code_size=v).description("默认 14px；不自动换行，长行支持水平滚动。"),
@@ -427,6 +439,23 @@ impl Render for SettingsPanel {
 mod tests {
     use super::*;
     use gpui_kit::component::select::SelectItem;
+    #[gpui_kit::test]
+    fn about_opens_once_and_reopens_after_closing(cx: &mut gpui_kit::TestAppContext) {
+        cx.update(|cx| {
+            gpui_kit::init(cx);
+            about(cx);
+            about(cx);
+            assert_eq!(cx.windows().len(), 1, "a second About raises the first");
+        });
+        let handle = cx.update(|cx| cx.windows()[0]);
+        cx.update_window(handle, |_, window, _| window.remove_window())
+            .unwrap();
+        cx.run_until_parked();
+        cx.update(|cx| {
+            about(cx);
+            assert_eq!(cx.windows().len(), 1, "About opens again after it closed");
+        });
+    }
     #[gpui_kit::test]
     fn reading_navigation_toggles_and_keeps_the_active_page(cx: &mut gpui_kit::TestAppContext) {
         cx.update(gpui_kit::init);

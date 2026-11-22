@@ -78,6 +78,31 @@ pub enum Block {
 }
 
 impl Block {
+    /// Move every range `by` bytes later in the source.
+    fn shift(&mut self, by: usize) {
+        let shift = |range: &mut Range<usize>| *range = range.start + by..range.end + by;
+        match self {
+            Self::Markdown { source } | Self::Mermaid { source, .. } => shift(source),
+            Self::Callout { source, body } => {
+                shift(source);
+                shift(body);
+            }
+            Self::CodePage {
+                source,
+                content,
+                code,
+                ..
+            } => {
+                shift(source);
+                shift(content);
+                shift(code);
+            }
+            Self::Source { source, pages } => {
+                shift(source);
+                pages.iter_mut().for_each(shift);
+            }
+        }
+    }
     /// Byte range occupied by this block in the original document.
     pub fn source_range(&self) -> Range<usize> {
         match self {
@@ -133,32 +158,52 @@ impl Document {
     /// # Errors
     /// Rejects source larger than [`MAX_DOCUMENT_BYTES`] or structures exceeding
     /// 500,000 nonempty lines outside fenced code / the 64 MiB indexing budget.
-    pub fn parse(source: String) -> Result<Self, ParseDocumentError> {
-        if source.len() > MAX_DOCUMENT_BYTES {
-            return Err(ParseDocumentError::TooLarge { size: source.len() });
+    pub fn parse(full: String) -> Result<Self, ParseDocumentError> {
+        if full.len() > MAX_DOCUMENT_BYTES {
+            return Err(ParseDocumentError::TooLarge { size: full.len() });
         }
-        check_structure(&source)?;
+        // A UTF-8 byte order mark is not Markdown: CommonMark would read `\u{feff}# Title`
+        // as a paragraph. Index the text after it; `source()` keeps the exact file bytes
+        // for saving, and every range is shifted back to point into them.
+        let bom = if full.starts_with('\u{feff}') {
+            '\u{feff}'.len_utf8()
+        } else {
+            0
+        };
+        let source: &str = &full[bom..];
+        check_structure(source)?;
         let options = Options::ENABLE_TABLES
             | Options::ENABLE_STRIKETHROUGH
             | Options::ENABLE_TASKLISTS
             | Options::ENABLE_FOOTNOTES
             | Options::ENABLE_MATH;
-        let parser = Parser::new_ext(&source, options);
+        let parser = Parser::new_ext(source, options);
         let mut references = String::new();
         use std::fmt::Write as _;
+        // Destinations and titles arrive unescaped and entity-decoded; escape them again
+        // so each chunk re-parses the same definition.
+        let escape = |text: &str, special: &[char]| {
+            let mut escaped = String::with_capacity(text.len());
+            for c in text.chars() {
+                if special.contains(&c) {
+                    escaped.push('\\');
+                }
+                escaped.push(c);
+            }
+            escaped
+        };
         for (label, definition) in parser.reference_definitions().iter() {
             let _ = writeln!(
                 references,
                 "\n[{label}]: <{}> \"{}\"",
-                definition.dest,
-                definition
-                    .title
-                    .as_deref()
-                    .unwrap_or_default()
-                    .replace('"', "\\\"")
+                escape(&definition.dest, &['\\', '<', '>', '&']),
+                escape(
+                    definition.title.as_deref().unwrap_or_default(),
+                    &['\\', '"', '&']
+                ),
             );
         }
-        let callouts = callout_spans(&source);
+        let callouts = callout_spans(source);
         let mut blocks = Vec::new();
         let mut headings = Vec::new();
         let mut label_bytes = 0;
@@ -289,8 +334,8 @@ impl Document {
                             chunk_start = range.end;
                         } else if let Some(language) = fenced_code.take() {
                             let full = block_start..range.end;
-                            let code = fenced_code_range(&source, full.clone());
-                            let pages = code_pages(&source, code.clone());
+                            let code = fenced_code_range(source, full.clone());
+                            let pages = code_pages(source, code.clone());
                             let count = pages.len();
                             for (index, content) in pages.into_iter().enumerate() {
                                 let page_source = if index == 0 {
@@ -314,7 +359,7 @@ impl Document {
                         } else if oversized.take().is_some() {
                             let full = block_start..range.end;
                             blocks.push(Block::Source {
-                                pages: source_pages(&source, full.clone()),
+                                pages: source_pages(source, full.clone()),
                                 source: full,
                             });
                             chunk_start = range.end;
@@ -336,7 +381,7 @@ impl Document {
                 source: chunk_start..source.len(),
             });
         }
-        let mut blocks = extract_callouts(&source, blocks, &callouts, references.len());
+        let mut blocks = extract_callouts(source, blocks, &callouts, references.len());
         // Raw HTML and reference-only tails have no paired top-level Start/End events.
         // Included reference definitions also contribute to each rich row's parsing cost.
         for block in &mut blocks {
@@ -344,7 +389,7 @@ impl Document {
                 && range.len().saturating_add(references.len()) > MAX_RICH_BLOCK_BYTES
             {
                 *block = Block::Source {
-                    pages: source_pages(&source, range.clone()),
+                    pages: source_pages(source, range.clone()),
                     source: range.clone(),
                 };
             }
@@ -371,8 +416,16 @@ impl Document {
                 .partition_point(|block| block.source_range().end <= heading.source.start)
                 .min(blocks.len().saturating_sub(1));
         }
+        if bom > 0 {
+            for block in &mut blocks {
+                block.shift(bom);
+            }
+            for heading in &mut headings {
+                heading.source = heading.source.start + bom..heading.source.end + bom;
+            }
+        }
         Ok(Self {
-            source: source.into(),
+            source: full.into(),
             blocks: blocks.into(),
             headings: headings.into(),
             reference_suffix: references.into(),
@@ -823,9 +876,8 @@ fn fenced_code_range(source: &str, full: Range<usize>) -> Range<usize> {
     let marker = opening.chars().next().unwrap_or('`');
     let width = opening.chars().take_while(|&ch| ch == marker).count();
     let last_line = raw.rfind('\n').map_or(start, |offset| offset + 1);
-    let last = raw[last_line..].trim();
-    let closing_width = last.chars().take_while(|&ch| ch == marker).count();
-    let end = if closing_width >= width && last.chars().all(|ch| ch == marker) {
+    // A closing fence is indented at most three spaces; `    ```` is still code.
+    let end = if last_line >= start && closing_code_fence(&raw[last_line..], marker, width) {
         last_line
     } else {
         raw.len()

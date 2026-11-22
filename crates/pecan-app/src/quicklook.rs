@@ -39,10 +39,17 @@ fn filename(title: &str, extension: &str) -> String {
         .and_then(|name| name.to_str())
         .filter(|name| !name.is_empty() && *name != "." && *name != "..")
         .unwrap_or("image");
+    // APFS limits a name to 255 UTF-8 bytes; a Chinese character takes three.
+    const MAX_STEM_BYTES: usize = 200;
+    let mut bytes = 0;
     let stem: String = stem
         .chars()
         .filter(|ch| !ch.is_control())
         .take(100)
+        .take_while(|ch| {
+            bytes += ch.len_utf8();
+            bytes <= MAX_STEM_BYTES
+        })
         .collect();
     format!("{stem}.{extension}")
 }
@@ -391,6 +398,13 @@ mod native {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn long_chinese_titles_fit_a_file_name() {
+        let name = super::filename(&"图".repeat(120), "png");
+        assert!(name.len() <= 255, "{}", name.len());
+        assert!(name.ends_with(".png") && name.starts_with("图"));
+        assert_eq!(super::filename("short", "png"), "short.png");
+    }
     use super::*;
     #[test]
     fn snapshots_preserve_encoded_bytes_and_outlive_the_source() {

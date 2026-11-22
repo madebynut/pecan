@@ -35,6 +35,16 @@ pub(super) enum NoteMarker {
     Close,
 }
 
+/// Raw HTML tokens for the PDF and Word exports. Comments and `script`/`style` bodies
+/// are matched whole, even across lines or left unterminated, so their text is dropped;
+/// tags capture the closing slash and the name.
+pub(super) static HTML_TOKEN: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r#"(?is)<!--.*?(?:-->|\z)|<script\b.*?(?:</script\s*>|\z)|<style\b.*?(?:</style\s*>|\z)|<(/?)([a-z][a-z0-9]*)\b(?:[^>"']|"[^"]*"|'[^']*')*>"#,
+    )
+    .expect("valid pattern")
+});
+
 pub(super) fn highlight_edge(raw: &str) -> Option<NoteMarker> {
     let (_, tail) = raw.split_once("class=\"")?;
     let (classes, _) = tail.split_once('"')?;
@@ -106,6 +116,8 @@ fn wrap_highlights(html: &str) -> String {
 }
 
 pub(super) fn export_markdown(source: &str) -> std::borrow::Cow<'_, str> {
+    // A byte order mark would turn a first-line heading or fence into text.
+    let source = source.strip_prefix('\u{feff}').unwrap_or(source);
     let alerts = pecan_document::expand_alerts(source);
     if !alerts.contains(":::") {
         return alerts;
@@ -208,6 +220,12 @@ pub(super) async fn html(snapshot: &Snapshot, client: Arc<dyn HttpClient>) -> Re
     let mut event_bytes = 0;
     // Raw HTML is cleaned as one fragment so nested tables/links remain well formed.
     // Trusted renderer output is inserted afterwards, keeping its SVG/CSS intact.
+    // A per-export nonce keeps a document's own `data-pecan-export` spans from
+    // selecting, repeating or reordering trusted fragments.
+    let nonce = format!(
+        "{:016x}",
+        std::hash::BuildHasher::hash_one(&std::hash::RandomState::new(), ())
+    );
     let insert = |html: String,
                   events: &mut Vec<Event<'_>>,
                   inserts: &mut Vec<String>,
@@ -216,12 +234,32 @@ pub(super) async fn html(snapshot: &Snapshot, client: Arc<dyn HttpClient>) -> Re
         *bytes += html.len();
         ensure!(*bytes <= MAX_OUTPUT, "HTML 超过 128 MiB 导出预算");
         events.push(Event::Html(
-            format!("<span data-pecan-export=\"{}\"></span>", inserts.len()).into(),
+            format!(
+                "<span data-pecan-export=\"{nonce}-{}\"></span>",
+                inserts.len()
+            )
+            .into(),
         ));
         inserts.push(html);
         Ok(())
     };
+    // An HTML block arrives one line per event; a tag or comment may span lines,
+    // so its lines are rewritten as one fragment. Note markers stay separate events.
+    let mut html_block = String::new();
     while let Some(event) = parser.next() {
+        let block_line = matches!(&event, Event::Html(raw) if highlight_edge(raw).is_none());
+        if !html_block.is_empty() && !block_line {
+            let raw =
+                rewrite_html_images(&std::mem::take(&mut html_block), &mut images, None).await?;
+            event_bytes += raw.len();
+            events.push(Event::Html(raw.into()));
+        }
+        if block_line {
+            if let Event::Html(raw) = event {
+                html_block.push_str(&raw);
+            }
+            continue;
+        }
         match event {
             Event::Start(Tag::Paragraph) => {
                 events.push(Event::Start(Tag::Paragraph));
@@ -425,6 +463,10 @@ pub(super) async fn html(snapshot: &Snapshot, client: Arc<dyn HttpClient>) -> Re
             "HTML 超过 128 MiB 导出预算"
         );
     }
+    if !html_block.is_empty() {
+        let raw = rewrite_html_images(&html_block, &mut images, None).await?;
+        events.push(Event::Html(raw.into()));
+    }
     let mut body = String::new();
     pulldown_cmark::html::push_html(&mut body, events.into_iter());
     // The markers are empty divs around the note. Turn them into one wrapper so the
@@ -462,22 +504,39 @@ pub(super) async fn html(snapshot: &Snapshot, client: Arc<dyn HttpClient>) -> Re
         .add_tag_attributes("td", ["align"])
         .add_generic_attributes(["id"])
         .url_schemes(HashSet::from(["http", "https", "mailto", "data"]))
+        // `data:` exists for embedded images; a link or other URL attribute with it
+        // could open document-supplied HTML.
+        .attribute_filter(|element, attribute, value| {
+            let data = value
+                .chars()
+                .filter(|c| !c.is_ascii_whitespace() && !c.is_ascii_control())
+                .take(5)
+                .collect::<String>()
+                .eq_ignore_ascii_case("data:");
+            (!data || (element == "img" && attribute == "src")).then_some(Cow::Borrowed(value))
+        })
         .url_relative(ammonia::UrlRelative::Custom(Box::new(fragment_url)));
     let body = clean.clean(&body).to_string();
     // Replace in one pass; repeated String::replace would copy every image for each formula.
     static PLACEHOLDERS: LazyLock<regex::Regex> = LazyLock::new(|| {
-        regex::Regex::new(r#"<span data-pecan-export="(\d+)"></span>"#).expect("valid pattern")
+        regex::Regex::new(r#"<span data-pecan-export="([0-9a-f]{16})-(\d+)"></span>"#)
+            .expect("valid pattern")
     });
     let mut rendered = String::with_capacity(body.len() + insert_bytes);
     let mut end = 0;
     for capture in PLACEHOLDERS.captures_iter(&body) {
         let matched = capture.get(0).expect("regex has a full match");
         rendered.push_str(&body[end..matched.start()]);
-        let index = capture[1].parse::<usize>()?;
+        end = matched.end();
+        if capture[1] != *nonce {
+            // Written by the document itself: an inert empty span.
+            rendered.push_str(matched.as_str());
+            continue;
+        }
+        let index = capture[2].parse::<usize>()?;
         if let Some(html) = inserts.get(index) {
             rendered.push_str(html);
         }
-        end = matched.end();
         ensure!(rendered.len() <= MAX_OUTPUT, "HTML 超过 128 MiB 导出预算");
     }
     rendered.push_str(&body[end..]);
@@ -675,31 +734,39 @@ pub(super) async fn markdown(
 ) -> Result<()> {
     let source = snapshot.document.source();
     let parent = path.parent().context("Markdown 导出路径没有父目录")?;
-    let assets = tempfile::Builder::new()
-        .prefix("pecan-assets-")
-        .tempdir_in(parent)?;
+    let mut assets = tempfile::Builder::new();
+    assets.prefix("pecan-assets-");
+    #[cfg(unix)]
+    assets.permissions(super::shared_permissions(true));
+    let assets = assets.tempdir_in(parent)?;
     let mut images = Images::new(&snapshot.directory, client);
     let mut edits = Vec::new();
     let mut parser = Parser::new_ext(source, options()).into_offset_iter();
+    // The lines of one HTML block, rewritten together so a tag may span lines.
+    let mut block: Vec<(std::ops::Range<usize>, pulldown_cmark::CowStr<'_>)> = Vec::new();
     while let Some((event, range)) = parser.next() {
+        if let Event::Html(raw) = event {
+            block.push((range, raw));
+            continue;
+        }
+        rewrite_markdown_html(source, &mut block, &mut images, assets.path(), &mut edits).await?;
         match event {
             Event::Start(Tag::Image {
                 dest_url, title, ..
             }) => {
                 let destination = images.copy(&dest_url, assets.path()).await?;
-                let mut alt = String::new();
-                for (event, _) in parser.by_ref() {
-                    match event {
-                        Event::End(TagEnd::Image) => break,
-                        Event::Text(text) | Event::Code(text) => alt.push_str(&text),
-                        Event::SoftBreak | Event::HardBreak => alt.push(' '),
-                        _ => {}
+                // The alt text is copied as written, so its escapes (such as `\|` in a
+                // table cell), emphasis and entities keep their meaning.
+                let mut alt: Option<std::ops::Range<usize>> = None;
+                for (event, inner) in parser.by_ref() {
+                    if matches!(event, Event::End(TagEnd::Image)) {
+                        break;
                     }
+                    alt = Some(alt.map_or(inner.clone(), |alt| {
+                        alt.start.min(inner.start)..alt.end.max(inner.end)
+                    }));
                 }
-                let alt = alt
-                    .replace('\\', "\\\\")
-                    .replace('[', "\\[")
-                    .replace(']', "\\]");
+                let alt = alt.map_or("", |alt| &source[alt]);
                 let title = if title.is_empty() {
                     String::new()
                 } else {
@@ -707,7 +774,7 @@ pub(super) async fn markdown(
                 };
                 edits.push((range, format!("![{alt}](<{destination}>{title})")));
             }
-            Event::Html(raw) | Event::InlineHtml(raw) => {
+            Event::InlineHtml(raw) => {
                 let replaced = rewrite_html_images(&raw, &mut images, Some(assets.path())).await?;
                 if raw.as_ref() != replaced {
                     edits.push((range, replaced));
@@ -716,6 +783,7 @@ pub(super) async fn markdown(
             _ => {}
         }
     }
+    rewrite_markdown_html(source, &mut block, &mut images, assets.path(), &mut edits).await?;
     let mut output = String::with_capacity(source.len());
     let mut end = 0;
     for (range, replacement) in edits {
@@ -733,21 +801,69 @@ pub(super) async fn markdown(
     Ok(())
 }
 
+/// Rewrite the images of one buffered HTML block and record the edit.
+async fn rewrite_markdown_html(
+    source: &str,
+    block: &mut Vec<(std::ops::Range<usize>, pulldown_cmark::CowStr<'_>)>,
+    images: &mut Images,
+    assets: &Path,
+    edits: &mut Vec<(std::ops::Range<usize>, String)>,
+) -> Result<()> {
+    let (Some((first, _)), Some((last, _))) = (block.first(), block.last()) else {
+        return Ok(());
+    };
+    let range = first.start..last.end;
+    let lines: Vec<_> = std::mem::take(block);
+    // Inside a quote or list the source interleaves container markers with the lines;
+    // only a block that is its own source can be replaced as one range.
+    let contiguous = source.get(range.clone()).is_some_and(|text| {
+        text.len() == lines.iter().map(|(_, raw)| raw.len()).sum::<usize>()
+            && lines
+                .iter()
+                .try_fold(text, |rest, (_, raw)| rest.strip_prefix(raw.as_ref()))
+                .is_some_and(str::is_empty)
+    });
+    if contiguous {
+        let raw = &source[range.clone()];
+        let replaced = rewrite_html_images(raw, images, Some(assets)).await?;
+        if raw != replaced {
+            edits.push((range, replaced));
+        }
+        return Ok(());
+    }
+    for (range, raw) in lines {
+        let replaced = rewrite_html_images(&raw, images, Some(assets)).await?;
+        if raw.as_ref() != replaced {
+            edits.push((range, replaced));
+        }
+    }
+    Ok(())
+}
 async fn rewrite_html_images(
     raw: &str,
     images: &mut Images,
     assets: Option<&Path>,
 ) -> Result<String> {
     // Matching only tag boundaries; the existing HTML tokenizer decodes attributes
-    // and entities. Code-fence text never reaches this function.
+    // and entities. Code-fence text never reaches this function. Images inside
+    // comments and `script`/`style` bodies are not displayed, so they stay untouched.
     static TAGS: LazyLock<regex::Regex> = LazyLock::new(|| {
-        regex::Regex::new(r#"(?is)<img\b(?:[^>"']|"[^"]*"|'[^']*')*>"#).expect("valid pattern")
+        regex::Regex::new(
+            r#"(?is)<!--.*?(?:-->|\z)|<script\b.*?(?:</script\s*>|\z)|<style\b.*?(?:</style\s*>|\z)|<img\b(?:[^>"']|"[^"]*"|'[^']*')*>"#,
+        )
+        .expect("valid pattern")
     });
     let mut output = String::new();
     let mut end = 0;
     for tag in TAGS.find_iter(raw) {
         output.push_str(&raw[end..tag.start()]);
-        if let Some(image) = pecan_document::html_image(tag.as_str()) {
+        let image = tag
+            .as_str()
+            .get(..4)
+            .is_some_and(|start| start.eq_ignore_ascii_case("<img"))
+            .then(|| pecan_document::html_image(tag.as_str()))
+            .flatten();
+        if let Some(image) = image {
             let uri = match assets {
                 Some(directory) => images.copy(&image.uri, directory).await?,
                 None => images.embed(&image.uri).await?,
@@ -876,6 +992,82 @@ mod tests {
         });
     }
 
+    #[test]
+    fn a_byte_order_mark_does_not_demote_the_first_heading() {
+        futures_lite::future::block_on(async {
+            let directory = tempfile::tempdir().unwrap();
+            let output = html(
+                &snapshot("\u{feff}# 标题\n\n正文\n", directory.path()),
+                crate::network::client(),
+            )
+            .await
+            .unwrap();
+            assert!(output.contains("<h1>标题</h1>"), "{output}");
+            assert!(!output.contains('\u{feff}'));
+        });
+    }
+    #[test]
+    fn document_html_cannot_forge_trusted_fragments_or_data_links() {
+        futures_lite::future::block_on(async {
+            let directory = tempfile::tempdir().unwrap();
+            let source = "`first`\n\n<span data-pecan-export=\"0\"></span><span data-pecan-export=\"0000000000000000-0\"></span>\n\n[open](data:text/html;base64,PHNjcmlwdD4=) <a href=\" DATA:text/html,x\">raw</a>\n\n![dot](data:image/gif;base64,R0lGODlhAQABAAAAACw=)\n";
+            let output = html(
+                &snapshot(source, directory.path()),
+                crate::network::client(),
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                output.matches("<code>first</code>").count(),
+                1,
+                "a document span does not repeat a trusted fragment: {output}"
+            );
+            assert!(!output.contains("href=\"data:"), "{output}");
+            assert!(!output.contains("DATA:text"), "{output}");
+            assert!(
+                output.contains("src=\"data:image/gif;base64,"),
+                "images keep data URLs"
+            );
+        });
+    }
+    #[test]
+    fn raw_html_spanning_lines_embeds_and_copies_only_displayed_images() {
+        futures_lite::future::block_on(async {
+            let directory = tempfile::tempdir().unwrap();
+            image::DynamicImage::new_rgb8(2, 2)
+                .save(directory.path().join("pixel.png"))
+                .unwrap();
+            let snapshot = snapshot(super::super::RAW_HTML_FIXTURE, directory.path());
+            let output = html(&snapshot, crate::network::client()).await.unwrap();
+            assert_eq!(
+                output.matches("src=\"data:image/png;base64,").count(),
+                1,
+                "the multi-line image is embedded"
+            );
+            assert!(!output.contains("pixel.png") && !output.contains("secret"));
+
+            let target = tempfile::tempdir().unwrap();
+            let path = target.path().join("copy.md");
+            markdown(&snapshot, &path, crate::network::client())
+                .await
+                .unwrap();
+            let exported = std::fs::read_to_string(&path).unwrap();
+            assert!(
+                exported.contains("<img src=\"missing.png\">"),
+                "a commented image is left as written: {exported}"
+            );
+            assert!(exported.contains("secret note"));
+            let copied: Vec<_> = std::fs::read_dir(target.path())
+                .unwrap()
+                .filter_map(Result::ok)
+                .filter(|entry| entry.path().is_dir())
+                .flat_map(|entry| std::fs::read_dir(entry.path()).unwrap())
+                .collect();
+            assert_eq!(copied.len(), 1, "only the displayed image is copied");
+            assert!(!exported.contains("\"pixel.png\""), "{exported}");
+            assert!(exported.contains("pecan-assets-"), "{exported}");
+        });
+    }
     #[test]
     fn deeply_nested_notes_fail_with_a_budget_error() {
         futures_lite::future::block_on(async {
@@ -1199,6 +1391,33 @@ mod tests {
             .await
             .unwrap();
             assert!(portable.contains("data:image/png;base64,"));
+        });
+    }
+    #[test]
+    fn markdown_keeps_image_alt_text_as_written_inside_tables() {
+        futures_lite::future::block_on(async {
+            let directory = tempfile::tempdir().unwrap();
+            image::DynamicImage::new_rgb8(1, 1)
+                .save(directory.path().join("p.png"))
+                .unwrap();
+            let input = "| 图 | 说明 |\n| --- | --- |\n| ![a\\|b *c* \\[d\\]](p.png) | 二 |\n";
+            let path = directory.path().join("saved.md");
+            markdown(
+                &snapshot(input, directory.path()),
+                &path,
+                crate::network::client(),
+            )
+            .await
+            .unwrap();
+            let output = std::fs::read_to_string(&path).unwrap();
+            assert!(
+                output.contains("| ![a\\|b *c* \\[d\\]](<pecan-assets-"),
+                "{output}"
+            );
+            let cells = Parser::new_ext(&output, options())
+                .filter(|event| matches!(event, Event::Start(Tag::TableCell)))
+                .count();
+            assert_eq!(cells, 4, "the row keeps two cells: {output}");
         });
     }
     #[test]

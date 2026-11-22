@@ -106,15 +106,23 @@ enum ErrorKind {
 
 /// Whether a path names one of the formats supported by local reading.
 pub fn supports(path: &Path) -> bool {
-    is_markdown(path) || Format::from_path(path).is_some()
+    is_markdown(path) || is_convertible(path)
+}
+
+/// Whether a path names a document that AnyDoc converts to Markdown for reading.
+pub fn is_convertible(path: &Path) -> bool {
+    !is_markdown(path) && Format::from_path(path).is_some()
 }
 
 /// Whether a path names a Markdown source, rather than an imported document.
+///
+/// `mkd` is listed because the freedesktop `text/markdown` type, which the Linux
+/// desktop entry declares, also matches it.
 pub fn is_markdown(path: &Path) -> bool {
     path.extension()
         .and_then(|s| s.to_str())
         .is_some_and(|ext| {
-            ["md", "markdown", "mdown"]
+            ["md", "markdown", "mdown", "mkd"]
                 .iter()
                 .any(|name| ext.eq_ignore_ascii_case(name))
         })
@@ -213,7 +221,7 @@ fn convert(bytes: Vec<u8>, format: Format, original: PathBuf) -> Result<LoadedDo
             .join(format!("asset-{}.{}", asset.id.0, extension));
         fs::write(&target, &asset.bytes)?;
         if let Some(slot) = targets.get_mut(asset.id.0) {
-            *slot = Some(target.to_string_lossy().into_owned());
+            *slot = Some(file_url(&target));
         }
     }
     adapt_images(&mut model.blocks, &targets, &original);
@@ -326,6 +334,13 @@ fn adapt_images(blocks: &mut [Block], targets: &[Option<String>], original: &Pat
     }
 }
 
+/// A percent-encoded `file:` URL. A native path in a Markdown destination loses
+/// characters: CommonMark drops the backslash before punctuation (`C:\_a` reads as
+/// `C:_a`), and `#`, `?` or `%` in a folder name would be read as URL syntax.
+fn file_url(path: &Path) -> String {
+    url::Url::from_file_path(path)
+        .map_or_else(|()| path.to_string_lossy().into_owned(), String::from)
+}
 fn adapt_inlines(inlines: &mut [Inline], targets: &[Option<String>], original: &Path) {
     for inline in inlines {
         match inline {
@@ -338,7 +353,13 @@ fn adapt_inlines(inlines: &mut [Inline], targets: &[Option<String>], original: &
                 ImageSource::External(target)
                     if !target.contains(':') && !Path::new(target).is_absolute() =>
                 {
-                    *target = original.join(&*target).to_string_lossy().into_owned();
+                    // Package targets are URI references, so `%20` and `\` are resolved
+                    // by URL rules against the document's folder.
+                    *target = url::Url::from_directory_path(original)
+                        .ok()
+                        .and_then(|base| base.join(target).ok())
+                        .filter(|url| url.scheme() == "file")
+                        .map_or_else(|| file_url(&original.join(&*target)), String::from);
                 }
                 _ => {}
             },

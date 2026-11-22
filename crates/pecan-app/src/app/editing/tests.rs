@@ -651,7 +651,6 @@ fn imported_source_saves_as_portable_markdown_and_cancellation_keeps_the_origina
     let (handle, reader) = open(cx, Some(source.clone()));
     cx.update_window(handle, |_, window, cx| {
         reader.update(cx, |reader, cx| {
-            reader.toggle_source(window, cx);
             reader.save_active(SaveMode::Existing, window, cx);
         })
     })
@@ -685,6 +684,80 @@ fn imported_source_saves_as_portable_markdown_and_cancellation_keeps_the_origina
     assert_eq!(std::fs::read(source).unwrap(), original);
 }
 
+#[gpui_kit::test]
+fn converted_documents_hide_source_and_export_markdown_instead(cx: &mut TestAppContext) {
+    let source = std::path::absolute(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../pecan-import/tests/fixtures/rich.docx"),
+    )
+    .unwrap();
+    let original = std::fs::read(&source).unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let destination = directory.path().join("exported.md");
+    let (handle, reader) = open(cx, Some(source.clone()));
+    reader.read_with(cx, |state, _| {
+        let tab = &state.tabs[state.active];
+        assert!(!tab.has_markdown_source());
+        assert!(tab.markdown_exportable());
+    });
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.toggle_source(window, cx))
+    })
+    .unwrap();
+    reader.read_with(cx, |state, _| {
+        let tab = &state.tabs[state.active];
+        assert!(
+            !tab.source_mode(),
+            "a converted document has no Markdown source"
+        );
+        assert!(tab.edit.is_none());
+        assert!(state.status.contains("仅 Markdown"), "{}", state.status);
+    });
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.export_markdown(window, cx))
+    })
+    .unwrap();
+    assert!(cx.did_prompt_for_new_path());
+    cx.simulate_new_path_selection(|_| Some(destination.clone()));
+    super::super::tests::settle(cx);
+    reader.read_with(cx, |state, _| {
+        assert!(state.status.starts_with("已导出"), "{}", state.status);
+        assert_eq!(state.tabs[state.active].path.as_ref(), Some(&source));
+    });
+    let exported = std::fs::read_to_string(&destination).unwrap();
+    assert!(
+        exported.contains("pecan-assets-"),
+        "images travel with the Markdown"
+    );
+    assert_eq!(std::fs::read(&source).unwrap(), original);
+
+    let markdown = directory.path().join("note.md");
+    std::fs::write(&markdown, "# Note").unwrap();
+    reader.update(cx, |reader, cx| reader.open_file(markdown, cx));
+    super::super::tests::settle(cx);
+    reader.read_with(cx, |state, _| {
+        let tab = &state.tabs[state.active];
+        assert!(tab.has_markdown_source());
+        assert!(
+            !tab.markdown_exportable(),
+            "Markdown files are already Markdown"
+        );
+    });
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.export_markdown(window, cx))
+    })
+    .unwrap();
+    assert!(!cx.did_prompt_for_new_path());
+    reader.read_with(cx, |state, _| {
+        assert!(state.status.contains("已是 Markdown"), "{}", state.status)
+    });
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.toggle_source(window, cx))
+    })
+    .unwrap();
+    reader.read_with(cx, |state, _| {
+        assert!(state.tabs[state.active].source_mode())
+    });
+}
 #[gpui_kit::test]
 fn source_sessions_follow_tabs_and_undo_can_return_to_the_saved_state(cx: &mut TestAppContext) {
     let directory = tempfile::tempdir().unwrap();
@@ -997,4 +1070,159 @@ fn source_editor_native_frames_have_readable_highlights_in_both_themes() {
             })
             .unwrap();
     }
+}
+#[gpui_kit::test]
+fn search_results_from_before_a_source_edit_are_recomputed(cx: &mut TestAppContext) {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("search.md");
+    let original = "# 标题\n\n中文 needle\n\n```text\n中文中文 needle\n```\n";
+    std::fs::write(&path, original).unwrap();
+    let (handle, reader) = open(cx, Some(path));
+    let search = |cx: &mut TestAppContext| {
+        cx.executor()
+            .advance_clock(std::time::Duration::from_millis(250));
+        super::super::tests::settle(cx);
+    };
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| {
+            reader.search_focus(window, cx);
+            reader
+                .search
+                .update(cx, |input, cx| input.set_value("needle", window, cx));
+            reader.start_search(cx);
+        })
+    })
+    .unwrap();
+    search(cx);
+    let before = reader.read_with(cx, |reader, cx| {
+        assert!(reader.matches_current(cx));
+        reader
+            .matches
+            .iter()
+            .map(pecan_document::SearchMatch::source_range)
+            .collect::<Vec<_>>()
+    });
+    assert_eq!(before.len(), 2);
+    // Edit the source so every later byte moves by a multibyte prefix, then preview it.
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.toggle_source(window, cx));
+        replace(&reader, &format!("前缀前缀\n\n{original}"), window, cx);
+    })
+    .unwrap();
+    super::super::tests::settle(cx);
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.toggle_source(window, cx));
+    })
+    .unwrap();
+    super::super::tests::settle(cx);
+    assert!(cx.has_pending_prompt());
+    cx.simulate_prompt_answer("不保存");
+    super::super::tests::settle(cx);
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| {
+            assert!(!reader.tabs[reader.active].source_mode());
+            assert!(
+                !reader.matches_current(cx),
+                "the edit replaced the document"
+            );
+            // Reopening search and stepping never reveals the old byte ranges.
+            reader.search_focus(window, cx);
+            reader.step_match(false, cx);
+        })
+    })
+    .unwrap();
+    search(cx);
+    reader.read_with(cx, |reader, cx| {
+        assert!(reader.matches_current(cx));
+        let document = reader.tabs[reader.active].view.read(cx).document.clone();
+        assert_eq!(reader.matches.len(), 2);
+        for found in reader.matches.iter() {
+            assert_eq!(&document.source()[found.source_range()], "needle");
+        }
+    });
+}
+#[gpui_kit::test]
+fn watcher_reloads_clean_sessions_and_ignores_pecans_own_save(cx: &mut TestAppContext) {
+    use std::sync::atomic::Ordering;
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("watched.md");
+    std::fs::write(&path, "# Before").unwrap();
+    let (handle, reader) = open(cx, Some(path.clone()));
+    let tick = |cx: &mut TestAppContext| {
+        reader.read_with(cx, |reader, _| {
+            reader.changed.store(true, Ordering::Relaxed)
+        });
+        cx.executor()
+            .advance_clock(std::time::Duration::from_millis(450));
+        super::super::tests::settle(cx);
+    };
+    // Visit the source without editing, then return to reading.
+    for _ in 0..2 {
+        cx.update_window(handle, |_, window, cx| {
+            reader.update(cx, |reader, cx| reader.toggle_source(window, cx))
+        })
+        .unwrap();
+        super::super::tests::settle(cx);
+    }
+    reader.read_with(cx, |reader, _| {
+        let tab = &reader.tabs[reader.active];
+        assert!(tab.edit.is_some() && !tab.source_mode() && !tab.protected());
+    });
+    std::fs::write(&path, "# After").unwrap();
+    tick(cx);
+    reader.read_with(cx, |reader, cx| {
+        let tab = &reader.tabs[reader.active];
+        assert_eq!(tab.view.read(cx).document.source(), "# After");
+        assert!(tab.edit.is_none(), "the stale clean session is dropped");
+    });
+    // Saving from source mode makes the watcher report Pecan's own write.
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.toggle_source(window, cx));
+        replace(&reader, "# Saved here", window, cx);
+    })
+    .unwrap();
+    super::super::tests::settle(cx);
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| {
+            reader.save_active(SaveMode::Existing, window, cx)
+        })
+    })
+    .unwrap();
+    super::super::tests::settle(cx);
+    let saved = reader.read_with(cx, |reader, _| reader.status.clone());
+    assert!(saved.starts_with("已保存"), "{saved}");
+    tick(cx);
+    reader.read_with(cx, |state, cx| {
+        assert_eq!(
+            state.status, saved,
+            "an unchanged file keeps the save message"
+        );
+        assert!(state.tabs[state.active].source_mode());
+        assert_eq!(text(&reader, cx), "# Saved here");
+    });
+    // A real external change while the clean source is shown is reported, not applied.
+    std::fs::write(&path, "# External").unwrap();
+    tick(cx);
+    reader.read_with(cx, |state, cx| {
+        assert!(state.status.contains("外部变更"), "{}", state.status);
+        assert_eq!(text(&reader, cx), "# Saved here");
+    });
+}
+#[gpui_kit::test]
+fn source_hint_for_an_unconvertible_pdf_does_not_promise_markdown_export(cx: &mut TestAppContext) {
+    let scan = std::path::absolute(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../pecan-import/tests/fixtures/scan.pdf"),
+    )
+    .unwrap();
+    let (handle, reader) = open(cx, Some(scan));
+    cx.update_window(handle, |_, window, cx| {
+        reader.update(cx, |reader, cx| reader.toggle_source(window, cx))
+    })
+    .unwrap();
+    reader.read_with(cx, |state, _| {
+        let tab = &state.tabs[state.active];
+        assert!(!tab.markdown_exportable() && !tab.source_mode());
+        assert!(state.status.contains("原版查看"), "{}", state.status);
+        assert!(!state.status.contains("导出 Markdown"), "{}", state.status);
+    });
 }

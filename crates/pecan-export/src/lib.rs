@@ -105,9 +105,32 @@ fn diagram_bytes_inner(
     }
 }
 
+/// Unix modes for exported output. `tempfile` creates owner-only files (0600) and
+/// directories (0700); exports are ordinary documents, so they get the mode a plain
+/// `create` would give, filtered by the umask.
+#[cfg(unix)]
+pub(crate) fn shared_permissions(directory: bool) -> std::fs::Permissions {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::Permissions::from_mode(if directory { 0o777 } else { 0o666 })
+}
 fn atomic_write_inner(path: &Path, bytes: &[u8]) -> Result<()> {
     let parent = path.parent().context("导出路径没有父目录")?;
-    let mut file = tempfile::NamedTempFile::new_in(parent).context("创建导出临时文件")?;
+    #[cfg(unix)]
+    let file = tempfile::Builder::new()
+        .permissions(shared_permissions(false))
+        .tempfile_in(parent);
+    #[cfg(not(unix))]
+    let file = tempfile::NamedTempFile::new_in(parent);
+    let mut file = file.context("创建导出临时文件")?;
+    // Replacing an existing export keeps the mode the user gave it.
+    #[cfg(unix)]
+    if let Ok(existing) = std::fs::metadata(path)
+        && existing.is_file()
+    {
+        file.as_file()
+            .set_permissions(existing.permissions())
+            .context("保留导出文件权限")?;
+    }
     file.write_all(bytes).context("写入导出文件")?;
     file.as_file().sync_all()?;
     file.persist(path)
@@ -177,6 +200,10 @@ impl ExportError {
     }
 }
 
+/// Raw HTML whose comment, style body and image tag span lines; `pixel.png` exists
+/// beside the document and `missing.png` does not.
+#[cfg(test)]
+const RAW_HTML_FIXTURE: &str = "Intro\n\n<!--\nsecret note\n<img src=\"missing.png\">\n-->\n\n<style>\n.secret { color: red }\n</style>\n\n<p align=\"center\">\n  <img src=\"pixel.png\"\n       width=\"20\">\n</p>\n\nOutro\n";
 #[cfg(test)]
 const FORMAT_FIXTURE: &str = "```json\n{\"outer\":{\"value\":1}}\n```\n\n:::info\n```yaml\nreader:\n  port: 8080\n```\n:::\n\n> ```TSX\n> const V=()=> <div title=\"Pecan\"/>;\n> ```\n\n```unknown\nkeep   original\n```\n";
 
@@ -203,5 +230,72 @@ fn expected_code(width: usize) -> Vec<String> {
 mod network {
     pub(crate) fn client() -> std::sync::Arc<dyn http_client::HttpClient> {
         std::sync::Arc::new(pecan_network::Client::new().unwrap())
+    }
+}
+#[cfg(all(test, unix))]
+mod permission_tests {
+    use std::os::unix::fs::PermissionsExt as _;
+    fn mode(path: &std::path::Path) -> u32 {
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+    #[test]
+    fn exports_get_ordinary_modes_and_replacements_keep_theirs() {
+        let directory = tempfile::tempdir().unwrap();
+        let plain = directory.path().join("plain.txt");
+        std::fs::write(&plain, "").unwrap();
+        let fresh = directory.path().join("fresh.html");
+        super::atomic_write(&fresh, b"new").unwrap();
+        assert_eq!(mode(&fresh), mode(&plain), "a new export follows the umask");
+        let existing = directory.path().join("existing.pdf");
+        std::fs::write(&existing, "old").unwrap();
+        std::fs::set_permissions(&existing, std::fs::Permissions::from_mode(0o640)).unwrap();
+        super::atomic_write(&existing, b"new").unwrap();
+        assert_eq!(std::fs::read(&existing).unwrap(), b"new");
+        assert_eq!(mode(&existing), 0o640, "a replaced export keeps its mode");
+    }
+    #[test]
+    fn markdown_assets_directory_is_readable_like_its_document() {
+        futures_lite::future::block_on(async {
+            let directory = tempfile::tempdir().unwrap();
+            image::DynamicImage::new_rgb8(1, 1)
+                .save(directory.path().join("p.png"))
+                .unwrap();
+            let snapshot = super::Snapshot {
+                document: std::sync::Arc::new(
+                    pecan_document::Document::parse("![p](p.png)".into()).unwrap(),
+                ),
+                directory: directory.path().into(),
+                title: "p.md".into(),
+                preferences: std::sync::Arc::new(pecan_config::PreferencesData::default()),
+                diagrams: pecan_mermaid::RenderQueue::new(),
+                math: pecan_math::RenderQueue::new(),
+                codes: pecan_format::CodeSnapshot::default(),
+                resources: None,
+            };
+            let target = tempfile::tempdir().unwrap();
+            let path = target.path().join("copy.md");
+            super::document::markdown(&snapshot, &path, super::network::client())
+                .await
+                .unwrap();
+            let reference = target.path().join("reference");
+            std::fs::create_dir(&reference).unwrap();
+            let assets = std::fs::read_dir(target.path())
+                .unwrap()
+                .filter_map(Result::ok)
+                .find(|entry| {
+                    entry
+                        .file_name()
+                        .to_string_lossy()
+                        .starts_with("pecan-assets-")
+                })
+                .unwrap()
+                .path();
+            assert_eq!(mode(&assets), mode(&reference));
+            assert_eq!(mode(&path), {
+                let plain = target.path().join("plain");
+                std::fs::write(&plain, "").unwrap();
+                mode(&plain)
+            });
+        });
     }
 }

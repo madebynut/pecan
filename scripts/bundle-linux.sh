@@ -6,7 +6,7 @@ target=${1:-$(rustc -vV | sed -n 's/^host: //p')}
 version=$(python3 scripts/release-version.py)
 case "$target" in
     x86_64-*) arch=x64 ;;
-    aarch64-*) arch=arm64 ;;
+    aarch64-*) arch=aarch64 ;;
     *) arch=${target%%-*} ;;
 esac
 cargo build --locked --release --bin Pecan --target "$target"

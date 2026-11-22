@@ -115,7 +115,7 @@ impl Paragraph<'_> {
                 // Reserve the text line box: an image on the baseline still has
                 // the paragraph's descent and leading below it.
                 let available = (self.max_height - self.size * self.line_height).max(0.);
-                let scale = (self.width / width.max(f32::EPSILON))
+                let scale = (self.width.max(0.) / width.max(f32::EPSILON))
                     .min(available / height.max(f32::EPSILON))
                     .min(1.);
                 (
@@ -497,7 +497,7 @@ fn fill(fonts: &mut Fonts, paragraph: &Paragraph<'_>, pieces: Vec<Piece>) -> Vec
     let mut current: Vec<Piece> = Vec::new();
     let mut width = 0.;
     let mut queue: VecDeque<Piece> = pieces.into();
-    while let Some(piece) = queue.pop_front() {
+    while let Some(mut piece) = queue.pop_front() {
         let shared = current
             .last()
             .map_or(0., |previous| shared_inset(previous, &piece));
@@ -520,10 +520,19 @@ fn fill(fonts: &mut Fonts, paragraph: &Paragraph<'_>, pieces: Vec<Piece>) -> Vec
             })
             .sum();
         if current.is_empty() && visible > paragraph.width + 0.01 && parts > 1 {
-            for part in split(piece, paragraph).into_iter().rev() {
-                queue.push_front(part);
+            let mut split = split(piece, paragraph);
+            if split.len() > 1 {
+                for part in split.into_iter().rev() {
+                    queue.push_front(part);
+                }
+                continue;
             }
-            continue;
+            // One cluster of several glyphs (an emoji with VS16, a combining mark) is
+            // indivisible; retrying it would never end, so let it overflow its line.
+            let Some(single) = split.pop() else {
+                continue;
+            };
+            piece = single;
         }
         width += piece.width
             - current
@@ -766,6 +775,57 @@ mod tests {
         }
     }
 
+    #[test]
+    fn right_to_left_glyphs_map_to_their_own_characters() {
+        let mut fonts = Fonts::new(
+            pecan_mermaid::SYSTEM_UI_FONT,
+            pecan_mermaid::SYSTEM_UI_FONT,
+            pecan_mermaid::SYSTEM_MONO_FONT,
+        );
+        for text in ["שלום", "مرحبا"] {
+            let inlines = [Inline::Text(
+                text.into(),
+                Style::new(Role::Body, 11., [0; 3]),
+            )];
+            let lines = layout(&mut fonts, &paragraph(&inlines, 400., false));
+            for line in &lines {
+                for placed in &line.items {
+                    let Item::Run(run) = &placed.item else {
+                        continue;
+                    };
+                    let mut covered = vec![false; run.text.len()];
+                    for glyph in &run.glyphs {
+                        let piece = run.text.get(glyph.cluster.clone());
+                        assert!(
+                            piece.is_some_and(|piece| !piece.is_empty()),
+                            "{text}: {:?} in {:?}",
+                            glyph.cluster,
+                            run.text
+                        );
+                        covered[glyph.cluster.clone()].fill(true);
+                    }
+                    assert!(covered.iter().all(|byte| *byte), "{text} is fully mapped");
+                }
+            }
+        }
+    }
+    #[test]
+    fn indivisible_clusters_wider_than_the_line_overflow_instead_of_looping() {
+        let mut fonts = Fonts::new(
+            pecan_mermaid::SYSTEM_UI_FONT,
+            pecan_mermaid::SYSTEM_UI_FONT,
+            pecan_mermaid::SYSTEM_MONO_FONT,
+        );
+        // `q` + U+0301 has no precomposed form, so it shapes as two glyphs in one cluster.
+        let text = "q\u{301}x\u{301}\u{2714}\u{fe0f}";
+        for style in [Style::new(Role::Body, 11., [0; 3]), code_style()] {
+            let inlines = [Inline::Text(text.into(), style)];
+            for width in [-40., 0., 1.] {
+                let lines = layout(&mut fonts, &paragraph(&inlines, width, true));
+                assert_eq!(lines.iter().map(line_text).collect::<String>(), text);
+            }
+        }
+    }
     fn code_style() -> Style {
         let mut style = Style::new(Role::Code, 9.68, [0; 3]);
         style.capsule = Some(0);
@@ -779,7 +839,7 @@ mod tests {
             pecan_mermaid::SYSTEM_UI_FONT,
             pecan_mermaid::SYSTEM_MONO_FONT,
         );
-        let text = "终端侧已将 DataService（DS）、RemoteControl（RC）等多套定位实现收敛为统一的定位 SDK，并约定：配置整包替换。".repeat(3);
+        let text = "阅读侧已将 MarkdownParser（MP）、OfficeImport（OI）等多套解析实现收敛为统一的文档模型，并约定：配置整包替换。".repeat(3);
         let inlines = [Inline::Text(
             text.clone(),
             Style::new(Role::Body, 11., [0; 3]),

@@ -317,12 +317,61 @@ fn validate(source: &str) -> Result<(), RenderMathError> {
             ));
         }
     }
+    // The other definition forms, matched by whole command name so `\left` or
+    // `\letter`-like names stay usable. `\csname` could spell any of them.
+    const DEFINITIONS: [&str; 11] = [
+        "gdef",
+        "edef",
+        "xdef",
+        "let",
+        "futurelet",
+        "providecommand",
+        "DeclareRobustCommand",
+        "newenvironment",
+        "renewenvironment",
+        "csname",
+        "expandafter",
+    ];
+    let mut rest = source;
+    while let Some(start) = rest.find('\\') {
+        let after = &rest[start + 1..];
+        let name_len = after
+            .find(|c: char| !c.is_ascii_alphabetic())
+            .unwrap_or(after.len());
+        // `\\` is a line break, not a command: skip both characters.
+        let skip = name_len.max(after.chars().next().map_or(0, char::len_utf8));
+        if DEFINITIONS.contains(&&after[..name_len]) {
+            return Err(RenderMathError::Budget(
+                "macro definitions and file inclusion",
+            ));
+        }
+        rest = &after[skip..];
+    }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn every_macro_definition_form_is_rejected_but_similar_names_are_not() {
+        for source in [
+            r"\gdef\a{x}\a",
+            r"\edef\a{x}",
+            r"\xdef\a{x}",
+            r"\let\a=\b",
+            r"\providecommand{\a}{x}",
+            r"\DeclareRobustCommand{\a}{x}",
+            r"\newenvironment{a}{}{}",
+            r"\csname gdef\endcsname",
+            r"x \\ \let\a\b",
+        ] {
+            assert!(validate(source).is_err(), "{source}");
+        }
+        for source in [r"\left( x \right)", r"a \\ b", r"\alpha\beta", r"\lettrine"] {
+            assert!(validate(source).is_ok(), "{source}");
+        }
+    }
 
     #[test]
     fn theme_ink_reaches_glyphs_rules_and_chemical_bonds() {

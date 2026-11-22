@@ -4,10 +4,11 @@ use gpui_kit::{
 };
 
 use crate::{
-    About, ClearRecent, CloseTab, CloseWindow, CopyDocument, DecreaseText, ExportHtml, ExportPdf,
-    ExportWord, Find, FocusReading, Help, IncreaseText, Minimize, MoreRecent, NextTab, Open,
-    OpenFolder, OriginalPdf, PreviousTab, Quit, Reload, ResetText, RevealFile, ShowSettings,
-    ToggleFullscreen, ToggleOutline, ToggleSidebar, ToggleTheme, ZoomWindow,
+    About, ClearRecent, CloseTab, CloseWindow, CopyDocument, DecreaseText, ExportHtml,
+    ExportMarkdown, ExportPdf, ExportWord, Find, FocusReading, Help, IncreaseText, Minimize,
+    MoreRecent, NextTab, Open, OpenFolder, OriginalPdf, PreviousTab, Quit, Reload, ResetText,
+    RevealFile, ShowSettings, ToggleFullscreen, ToggleOutline, ToggleSidebar, ToggleTheme,
+    ZoomWindow,
 };
 
 pub(crate) fn install(cx: &mut App) {
@@ -78,6 +79,7 @@ pub(crate) fn refresh(cx: &mut App) {
             MenuItem::action("导出 PDF…", ExportPdf),
             MenuItem::action("导出 Word…", ExportWord),
             MenuItem::action("导出 HTML…", ExportHtml),
+            MenuItem::action("导出 Markdown…", ExportMarkdown),
             MenuItem::separator(),
             MenuItem::action("关闭标签页", CloseTab),
             MenuItem::action("关闭窗口", CloseWindow),

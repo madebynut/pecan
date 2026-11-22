@@ -105,10 +105,13 @@ fn watcher_poll_uses_the_current_tabs_signal(cx: &mut TestAppContext) {
     // Deliver a queued notification from the old watcher after the tab switch.
     reader.read_with(cx, |r, _| r.changed.store(false, Ordering::Relaxed));
     old_signal.store(true, Ordering::Relaxed);
-    let revision = reader.read_with(cx, |r, _| r.load_revision);
+    let revision = reader.read_with(cx, |r, _| (r.load_revision, r.reload_revision));
     cx.executor().advance_clock(Duration::from_millis(450));
     super::tests::settle(cx);
-    assert_eq!(reader.read_with(cx, |r, _| r.load_revision), revision);
+    assert_eq!(
+        reader.read_with(cx, |r, _| (r.load_revision, r.reload_revision)),
+        revision
+    );
     std::fs::write(&b, "# Updated B").unwrap();
     reader.read_with(cx, |r, _| r.changed.store(true, Ordering::Relaxed));
     cx.executor().advance_clock(Duration::from_millis(450));
@@ -206,5 +209,114 @@ fn oversized_reload_keeps_original_document_and_other_tabs(cx: &mut TestAppConte
         );
         assert_eq!(original.read(cx).document.source(), "# Original");
         assert!(r.status.contains("64 MiB"));
+    });
+}
+#[gpui_kit::test]
+fn watcher_reloads_and_tab_opens_do_not_cancel_each_other(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let a = dir.path().join("a.md");
+    let b = dir.path().join("b.md");
+    std::fs::write(&a, "# Old A").unwrap();
+    std::fs::write(&b, "# B").unwrap();
+    let reader = reader(cx);
+    reader.update(cx, |reader, cx| reader.open_file(a.clone(), cx));
+    super::tests::settle(cx);
+    std::fs::write(&a, "# New A").unwrap();
+    // B is still loading when A's watcher fires, and the reverse order as well.
+    reader.update(cx, |reader, cx| {
+        reader.open_file(b.clone(), cx);
+        reader.reload(cx);
+    });
+    super::tests::settle(cx);
+    reader.read_with(cx, |reader, cx| {
+        assert!(
+            reader.tabs.iter().any(|tab| tab.path.as_ref() == Some(&b)),
+            "B opened"
+        );
+        assert_eq!(reader.tabs[reader.active].path.as_ref(), Some(&b));
+        let a = reader
+            .tabs
+            .iter()
+            .find(|tab| tab.path.as_ref() == Some(&a))
+            .unwrap();
+        assert_eq!(a.view.read(cx).document.source(), "# New A", "A reloaded");
+    });
+}
+#[gpui_kit::test]
+fn choosing_an_open_tab_mid_batch_still_opens_the_rest_of_the_batch(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let [open, first, second, third] =
+        ["open.md", "first.md", "second.md", "third.md"].map(|name| {
+            let path = dir.path().join(name);
+            std::fs::write(&path, format!("# {name}")).unwrap();
+            path
+        });
+    let reader = reader(cx);
+    reader.update(cx, |reader, cx| reader.open_file(open.clone(), cx));
+    super::tests::settle(cx);
+    reader.update(cx, |reader, cx| {
+        reader.open_paths(vec![first.clone(), second.clone(), third.clone()], cx);
+        // `first` is loading; the user clicks the tab that is already open.
+        reader.open_file(open.clone(), cx);
+    });
+    super::tests::settle(cx);
+    reader.read_with(cx, |reader, _| {
+        let paths: Vec<_> = reader
+            .tabs
+            .iter()
+            .filter_map(|tab| tab.path.clone())
+            .collect();
+        assert!(
+            paths.contains(&second) && paths.contains(&third),
+            "{paths:?}"
+        );
+        assert!(reader.queued.is_empty() && reader.load_job.is_none());
+    });
+}
+#[gpui_kit::test]
+fn a_markdown_file_changed_in_the_background_reloads_when_its_tab_returns(cx: &mut TestAppContext) {
+    let dir = tempfile::tempdir().unwrap();
+    let a = dir.path().join("a.md");
+    let b = dir.path().join("b.md");
+    std::fs::write(&a, "# Old A").unwrap();
+    std::fs::write(&b, "# B").unwrap();
+    let reader = reader(cx);
+    for path in [&a, &b] {
+        reader.update(cx, |reader, cx| reader.open_file(path.clone(), cx));
+        super::tests::settle(cx);
+    }
+    // A is not watched while B is active.
+    std::fs::write(&a, "# New A").unwrap();
+    let view_b = reader.read_with(cx, |reader, _| reader.tabs[reader.active].view.clone());
+    reader.update(cx, |reader, cx| {
+        let index = reader
+            .tabs
+            .iter()
+            .position(|tab| tab.path.as_ref() == Some(&a))
+            .unwrap();
+        reader.activate(index, cx);
+    });
+    super::tests::settle(cx);
+    reader.read_with(cx, |reader, cx| {
+        assert_eq!(
+            reader.tabs[reader.active].view.read(cx).document.source(),
+            "# New A"
+        );
+    });
+    // Returning to the unchanged B keeps its view.
+    reader.update(cx, |reader, cx| {
+        let index = reader
+            .tabs
+            .iter()
+            .position(|tab| tab.path.as_ref() == Some(&b))
+            .unwrap();
+        reader.activate(index, cx);
+    });
+    super::tests::settle(cx);
+    reader.read_with(cx, |reader, _| {
+        assert_eq!(
+            reader.tabs[reader.active].view, view_b,
+            "no needless rebuild"
+        );
     });
 }

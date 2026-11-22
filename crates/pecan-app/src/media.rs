@@ -84,7 +84,7 @@ pub(crate) fn extensions(
         return base;
     }
     let references: Arc<HashMap<String, String>> = Arc::new(
-        Parser::new(source)
+        Parser::new(source.strip_prefix('\u{feff}').unwrap_or(source))
             .reference_definitions()
             .iter()
             .map(|(key, definition)| (reference_key(key), definition.dest.to_string()))
@@ -679,6 +679,9 @@ pub(crate) struct ImageViewer {
     current_scale: f32,
     available: Size<Pixels>,
     pixels: Option<Arc<RenderImage>>,
+    /// `pixels` are shared with the reading window's image cache. Dropping them from
+    /// every atlas would take the texture away from the reading window too.
+    borrowed: bool,
     cache: Entity<RetainAllImageCache>,
     _bounds: Subscription,
     _display: Subscription,
@@ -696,11 +699,14 @@ impl ImageViewer {
         let focus = cx.focus_handle();
         focus.focus(window, cx);
         cx.on_release(|view, cx| {
-            if let Some(pixels) = view.pixels.take() {
+            if let Some(pixels) = view.pixels.take()
+                && !view.borrowed
+            {
                 cx.drop_image(pixels, None);
             }
         })
         .detach();
+        let borrowed = pixels.is_some();
         Self {
             image,
             title,
@@ -711,6 +717,7 @@ impl ImageViewer {
             current_scale: 1.,
             available: Size::default(),
             pixels,
+            borrowed,
             cache: RetainAllImageCache::new(cx),
             _bounds: cx.observe_window_bounds(window, |_, _, cx| cx.notify()),
             _display: cx.observe_window_display(window, |_, _, cx| cx.notify()),
@@ -733,8 +740,15 @@ impl ImageViewer {
             return;
         };
         if let Some(pixels) = self.pixels.take() {
-            cx.drop_image(pixels, Some(window));
+            if self.borrowed {
+                // Only this window's copy; the reading window keeps its texture.
+                let _ = window.drop_image(pixels);
+            } else {
+                cx.drop_image(pixels, Some(window));
+            }
         }
+        // Whatever loads next comes from this viewer's own cache.
+        self.borrowed = false;
         self.cache
             .update(cx, |cache, cx| cache.remove(resource, window, cx));
         cx.notify();

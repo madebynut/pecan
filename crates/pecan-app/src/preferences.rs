@@ -30,6 +30,20 @@ impl Preferences {
     pub(crate) fn install(path: Option<PathBuf>, cx: &mut App) -> Entity<Self> {
         let mut error = None;
         let mut imported = false;
+        // The next settings change writes defaults over an unreadable file; keep a copy
+        // first so hand edits with a typo are not lost.
+        let preserve = |path: &std::path::Path, message: String| {
+            match pecan_config::back_up_unreadable(path) {
+                Ok(backup) => format!(
+                    "{message}；原文件已备份为 {}",
+                    backup.file_name().unwrap_or_default().to_string_lossy()
+                ),
+                Err(backup_error) => {
+                    tracing::warn!(%backup_error, "unable to back up unreadable settings");
+                    message
+                }
+            }
+        };
         let mut data = path
             .as_ref()
             .and_then(|path| match read_config_with_legacy(path) {
@@ -38,13 +52,24 @@ impl Preferences {
                     match serde_json::from_slice::<PreferencesData>(&bytes) {
                         Ok(data) => Some(data),
                         Err(e) => {
-                            error = Some(format!("设置读取失败：{e}"));
+                            let message = format!("设置读取失败：{e}");
+                            // Legacy files are only read, never replaced.
+                            error = Some(if legacy {
+                                message
+                            } else {
+                                preserve(path, message)
+                            });
                             None
                         }
                     }
                 }
-                Ok(_) => {
-                    error = Some("设置文件超过 64 KiB".into());
+                Ok((_, legacy)) => {
+                    let message = "设置文件超过 64 KiB".to_owned();
+                    error = Some(if legacy {
+                        message
+                    } else {
+                        preserve(path, message)
+                    });
                     None
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,

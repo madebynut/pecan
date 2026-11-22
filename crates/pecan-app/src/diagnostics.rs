@@ -10,6 +10,10 @@ use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt as _, util::Subscr
 /// The active log is rotated once at startup above this size, and stops growing past it.
 const MAX_LOG_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_CRASH_BYTES: u64 = 1024 * 1024;
+/// Pecan's own events at info. SVG libraries report each unsupported font, selector or
+/// attribute in document images as a warning; those describe content, not faults.
+const DEFAULT_FILTER: &str =
+    "warn,Pecan=info,usvg=error,resvg=error,simplecss=error,svgtypes=error,fontdb=error";
 
 /// Log to stderr and, when the per-user log directory is writable, to `pecan.log` there.
 ///
@@ -18,7 +22,7 @@ const MAX_CRASH_BYTES: u64 = 1024 * 1024;
 pub(crate) fn install() {
     // The binary crate is named `Pecan`, so its events use that target.
     let filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn,Pecan=info"));
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(DEFAULT_FILTER));
     let directory = pecan_config::log_directory();
     let file = directory.as_deref().and_then(|directory| {
         open_log(directory)
@@ -123,6 +127,15 @@ fn write_crash(directory: &Path, message: &str) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_default_filter_parses_and_quiets_svg_content_warnings() {
+        let filter = EnvFilter::try_new(DEFAULT_FILTER).expect("valid directives");
+        let text = filter.to_string();
+        for target in ["usvg=error", "simplecss=error", "Pecan=info"] {
+            assert!(text.contains(target), "{text}");
+        }
+    }
 
     #[test]
     fn crash_reports_append_and_logs_rotate_within_their_budgets() {

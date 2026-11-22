@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     num::NonZeroUsize,
     ops::Range,
     path::{Path, PathBuf},
@@ -33,6 +34,9 @@ use crate::{
 const ROW_CACHE_ENTRIES: usize = 32;
 /// Previews retain GPU textures, so their budget is stricter than text rows.
 const DIAGRAM_CACHE_ENTRIES: usize = 8;
+/// Rows on screen are never evicted, so a very tall window may exceed the budgets
+/// above while it shows that many rows; this bounds that growth.
+const MAX_ROW_CACHE_ENTRIES: usize = 256;
 /// Pending asynchronous Markdown must occupy space until its parse completes.
 const UNPARSED_ROW_HEIGHT: f32 = 600.;
 
@@ -49,6 +53,9 @@ pub(crate) struct DocumentView {
     pub(crate) selected_heading: Option<usize>,
     pub(crate) directory: Arc<Path>,
     rows: LruCache<usize, Row>,
+    /// Rows requested since the last render. Evicting one of them would rebuild it in
+    /// the next frame, and a rebuilt diagram notifies again: a render loop.
+    frame_rows: HashSet<usize>,
     formats: Entity<CodeFormats>,
     _formats_subscription: Subscription,
     deferred_reveal: Option<(usize, Range<usize>, ListOffset)>,
@@ -115,6 +122,7 @@ impl DocumentView {
             rows: LruCache::new(
                 NonZeroUsize::new(ROW_CACHE_ENTRIES).expect("row cache capacity is positive"),
             ),
+            frame_rows: HashSet::new(),
             queue,
             math,
             matches: Arc::default(),
@@ -215,6 +223,35 @@ impl DocumentView {
         }
         cx.notify();
     }
+    /// Return to the normal budgets once fewer rows are on screen. The rows the last
+    /// frame used are the most recent, so trimming only drops rows that left the screen.
+    fn begin_frame(&mut self) {
+        if self.frame_rows.is_empty() {
+            return;
+        }
+        let shown = self.frame_rows.len();
+        let mut diagrams = self
+            .rows
+            .iter()
+            .filter(|(_, row)| matches!(row, Row::Mermaid(_)))
+            .count();
+        while diagrams > DIAGRAM_CACHE_ENTRIES {
+            let Some(oldest) = self.rows.iter().rev().find_map(|(index, row)| {
+                (matches!(row, Row::Mermaid(_)) && !self.frame_rows.contains(index))
+                    .then_some(*index)
+            }) else {
+                break;
+            };
+            self.rows.pop(&oldest);
+            diagrams -= 1;
+        }
+        let target = shown.clamp(ROW_CACHE_ENTRIES, MAX_ROW_CACHE_ENTRIES);
+        if self.rows.cap().get() > target {
+            self.rows
+                .resize(NonZeroUsize::new(target).expect("row cache capacity is positive"));
+        }
+        self.frame_rows.clear();
+    }
     #[cfg(test)]
     pub(crate) fn resident_rows(&self) -> usize {
         self.rows.len()
@@ -289,6 +326,7 @@ impl DocumentView {
         let index = self.display_rows[index];
         let prefs = Preferences::shared(cx).read(cx).data.clone();
         let palette = ReadingPalette::for_app(cx);
+        self.frame_rows.insert(index);
         if !self.rows.contains(&index) {
             let block = &self.document.blocks()[index];
             if matches!(block, Block::Mermaid { .. })
@@ -299,14 +337,25 @@ impl DocumentView {
                     .count()
                     >= DIAGRAM_CACHE_ENTRIES
             {
-                let oldest = self
-                    .rows
-                    .iter()
-                    .rev()
-                    .find_map(|(index, row)| matches!(row, Row::Mermaid(_)).then_some(*index));
+                // Only a diagram that is off screen may go.
+                let oldest = self.rows.iter().rev().find_map(|(index, row)| {
+                    (matches!(row, Row::Mermaid(_)) && !self.frame_rows.contains(index))
+                        .then_some(*index)
+                });
                 if let Some(oldest) = oldest {
                     self.rows.pop(&oldest);
                 }
+            }
+            let capacity = self.rows.cap().get();
+            if self.rows.len() >= capacity
+                && capacity < MAX_ROW_CACHE_ENTRIES
+                && self
+                    .rows
+                    .peek_lru()
+                    .is_some_and(|(oldest, _)| self.frame_rows.contains(oldest))
+            {
+                self.rows
+                    .resize(NonZeroUsize::new(capacity + 1).expect("capacity is positive"));
             }
             let row = match block {
                 Block::Mermaid { code, .. } => Row::Mermaid(
@@ -476,6 +525,7 @@ fn block_highlights(
 
 impl Render for DocumentView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.begin_frame();
         let weak = cx.weak_entity();
         let content = list(
             self.scroll.clone(),
@@ -685,8 +735,20 @@ impl Render for MarkdownChunk {
                                 )
                                 .map_or_else(|_| crate::media::blocked_image(), ImageSource::from);
                             }
-                            if url::Url::parse(raw).is_ok() {
-                                return ImageSource::from(uri.clone());
+                            if let Ok(url) = url::Url::parse(raw) {
+                                // `file:` is a local path, not a download, as in `media`.
+                                if url.scheme() != "file" {
+                                    return ImageSource::from(uri.clone());
+                                }
+                                return url.to_file_path().map_or_else(
+                                    |()| crate::media::blocked_image(),
+                                    |path| {
+                                        crate::media::permitted_path(&directory, path).map_or_else(
+                                            |_| crate::media::blocked_image(),
+                                            ImageSource::from,
+                                        )
+                                    },
+                                );
                             }
                             let path = url::Url::from_directory_path(&directory)
                                 .ok()
@@ -797,8 +859,8 @@ mod tests {
     fn fenced_notes_keep_a_single_rich_column_at_different_widths(cx: &mut TestAppContext) {
         cx.update(gpui_kit::init);
         for body in [
-            "`location_time` 取 SDK 返回的 `rtc_time` 字段值",
-            "**参考文档**\n\n- 地理定位：[查看文档](https://example.com/location)\n- 反向地理编码：保留列表",
+            "`updated_at` 取文件系统返回的 `mtime` 字段值",
+            "**参考文档**\n\n- 语法规范：[查看文档](https://example.com/spec)\n- 基础写作语法：保留列表",
             "**更多 Markdown 结构**\n\n| 内容 | 示例 |\n| --- | --- |\n| 行内代码 | `request_id` |\n| 强调 | **重要结论** |\n\n```json\n{\n  \"reading\": true\n}\n```",
         ] {
             let document = Arc::new(Document::parse(format!(":::\n{body}\n:::\n")).unwrap());
@@ -835,7 +897,7 @@ mod tests {
                     };
                     let rendered = chunk.read(cx).text.read(cx).rendered_text();
                     assert!(rendered.source().starts_with(body));
-                    for word in ["location_time", "rtc_time", "参考文档", "地理定位"] {
+                    for word in ["updated_at", "mtime", "参考文档", "语法规范"] {
                         if let Some(start) = body.find(word) {
                             assert!(rendered.range_for_source(start..start + word.len()).is_some(),
                                 "inline code, strong text and list links keep search mapping: {word}");
@@ -912,8 +974,8 @@ mod tests {
         cx.update(gpui_kit::init);
         let source = r#":::
 **参考文档**
-- 地理定位：[https://developers.google.com/maps/documentation/geolocation/requests-geolocation?hl=zh-cn](https://developers.google.com/maps/documentation/geolocation/requests-geolocation?hl=zh-cn)
-- 反向地理编码：[https://developers.google.com/maps/documentation/geocoding/reverse-geocoding?hl=zh-cn](https://developers.google.com/maps/documentation/geocoding/reverse-geocoding?hl=zh-cn)
+- 语法规范：[https://docs.github.com/zh/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax](https://docs.github.com/zh/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax)
+- 基础写作语法：[https://docs.github.com/zh/get-started/writing-on-github/working-with-advanced-formatting/organizing-information-with-tables](https://docs.github.com/zh/get-started/writing-on-github/working-with-advanced-formatting/organizing-information-with-tables)
 :::
 "#;
         let document = Arc::new(Document::parse(source.into()).unwrap());
@@ -951,10 +1013,10 @@ mod tests {
                 assert!(matches!(chunk.read(cx).layout, MarkdownLayout::Note));
                 chunk.read(cx).text.clone().update(cx, |text, cx| {
                     text.select_all(cx);
-                    assert!(text.selected_text().contains("地理定位"));
+                    assert!(text.selected_text().contains("语法规范"));
                     assert!(
                         text.selected_text()
-                            .contains("requests-geolocation?hl=zh-cn")
+                            .contains("basic-writing-and-formatting-syntax")
                     );
                 });
                 assert_eq!(root.read(cx).document.source(), source);
@@ -1127,6 +1189,79 @@ mod tests {
         .unwrap();
     }
 
+    #[gpui_kit::test]
+    async fn diagrams_on_screen_are_not_evicted_and_rebuilt_every_frame(cx: &mut TestAppContext) {
+        let source = "```mermaid\ngraph LR\nA-->B\n```\n\n".repeat(14);
+        let document = Arc::new(Document::parse(source).unwrap());
+        let (handle, view) = cx.update(|cx| {
+            gpui_kit::init(cx);
+            cx.set_reduce_motion(true);
+            gpui_kit::open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(Bounds::new(
+                        gpui_kit::Point::default(),
+                        size(px(900.), px(3200.)),
+                    ))),
+                    ..Default::default()
+                },
+                cx,
+                |_, cx| {
+                    cx.new(|cx| {
+                        DocumentView::new(
+                            document,
+                            PathBuf::new(),
+                            RenderQueue::new(),
+                            MathQueue::new(),
+                            cx,
+                        )
+                    })
+                },
+            )
+            .unwrap()
+        });
+        let diagrams = |cx: &mut TestAppContext| {
+            cx.update_window(handle, |_, window, cx| {
+                draw(window, cx);
+                let mut ids: Vec<_> = view
+                    .read(cx)
+                    .rows
+                    .iter()
+                    .filter_map(|(index, row)| match row {
+                        Row::Mermaid(card) => Some((*index, card.entity_id())),
+                        _ => None,
+                    })
+                    .collect();
+                ids.sort();
+                ids
+            })
+            .unwrap()
+        };
+        let mut previous = diagrams(cx);
+        settle(cx, "first diagrams");
+        for frame in 0..4 {
+            let current = diagrams(cx);
+            settle(cx, "diagram frame");
+            if frame > 0 {
+                assert_eq!(current, previous, "frame {frame} rebuilt a visible diagram");
+            }
+            previous = current;
+        }
+        assert!(
+            previous.len() > DIAGRAM_CACHE_ENTRIES,
+            "the fixture shows more diagrams than the budget: {}",
+            previous.len()
+        );
+        // Once the window shows fewer rows, the budgets apply again.
+        gpui_kit::VisualTestContext::from_window(handle, cx)
+            .simulate_resize(size(px(900.), px(400.)));
+        for _ in 0..2 {
+            cx.update_window(handle, |_, window, cx| draw(window, cx))
+                .unwrap();
+            settle(cx, "small window");
+        }
+        let small = diagrams(cx);
+        assert!(small.len() <= DIAGRAM_CACHE_ENTRIES, "{}", small.len());
+    }
     #[gpui_kit::test]
     async fn large_document_renders_visible_rows_and_reveals_tail(cx: &mut TestAppContext) {
         let paragraph = "## 阅读章节\n\n中文长文档 **强调** 与 `code`。\n\n";

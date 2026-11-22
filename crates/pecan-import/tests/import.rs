@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use pecan_import::{SourceKind, load, supports};
+use pecan_import::{SourceKind, is_convertible, is_markdown, load, supports};
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -114,4 +114,73 @@ fn unsupported_malformed_and_amplified_inputs_fail_with_resource_errors() {
         );
     }
     assert!(!supports(Path::new("program.exe")));
+}
+
+/// Every extension listed under "Supported formats" in the AnyDoc README.
+const ANYDOC_EXTENSIONS: [&str; 21] = [
+    "doc", "docx", "docm", "ppt", "pps", "pot", "pptx", "pptm", "ppsx", "ppsm", "xls", "xlsx",
+    "xlsm", "xlsb", "odt", "ods", "odp", "rtf", "epub", "csv", "pdf",
+];
+
+#[test]
+fn every_anydoc_format_opens_as_converted_markdown() {
+    for extension in ANYDOC_EXTENSIONS {
+        for name in [
+            format!("file.{extension}"),
+            format!("FILE.{}", extension.to_uppercase()),
+        ] {
+            let path = Path::new(&name);
+            assert!(supports(path), "{name} opens in the reader");
+            assert!(is_convertible(path), "{name} converts through AnyDoc");
+            assert!(!is_markdown(path), "{name} has no Markdown source");
+        }
+    }
+    for name in ["note.md", "note.markdown", "note.mdown", "NOTE.MKD"] {
+        assert!(supports(Path::new(name)));
+        assert!(!is_convertible(Path::new(name)), "{name} is read directly");
+    }
+    assert!(!is_convertible(Path::new("program.exe")));
+
+    let directory = tempfile::tempdir().unwrap();
+    // Signature-less CSV falls back to its extension.
+    let csv = directory.path().join("data.csv");
+    fs::write(&csv, "name,count\nalpha,1\n").unwrap();
+    let loaded = load(&csv).unwrap();
+    assert_eq!(loaded.resources.kind(), SourceKind::Office);
+    assert!(
+        loaded.document.source().contains("alpha"),
+        "{}",
+        loaded.document.source()
+    );
+    let rtf = directory.path().join("note.rtf");
+    fs::write(&rtf, r"{\rtf1\ansi{\b Bold} plain RTF text\par}").unwrap();
+    let loaded = load(&rtf).unwrap();
+    assert_eq!(loaded.resources.kind(), SourceKind::Office);
+    assert!(
+        loaded.document.source().contains("plain RTF text"),
+        "{}",
+        loaded.document.source()
+    );
+}
+
+#[test]
+fn embedded_images_are_referenced_by_file_urls_that_resolve_to_their_assets() {
+    let loaded = load(&fixture("rich.docx")).unwrap();
+    let source = loaded.document.source();
+    let urls: Vec<_> = source
+        .match_indices("](")
+        .map(|(start, _)| {
+            let rest = &source[start + 2..];
+            let rest = rest.strip_prefix('<').unwrap_or(rest);
+            &rest[..rest.find(['>', ')', ' ']).unwrap()]
+        })
+        .collect();
+    assert!(!urls.is_empty(), "{source}");
+    for url in urls {
+        assert!(url.starts_with("file://"), "{url}");
+        assert!(!url.contains('\\'), "no native separators: {url}");
+        let path = url::Url::parse(url).unwrap().to_file_path().unwrap();
+        assert!(path.starts_with(loaded.resources.directory()), "{url}");
+        assert!(path.is_file(), "{url}");
+    }
 }

@@ -394,3 +394,91 @@ fn many_callouts_keep_nested_headings_and_fenced_markers_intact() {
         assert!(document.reference_suffix().contains("https://example.com"));
     }
 }
+
+#[test]
+fn a_byte_order_mark_is_kept_in_the_source_but_not_parsed_as_text() {
+    let source = "\u{feff}# 标题\n\n正文\n\n```rust\nfn main() {}\n```\n\n::: 提示\n内容\n:::\n";
+    let document = Document::parse(source.to_owned()).unwrap();
+    assert_eq!(
+        document.source(),
+        source,
+        "saving needs the exact file bytes"
+    );
+    let headings = document.headings();
+    assert_eq!(headings.len(), 1);
+    assert_eq!(headings[0].title(), "标题");
+    assert_eq!(&source[headings[0].source_range()], "# 标题\n");
+    let blocks = document.blocks();
+    assert_eq!(blocks[0].source_range().start, '\u{feff}'.len_utf8());
+    assert!(
+        blocks
+            .iter()
+            .any(|block| matches!(block, Block::CodePage { code, .. } if &source[code.clone()] == "fn main() {}\n"))
+    );
+    assert!(blocks.iter().any(|block| matches!(
+        block,
+        Block::Callout { body, .. } if source[body.clone()].trim() == "内容"
+    )));
+    assert_eq!(blocks.last().unwrap().source_range().end, source.len());
+}
+
+#[test]
+fn reference_suffix_reparses_every_definition_exactly() {
+    use pulldown_cmark::{Event, Parser, Tag};
+    let source = "# 标题\n\n[a] [b]\n\n[a]: https://e.com/?q=<tag>&amp;lt;x \"path C:\\\\ \\\"q\\\" &amp;lt;\"\n[b]: <https://e.com/a b\\>>\n";
+    let document = Document::parse(source.to_owned()).unwrap();
+    let expected: Vec<_> = Parser::new(source)
+        .filter_map(|event| match event {
+            Event::Start(Tag::Link {
+                dest_url, title, ..
+            }) => Some((dest_url.to_string(), title.to_string())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(expected.len(), 2, "the fixture defines both links");
+    let chunk = format!("[a] [b]\n{}", document.reference_suffix());
+    let parsed = Parser::new(&chunk);
+    let actual: Vec<_> = parsed
+        .filter_map(|event| match event {
+            Event::Start(Tag::Link {
+                dest_url, title, ..
+            }) => Some((dest_url.to_string(), title.to_string())),
+            Event::Text(text) if text.contains("[a]") || text.contains("http") => {
+                panic!("a definition leaked as text: {text}")
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn a_fence_indented_four_spaces_is_code_not_the_closing_fence() {
+    let source = "```\nlet a = 1;\n    ```";
+    let document = Document::parse(source.to_owned()).unwrap();
+    let code = document
+        .blocks()
+        .iter()
+        .find_map(|block| match block {
+            Block::CodePage { code, .. } => Some(code.clone()),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(&source[code], "let a = 1;\n    ```");
+    for (source, body) in [
+        ("```\nlet a = 1;\n```", "let a = 1;\n"),
+        ("```\nlet a = 1;\n   ```  ", "let a = 1;\n"),
+        ("~~~~\nx\n~~~~~", "x\n"),
+    ] {
+        let document = Document::parse(source.to_owned()).unwrap();
+        let code = document
+            .blocks()
+            .iter()
+            .find_map(|block| match block {
+                Block::CodePage { code, .. } => Some(code.clone()),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(&source[code], body, "{source:?}");
+    }
+}
