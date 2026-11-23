@@ -12,9 +12,7 @@ pub struct StyleChains<'a, D> {
 
 impl<'a, D> Default for StyleChains<'a, D> {
     fn default() -> Self {
-        StyleChains {
-            raw: HashMap::new(),
-        }
+        StyleChains { raw: HashMap::new() }
     }
 }
 
@@ -59,16 +57,11 @@ mod tests {
 
     #[test]
     fn deep_chain_walks_to_root() {
-        let defs: Vec<(String, Option<bool>)> = (0..30)
-            .map(|i| (format!("s{i}"), if i == 0 { Some(true) } else { None }))
-            .collect();
+        let defs: Vec<(String, Option<bool>)> =
+            (0..30).map(|i| (format!("s{i}"), if i == 0 { Some(true) } else { None })).collect();
         let mut chains: StyleChains<Option<bool>> = StyleChains::default();
         for (i, (id, d)) in defs.iter().enumerate() {
-            let parent = if i == 0 {
-                None
-            } else {
-                Some(defs[i - 1].0.as_str())
-            };
+            let parent = if i == 0 { None } else { Some(defs[i - 1].0.as_str()) };
             chains.insert(id, d, parent);
         }
         let hit = chains.walk("s29", |d| *d).unwrap();

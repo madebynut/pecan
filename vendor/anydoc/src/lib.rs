@@ -91,9 +91,7 @@ impl Format {
     /// The format a path's extension names. `None` when the path has no
     /// extension or names nothing recognized.
     pub fn from_path(path: &Path) -> Option<Format> {
-        path.extension()
-            .and_then(|e| e.to_str())
-            .and_then(Format::from_extension)
+        path.extension().and_then(|e| e.to_str()).and_then(Format::from_extension)
     }
 }
 

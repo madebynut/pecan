@@ -44,10 +44,7 @@ pub fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
     let numbering_part =
         typed_part_path(&doc_rels, &main_part, rel_type::NUMBERING, "numbering.xml");
     let numbering_tree = pkg.borrow_mut().optional_xml_part(&numbering_part)?;
-    let numbering = match numbering_tree
-        .as_ref()
-        .and_then(|t| t.find(ns::W, "numbering"))
-    {
+    let numbering = match numbering_tree.as_ref().and_then(|t| t.find(ns::W, "numbering")) {
         Some(root) => numbering::parse(root, &|style_id| styles.direct_num_id(style_id))?,
         None => Default::default(),
     };
@@ -78,20 +75,8 @@ pub fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
 
     let mut notes = Vec::new();
     for (part, root_name, elem_name, prefix, kind) in [
-        (
-            footnotes_part,
-            "footnotes",
-            "footnote",
-            "fn",
-            NoteKind::Footnote,
-        ),
-        (
-            endnotes_part,
-            "endnotes",
-            "endnote",
-            "en",
-            NoteKind::Endnote,
-        ),
+        (footnotes_part, "footnotes", "footnote", "fn", NoteKind::Footnote),
+        (endnotes_part, "endnotes", "endnote", "en", NoteKind::Endnote),
     ] {
         let Some(tree) = pkg.borrow_mut().optional_xml_part(&part)? else {
             continue;
@@ -108,9 +93,7 @@ pub fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
             ) {
                 continue;
             }
-            let Some(id) = note.attr(ns::W, "id") else {
-                continue;
-            };
+            let Some(id) = note.attr(ns::W, "id") else { continue };
             notes.push(Note {
                 id: format!("{prefix}{id}"),
                 kind,
@@ -120,20 +103,13 @@ pub fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
     }
 
     let assets = std::mem::take(&mut assets.borrow_mut().assets);
-    Ok(Document {
-        blocks,
-        notes,
-        assets,
-    })
+    Ok(Document { blocks, notes, assets })
 }
 
 /// Path of a typed related part, resolved against the main part; falls back
 /// to the conventional sibling name when the relationship is absent.
 fn typed_part_path(rels: &Relationships, base: &str, rel_type: &str, fallback: &str) -> String {
-    let reference = rels
-        .first_of_type(rel_type)
-        .map(|rel| rel.target.as_str())
-        .unwrap_or(fallback);
+    let reference = rels.first_of_type(rel_type).map(|rel| rel.target.as_str()).unwrap_or(fallback);
     match crate::package::path::resolve(base, reference) {
         Ok(target) => target.path,
         Err(e) => {
@@ -162,10 +138,7 @@ mod tests {
     }
 
     fn docx(document: &str, rels: &str) -> Vec<u8> {
-        docx_parts(&[
-            ("word/document.xml", document),
-            ("word/_rels/document.xml.rels", rels),
-        ])
+        docx_parts(&[("word/document.xml", document), ("word/_rels/document.xml.rels", rels)])
     }
 
     const W: &str = r#"xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main""#;
@@ -196,17 +169,9 @@ mod tests {
             </Relationships>"#;
         let doc = parse(&docx(document, rels)).unwrap();
         let image = find_image(&doc.blocks).expect("image inline");
-        let Inline::Image { source, .. } = image else {
-            unreachable!()
-        };
-        assert_eq!(
-            *source,
-            ImageSource::External("https://e.com/pic.png".into())
-        );
-        assert!(
-            doc.assets.is_empty(),
-            "external images are not retained as assets"
-        );
+        let Inline::Image { source, .. } = image else { unreachable!() };
+        assert_eq!(*source, ImageSource::External("https://e.com/pic.png".into()));
+        assert!(doc.assets.is_empty(), "external images are not retained as assets");
     }
 
     fn numbering_with_start(start: &str) -> String {
@@ -294,13 +259,8 @@ mod tests {
             </w:p></w:body></w:document>"#
         );
         let doc = parse(&docx_parts(&[("word/document.xml", &document)])).unwrap();
-        let Some(Block::Paragraph(inlines)) = doc.blocks.first() else {
-            panic!()
-        };
-        assert_eq!(
-            crate::model::inlines_to_plain_text(inlines),
-            "This by-law grants"
-        );
+        let Some(Block::Paragraph(inlines)) = doc.blocks.first() else { panic!() };
+        assert_eq!(crate::model::inlines_to_plain_text(inlines), "This by-law grants");
     }
 
     #[test]

@@ -19,10 +19,25 @@
 (relation
   alias: (identifier) @variable)
 
+(pivot
+  alias: (identifier) @variable)
+
+(unpivot
+  alias: (identifier) @variable)
+
 (field
   name: (identifier) @property)
 
+(path_expression
+  key: (identifier) @property)
+
 (term
+  alias: (identifier) @variable)
+
+(rename_columns
+  name: (identifier) @property)
+
+(rename_columns
   alias: (identifier) @variable)
 
 ((term
@@ -39,9 +54,12 @@
    (#match? @number "^[-+]?[0-9]+$"))
 
 ((literal) @number
-  (#match? @number "^[-+]?[0-9]*\.[0-9]*$"))
+  (#match? @number "^[-+]?[0-9]*\\.[0-9]*$"))
 
 (parameter) @variable.parameter
+
+(named_argument
+  name: (identifier) @variable.parameter)
 
 [
  (keyword_true)
@@ -105,6 +123,11 @@
 
 [
   (keyword_select)
+  (keyword_grant)
+  (keyword_revoke)
+  (keyword_privileges)
+  (keyword_granted)
+  (keyword_maintain)
   (keyword_from)
   (keyword_where)
   (keyword_index)
@@ -136,8 +159,12 @@
   (keyword_group)
   (keyword_with)
   (keyword_without)
+  (keyword_within)
   (keyword_as)
   (keyword_having)
+  (keyword_qualify)
+  (keyword_pivot)
+  (keyword_unpivot)
   (keyword_limit)
   (keyword_offset)
   (keyword_table)
@@ -148,6 +175,7 @@
   (keyword_constraint)
   (keyword_force)
   (keyword_use)
+  (keyword_include)
   (keyword_for)
   (keyword_if)
   (keyword_exists)
@@ -169,6 +197,7 @@
   (keyword_data)
   (keyword_type)
   (keyword_rename)
+  (keyword_refresh)
   (keyword_to)
   (keyword_schema)
   (keyword_owner)
@@ -183,6 +212,7 @@
   (keyword_transaction)
   (keyword_only)
   (keyword_like)
+  (keyword_rlike)
   (keyword_similar)
   (keyword_over)
   (keyword_change)
@@ -198,6 +228,7 @@
   (keyword_others)
   (keyword_zerofill)
   (keyword_format)
+  (keyword_serde)
   (keyword_fields)
   (keyword_row)
   (keyword_sort)
@@ -208,6 +239,8 @@
   (keyword_uncached)
   (keyword_lines)
   (keyword_stored)
+  (keyword_inputformat)
+  (keyword_outputformat)
   (keyword_virtual)
   (keyword_partitioned)
   (keyword_analyze)
@@ -255,17 +288,28 @@
   (keyword_password)
   (keyword_reset)
   (keyword_role)
+  (keyword_current_role)
   (keyword_sequence)
   (keyword_start)
   (keyword_restart)
   (keyword_tablespace)
+  (keyword_split)
+  (keyword_tablets)
   (keyword_until)
   (keyword_user)
+  (keyword_current_user)
+  (keyword_session_user)
   (keyword_valid)
   (keyword_action)
   (keyword_definer)
   (keyword_invoker)
+  (keyword_enable)
+  (keyword_disable)
   (keyword_security)
+  (keyword_policy)
+  (keyword_permissive)
+  (keyword_restrictive)
+  (keyword_public)
   (keyword_extension)
   (keyword_version)
   (keyword_out)
@@ -321,6 +365,7 @@
   (keyword_storage)
   (keyword_compression)
   (keyword_duplicate)
+  (keyword_while)
 ] @keyword
 
 [
@@ -332,6 +377,7 @@
  (keyword_high_priority)
  (keyword_low_priority)
  (keyword_ignore)
+ (keyword_respect)
  (keyword_nothing)
  (keyword_check)
  (keyword_option)
@@ -423,6 +469,7 @@
   "%"
   "^"
   ":="
+  "=>"
   "="
   "<"
   "<="

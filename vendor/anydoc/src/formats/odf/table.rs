@@ -54,29 +54,19 @@ struct TableState {
 /// ("unknown") state has no token and is left out.
 fn read_checkboxes(table: &Element) -> HashMap<String, Vec<Inline>> {
     let mut out = HashMap::new();
-    for cb in table
-        .find_all(ns::OFFICE, "forms")
-        .flat_map(|f| f.descendants(ns::FORM, "checkbox"))
+    for cb in table.find_all(ns::OFFICE, "forms").flat_map(|f| f.descendants(ns::FORM, "checkbox"))
     {
-        let Some(id) = cb
-            .attr_qualified(ns::XML, "id")
-            .or_else(|| cb.attr(ns::FORM, "id"))
-        else {
+        let Some(id) = cb.attr_qualified(ns::XML, "id").or_else(|| cb.attr(ns::FORM, "id")) else {
             continue;
         };
-        let state = cb
-            .attr(ns::FORM, "current-state")
-            .or_else(|| cb.attr(ns::FORM, "state"));
+        let state = cb.attr(ns::FORM, "current-state").or_else(|| cb.attr(ns::FORM, "state"));
         let checked = match state {
             Some("checked") => true,
             Some("unchecked") | None => false,
             Some(_) => continue,
         };
         let mut inlines = vec![Inline::Checkbox(checked)];
-        let label = cb
-            .attr(ns::FORM, "label")
-            .map(clean_text)
-            .unwrap_or_default();
+        let label = cb.attr(ns::FORM, "label").map(clean_text).unwrap_or_default();
         if !label.is_empty() {
             inlines.push(Inline::plain(format!(" {label}")));
         }
@@ -94,9 +84,7 @@ fn append_cell_checkboxes(
     blocks: &mut Vec<Block>,
 ) {
     for control in cell.find_all(ns::DRAW, "control") {
-        let Some(found) = control
-            .attr(ns::DRAW, "control")
-            .and_then(|id| checkboxes.get(id))
+        let Some(found) = control.attr(ns::DRAW, "control").and_then(|id| checkboxes.get(id))
         else {
             continue;
         };
@@ -138,16 +126,8 @@ impl TableState {
 
 /// One parsed cell of a row template, reused across row repeats.
 enum RowCell {
-    Covered {
-        repeat: u64,
-    },
-    Cell {
-        repeat: u64,
-        col_span: u32,
-        row_span: u32,
-        blocks: Vec<Block>,
-        bytes: u64,
-    },
+    Covered { repeat: u64 },
+    Cell { repeat: u64, col_span: u32, row_span: u32, blocks: Vec<Block>, bytes: u64 },
 }
 
 /// Approximate retained text bytes of parsed cell content.
@@ -179,11 +159,9 @@ fn block_bytes(blocks: &[Block]) -> u64 {
         .map(|b| match b {
             Block::Paragraph(i) | Block::Heading { content: i, .. } => inline_bytes(i),
             Block::Math(tex) => tex.len() as u64,
-            Block::List(list) => list
-                .items
-                .iter()
-                .map(|item| block_bytes(&item.blocks))
-                .sum::<u64>(),
+            Block::List(list) => {
+                list.items.iter().map(|item| block_bytes(&item.blocks)).sum::<u64>()
+            }
             Block::Table(t) => t
                 .grid
                 .iter()
@@ -260,12 +238,7 @@ fn emit_row(
     let cells = parse_row_cells(row, ctx, &state.checkboxes)?;
     state.charge(repeat.saturating_sub(1))?;
     for cell in &cells {
-        if let RowCell::Cell {
-            repeat: cell_repeat,
-            bytes,
-            ..
-        } = cell
-        {
+        if let RowCell::Cell { repeat: cell_repeat, bytes, .. } = cell {
             let copies = repeat.saturating_mul(*cell_repeat).saturating_sub(1);
             state.charge_bytes(bytes.saturating_mul(copies))?;
         }
@@ -311,13 +284,7 @@ fn parse_row_cells(
         let mut blocks = cell_blocks(cell, ctx)?;
         append_cell_checkboxes(cell, checkboxes, &mut blocks);
         let bytes = block_bytes(&blocks);
-        out.push(RowCell::Cell {
-            repeat,
-            col_span,
-            row_span,
-            blocks,
-            bytes,
-        });
+        out.push(RowCell::Cell { repeat, col_span, row_span, blocks, bytes });
     }
     Ok(out)
 }
@@ -338,13 +305,7 @@ fn emit_parsed_cells(cells: &[RowCell], state: &mut TableState) -> Result<(), Co
                     }
                 }
             }
-            RowCell::Cell {
-                repeat,
-                col_span,
-                row_span,
-                blocks,
-                ..
-            } => {
+            RowCell::Cell { repeat, col_span, row_span, blocks, .. } => {
                 if blocks.is_empty() && *col_span == 1 && *row_span == 1 {
                     pending_cells = pending_cells.saturating_add(*repeat);
                     continue;
@@ -352,9 +313,7 @@ fn emit_parsed_cells(cells: &[RowCell], state: &mut TableState) -> Result<(), Co
                 flush_gap(state, &mut pending_cells)?;
                 state.charge(repeat.saturating_mul(*col_span as u64))?;
                 for _ in 0..*repeat {
-                    state
-                        .builder
-                        .place(Cell::spanning(blocks.clone(), *col_span, *row_span))?;
+                    state.builder.place(Cell::spanning(blocks.clone(), *col_span, *row_span))?;
                 }
             }
         }
@@ -501,10 +460,7 @@ fn row_is_empty(row: &Element) -> bool {
 
 /// One sheet of a spreadsheet body.
 pub fn parse_spreadsheet(sheet: &Element, ctx: &Ctx) -> Result<Vec<Block>, ConvertError> {
-    let tables: Vec<&Element> = sheet
-        .child_elems()
-        .filter(|e| e.is(ns::TABLE, "table"))
-        .collect();
+    let tables: Vec<&Element> = sheet.child_elems().filter(|e| e.is(ns::TABLE, "table")).collect();
     let multi_sheet = tables.len() > 1;
     let mut blocks = Vec::new();
     for table in tables {

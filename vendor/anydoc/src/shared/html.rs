@@ -32,13 +32,8 @@ pub fn to_blocks(
     css: &Stylesheet,
     ctx: &dyn HtmlCtx,
 ) -> Result<Vec<Block>, ConvertError> {
-    let mut builder = Builder {
-        blocks: Vec::new(),
-        inlines: Vec::new(),
-        css,
-        ctx,
-        start_boundary: true,
-    };
+    let mut builder =
+        Builder { blocks: Vec::new(), inlines: Vec::new(), css, ctx, start_boundary: true };
     builder.walk_children(body, StyleDelta::default())?;
     Ok(builder.finish())
 }
@@ -57,10 +52,7 @@ pub struct StyleProps {
 
 impl StyleProps {
     fn merge(self, over: StyleProps) -> StyleProps {
-        StyleProps {
-            delta: self.delta.merge(over.delta),
-            hidden: over.hidden.or(self.hidden),
-        }
+        StyleProps { delta: self.delta.merge(over.delta), hidden: over.hidden.or(self.hidden) }
     }
 
     fn is_default(&self) -> bool {
@@ -112,11 +104,7 @@ impl Stylesheet {
                 }
                 let (tag, class) = match s.split_once('.') {
                     Some((t, c)) => (
-                        if t.is_empty() {
-                            None
-                        } else {
-                            Some(t.to_ascii_lowercase())
-                        },
+                        if t.is_empty() { None } else { Some(t.to_ascii_lowercase()) },
                         Some(c.to_string()),
                     ),
                     None => (Some(s.to_ascii_lowercase()), None),
@@ -188,11 +176,7 @@ fn parse_declarations(body: &str) -> DeclProps {
             value.truncate(pos);
             value.truncate(value.trim_end().len());
         }
-        let props = if important {
-            &mut out.important
-        } else {
-            &mut out.normal
-        };
+        let props = if important { &mut out.important } else { &mut out.normal };
         match name.as_str() {
             "font-weight" => {
                 props.delta.bold = Some(
@@ -317,10 +301,8 @@ impl Builder<'_> {
     /// attribute merged in one cascade order — normal rules, inline style,
     /// `!important` rules, `!important` inline style.
     fn element_props(&self, elem: &Element) -> StyleProps {
-        let classes: Vec<&str> = elem
-            .attr_any("class")
-            .map(|c| c.split_whitespace().collect())
-            .unwrap_or_default();
+        let classes: Vec<&str> =
+            elem.attr_any("class").map(|c| c.split_whitespace().collect()).unwrap_or_default();
         let mut entries = self.css.matching_rules(&elem.local, &classes);
         if let Some(style) = elem.attr_any("style") {
             let decls = parse_declarations(style);
@@ -372,10 +354,7 @@ impl Builder<'_> {
         if text.is_empty() {
             return;
         }
-        self.inlines.push(Inline::Text {
-            text,
-            style: delta.resolve(),
-        });
+        self.inlines.push(Inline::Text { text, style: delta.resolve() });
     }
 
     fn walk_elem(&mut self, elem: &Element, delta: StyleDelta) -> Result<(), ConvertError> {
@@ -397,22 +376,14 @@ impl Builder<'_> {
                 rebase_emphasis(&mut content, delta.resolve());
                 let anchor = elem.attr_any("id").map(|id| self.ctx.anchor_id(id));
                 if !inlines_are_empty(&content) {
-                    self.blocks.push(Block::Heading {
-                        level,
-                        anchor,
-                        content,
-                    });
+                    self.blocks.push(Block::Heading { level, anchor, content });
                 } else {
                     // An empty heading still carries link targets: its own
                     // id and any anchors inside.
                     let kept: Vec<Inline> = anchor
                         .map(Inline::Anchor)
                         .into_iter()
-                        .chain(
-                            content
-                                .into_iter()
-                                .filter(|i| matches!(i, Inline::Anchor(_))),
-                        )
+                        .chain(content.into_iter().filter(|i| matches!(i, Inline::Anchor(_))))
                         .collect();
                     if !kept.is_empty() {
                         self.blocks.push(Block::Paragraph(kept));
@@ -495,10 +466,7 @@ impl Builder<'_> {
             "br" => self.inlines.push(Inline::LineBreak),
             "img" | "image" => {
                 let alt = clean_text(elem.attr_any("alt").unwrap_or(""));
-                let src = elem
-                    .attr_any("src")
-                    .or_else(|| elem.attr_any("href"))
-                    .unwrap_or("");
+                let src = elem.attr_any("src").or_else(|| elem.attr_any("href")).unwrap_or("");
                 let source = self.ctx.image_source(src)?;
                 if source.is_some() || !alt.trim().is_empty() {
                     self.inlines.push(Inline::Image {
@@ -508,9 +476,7 @@ impl Builder<'_> {
                 }
             }
             "a" => {
-                let target = elem
-                    .attr_any("href")
-                    .and_then(|href| self.ctx.link_target(href));
+                let target = elem.attr_any("href").and_then(|href| self.ctx.link_target(href));
                 let content = self.inline_children_at(
                     elem,
                     delta,
@@ -555,10 +521,9 @@ impl Builder<'_> {
                 out.push(Inline::LineBreak);
             }
             match block {
-                Block::Paragraph(inlines)
-                | Block::Heading {
-                    content: inlines, ..
-                } => out.extend(inlines),
+                Block::Paragraph(inlines) | Block::Heading { content: inlines, .. } => {
+                    out.extend(inlines)
+                }
                 other => out.push(Inline::plain(collapse_ws(&block_text(&other)))),
             }
         }
@@ -581,16 +546,10 @@ impl Builder<'_> {
         if !ordered {
             let mut list_items = Vec::with_capacity(items.len());
             for li in &items {
-                list_items.push(ListItem {
-                    blocks: self.sub_blocks(li, delta)?,
-                    marker_label: None,
-                });
+                list_items
+                    .push(ListItem { blocks: self.sub_blocks(li, delta)?, marker_label: None });
             }
-            let list = List {
-                marker: MarkerKind::Bullet,
-                start: 1,
-                items: list_items,
-            };
+            let list = List { marker: MarkerKind::Bullet, start: 1, items: list_items };
             return Ok(vec![Block::List(list)]);
         }
         let marker = match elem.attr_any("type") {
@@ -614,11 +573,7 @@ impl Builder<'_> {
             numbers.push(next);
             // Source-controlled values sit anywhere in the i64 range; the
             // step must not overflow.
-            next = if reversed {
-                next.saturating_sub(1)
-            } else {
-                next.saturating_add(1)
-            };
+            next = if reversed { next.saturating_sub(1) } else { next.saturating_add(1) };
         }
         // Zero/negative numbers are valid ordered-list values but cannot be
         // a `start` for the renderer's start+index numbering; such lists
@@ -631,30 +586,19 @@ impl Builder<'_> {
                     marker_label: Some(format!("{n}.")),
                 });
             }
-            return Ok(vec![Block::List(List {
-                marker,
-                start: 1,
-                items: list_items,
-            })]);
+            return Ok(vec![Block::List(List { marker, start: 1, items: list_items })]);
         }
         let mut out: Vec<Block> = Vec::new();
         let mut current: Option<List> = None;
         let mut last_number = 0i64;
         for (li, &number) in items.iter().zip(&numbers) {
-            let item = ListItem {
-                blocks: self.sub_blocks(li, delta)?,
-                marker_label: None,
-            };
+            let item = ListItem { blocks: self.sub_blocks(li, delta)?, marker_label: None };
             let contiguous = current.is_some() && last_number.checked_add(1) == Some(number);
             if !contiguous {
                 if let Some(list) = current.take() {
                     out.push(Block::List(list));
                 }
-                current = Some(List {
-                    marker,
-                    start: number as u64,
-                    items: Vec::new(),
-                });
+                current = Some(List { marker, start: number as u64, items: Vec::new() });
             }
             current.as_mut().unwrap().items.push(item);
             last_number = number;
@@ -773,13 +717,9 @@ fn block_text(block: &Block) -> String {
             .iter()
             .flat_map(|row| {
                 row.iter().filter_map(|slot| match slot {
-                    crate::model::CellSlot::Origin(cell) => Some(
-                        cell.blocks
-                            .iter()
-                            .map(block_text)
-                            .collect::<Vec<_>>()
-                            .join(" "),
-                    ),
+                    crate::model::CellSlot::Origin(cell) => {
+                        Some(cell.blocks.iter().map(block_text).collect::<Vec<_>>().join(" "))
+                    }
                     crate::model::CellSlot::Covered { .. } => None,
                 })
             })
@@ -872,9 +812,7 @@ mod tests {
     }
 
     fn para_text(block: &Block) -> String {
-        let Block::Paragraph(inlines) = block else {
-            panic!("expected paragraph: {block:?}")
-        };
+        let Block::Paragraph(inlines) = block else { panic!("expected paragraph: {block:?}") };
         crate::model::inlines_to_plain_text(inlines)
     }
 
@@ -906,9 +844,7 @@ mod tests {
         // `foo <a> bar</a>`: the label's leading space collapses with the
         // space already emitted before the link.
         let out = blocks(r#"<body><p>foo <a href="u"> bar</a></p></body>"#);
-        let Block::Paragraph(inlines) = &out[0] else {
-            panic!()
-        };
+        let Block::Paragraph(inlines) = &out[0] else { panic!() };
         let Some(Inline::Link { content, .. }) =
             inlines.iter().find(|i| matches!(i, Inline::Link { .. }))
         else {
@@ -924,9 +860,7 @@ mod tests {
     fn inline_style_overrides_the_tag_default() {
         // M7: `<b style="font-weight: normal">` renders plain.
         let out = blocks(r#"<body><p><b style="font-weight: normal">x</b></p></body>"#);
-        let Block::Paragraph(inlines) = &out[0] else {
-            panic!()
-        };
+        let Block::Paragraph(inlines) = &out[0] else { panic!() };
         assert!(!first_text_style(inlines).bold);
     }
 
@@ -934,9 +868,7 @@ mod tests {
     fn important_declarations_win_the_cascade() {
         let css = "span.x { font-weight: bold !important } span.x { font-weight: normal }";
         let out = blocks_with_css(r#"<body><p><span class="x">x</span></p></body>"#, css);
-        let Block::Paragraph(inlines) = &out[0] else {
-            panic!()
-        };
+        let Block::Paragraph(inlines) = &out[0] else { panic!() };
         assert!(first_text_style(inlines).bold);
     }
 
@@ -946,15 +878,11 @@ mod tests {
         // the runs; emphasis a child adds beyond it still does.
         let css = "h2 { font-style: italic; font-weight: bold }";
         let out = blocks_with_css("<body><h2>title <b>b</b></h2></body>", css);
-        let Block::Heading { content, .. } = &out[0] else {
-            panic!("{out:?}")
-        };
+        let Block::Heading { content, .. } = &out[0] else { panic!("{out:?}") };
         assert_eq!(first_text_style(content), Style::PLAIN);
 
         let out = blocks_with_css("<body><h2>title <b>b</b></h2></body>", "");
-        let Block::Heading { content, .. } = &out[0] else {
-            panic!("{out:?}")
-        };
+        let Block::Heading { content, .. } = &out[0] else { panic!("{out:?}") };
         assert_eq!(first_text_style(content), Style::PLAIN);
         let Some(Inline::Text { style, .. }) =
             content.iter().rfind(|i| matches!(i, Inline::Text { .. }))
@@ -987,20 +915,9 @@ mod tests {
             <tbody><tr><td>c</td><td>d</td></tr></tbody>
         </table></body>"#;
         let out = blocks(html);
-        let Block::Table(t) = &out[0] else {
-            panic!("{out:?}")
-        };
+        let Block::Table(t) = &out[0] else { panic!("{out:?}") };
         assert!(matches!(&t.grid[0][0], CellSlot::Origin(c) if c.row_span == 2));
-        assert!(matches!(
-            t.grid[1][0],
-            CellSlot::Covered {
-                origin_row: 0,
-                origin_col: 0
-            }
-        ));
-        assert!(
-            matches!(&t.grid[2][0], CellSlot::Origin(_)),
-            "next group must not be covered"
-        );
+        assert!(matches!(t.grid[1][0], CellSlot::Covered { origin_row: 0, origin_col: 0 }));
+        assert!(matches!(&t.grid[2][0], CellSlot::Origin(_)), "next group must not be covered");
     }
 }

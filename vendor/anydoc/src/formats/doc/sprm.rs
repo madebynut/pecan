@@ -13,10 +13,7 @@ fn sprm_operand_len(sprm: u16, operand: &[u8]) -> usize {
         7 => 3,
         _ => {
             if sprm == 0xD608 {
-                operand
-                    .get(..2)
-                    .map(|b| u16::from_le_bytes([b[0], b[1]]) as usize + 1)
-                    .unwrap_or(0)
+                operand.get(..2).map(|b| u16::from_le_bytes([b[0], b[1]]) as usize + 1).unwrap_or(0)
             } else {
                 operand.first().map(|&b| b as usize + 1).unwrap_or(0)
             }
@@ -199,12 +196,7 @@ pub fn apply_pap_sprms(grpprl: &[u8], data: &[u8], delta: &mut PapDelta) {
             let on = operand.first().is_some_and(|&v| v != 0);
             match &mut delta.tap {
                 Some(tap) => tap.header = on,
-                None if on => {
-                    delta.tap = Some(Tap {
-                        header: true,
-                        ..Default::default()
-                    })
-                }
+                None if on => delta.tap = Some(Tap { header: true, ..Default::default() }),
                 None => {}
             }
         }
@@ -249,11 +241,7 @@ fn parse_tdef_table(operand: &[u8]) -> Option<Tap> {
         cell.vert_cont = vert == 1;
         cell.vert_restart = vert == 3;
     }
-    Some(Tap {
-        boundaries,
-        cells,
-        header: false,
-    })
+    Some(Tap { boundaries, cells, header: false })
 }
 
 /// A CHPX grpprl interpreted as a character-style *definition* layer: the

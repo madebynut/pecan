@@ -55,11 +55,7 @@ pub fn parse_style_text(body: &[u8], text_len: usize) -> StyleRuns {
             return runs;
         };
         pos = next;
-        runs.paragraphs.push(ParaProps {
-            count,
-            depth,
-            bullet: pf,
-        });
+        runs.paragraphs.push(ParaProps { count, depth, bullet: pf });
         covered += count;
         if count == 0 {
             break;
@@ -76,11 +72,7 @@ pub fn parse_style_text(body: &[u8], text_len: usize) -> StyleRuns {
             break;
         };
         pos = next;
-        runs.chars.push(CharProps {
-            count,
-            bold: cf.bold,
-            italic: cf.italic,
-        });
+        runs.chars.push(CharProps { count, bold: cf.bold, italic: cf.italic });
         covered += count;
         if count == 0 {
             break;
@@ -233,11 +225,7 @@ pub fn parse_master_style(body: &[u8], instance: u16) -> Vec<MasterLevel> {
             break;
         };
         pos = next;
-        out.push(MasterLevel {
-            bullet,
-            bold: cf.bold,
-            italic: cf.italic,
-        });
+        out.push(MasterLevel { bullet, bold: cf.bold, italic: cf.italic });
     }
     out
 }

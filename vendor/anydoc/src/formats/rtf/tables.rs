@@ -20,11 +20,7 @@ pub struct ListLevelDef {
 
 impl Default for ListLevelDef {
     fn default() -> Self {
-        ListLevelDef {
-            marker: Some(MarkerKind::Bullet),
-            start: 1,
-            pattern: Default::default(),
-        }
+        ListLevelDef { marker: Some(MarkerKind::Bullet), start: 1, pattern: Default::default() }
     }
 }
 
@@ -131,10 +127,7 @@ impl LevelTextCollector {
         enc: &'static encoding_rs::Encoding,
     ) -> NumberPattern {
         let pattern = if marker.is_some_and(MarkerKind::ordered) {
-            NumberPattern {
-                text: build_pattern(&self.text, &self.numbers, enc),
-                legal: self.legal,
-            }
+            NumberPattern { text: build_pattern(&self.text, &self.numbers, enc), legal: self.legal }
         } else {
             NumberPattern::default()
         };
@@ -238,9 +231,7 @@ fn parse_stylesheet(
                 log::warn!("style inheritance cycle at rtf style {cur}");
                 break;
             }
-            let Some((def, base)) = raw.get(&cur) else {
-                break;
-            };
+            let Some((def, base)) = raw.get(&cur) else { break };
             chain.push(def);
             cursor = *base;
         }
@@ -283,12 +274,7 @@ fn parse_listtable(
                 }
                 if list_depth == Some(depth) {
                     if let Some(id) = list_id.take() {
-                        by_list_id.insert(
-                            id,
-                            ListDef {
-                                levels: levels.clone(),
-                            },
-                        );
+                        by_list_id.insert(id, ListDef { levels: levels.clone() });
                     }
                     levels = std::array::from_fn(|_| ListLevelDef::default());
                     level_index = 0;
@@ -378,10 +364,8 @@ fn parse_overrides(
                 if let Some((text, numbers, legal)) = &texts[level]
                     && def.levels[level].marker.is_some_and(MarkerKind::ordered)
                 {
-                    def.levels[level].pattern = NumberPattern {
-                        text: build_pattern(text, numbers, enc),
-                        legal: *legal,
-                    };
+                    def.levels[level].pattern =
+                        NumberPattern { text: build_pattern(text, numbers, enc), legal: *legal };
                 }
             }
             lists.insert(ls_n, def);

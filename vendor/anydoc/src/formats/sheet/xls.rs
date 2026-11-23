@@ -75,15 +75,12 @@ pub(super) fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
             continue;
         };
         if multi_sheet {
-            doc.blocks
-                .push(Block::heading(2, vec![Inline::plain(sheet.name.clone())]));
+            doc.blocks.push(Block::heading(2, vec![Inline::plain(sheet.name.clone())]));
         }
         doc.blocks.push(Block::Table(table));
     }
     if !visible.is_empty() && failed == visible.len() {
-        return Err(ConvertError::malformed(
-            "no sheet in the workbook could be read",
-        ));
+        return Err(ConvertError::malformed("no sheet in the workbook could be read"));
     }
     Ok(doc)
 }
@@ -101,9 +98,7 @@ fn workbook_stream<R: std::io::Read + std::io::Seek>(
                     || e.name().eq_ignore_ascii_case("Book"))
         })
         .map(|e| e.name().to_string())
-        .ok_or(ConvertError::MissingPart {
-            part: "Workbook".to_string(),
-        })?;
+        .ok_or(ConvertError::MissingPart { part: "Workbook".to_string() })?;
     read_ole_stream(ole, &name)
 }
 
@@ -176,11 +171,7 @@ struct SegReader<'a> {
 
 impl<'a> SegReader<'a> {
     fn new(segs: Vec<&'a [u8]>) -> SegReader<'a> {
-        SegReader {
-            segs,
-            seg: 0,
-            off: 0,
-        }
+        SegReader { segs, seg: 0, off: 0 }
     }
 
     /// Bytes left in the current segment.
@@ -225,8 +216,7 @@ impl<'a> SegReader<'a> {
     }
 
     fn u32(&mut self) -> Option<u32> {
-        self.bytes(4)
-            .and_then(|b| Some(u32::from_le_bytes(b.try_into().ok()?)))
+        self.bytes(4).and_then(|b| Some(u32::from_le_bytes(b.try_into().ok()?)))
     }
 
     /// Skip `n` bytes across segment boundaries (non-character data carries
@@ -252,23 +242,11 @@ impl<'a> SegReader<'a> {
 /// UTF-16, so it is re-read rather than carried over. Rich runs and
 /// phonetic data are skipped, matching the xlsx reader's handling of `rPh`.
 fn read_biff8_string(r: &mut SegReader, short: bool, rich: bool) -> Option<String> {
-    let cch = if short {
-        r.u8()? as usize
-    } else {
-        r.u16()? as usize
-    };
+    let cch = if short { r.u8()? as usize } else { r.u16()? as usize };
     let flags = r.u8()?;
     let mut wide = flags & 0x01 != 0;
-    let runs = if rich && flags & 0x08 != 0 {
-        r.u16()? as usize
-    } else {
-        0
-    };
-    let ext = if rich && flags & 0x04 != 0 {
-        r.u32()? as usize
-    } else {
-        0
-    };
+    let runs = if rich && flags & 0x08 != 0 { r.u16()? as usize } else { 0 };
+    let ext = if rich && flags & 0x04 != 0 { r.u32()? as usize } else { 0 };
     let mut units: Vec<u16> = Vec::new();
     let mut remaining = cch;
     while remaining > 0 {
@@ -303,11 +281,7 @@ fn read_byte_string(
     short: bool,
     encoding: &'static encoding_rs::Encoding,
 ) -> Option<String> {
-    let cch = if short {
-        r.u8()? as usize
-    } else {
-        r.u16()? as usize
-    };
+    let cch = if short { r.u8()? as usize } else { r.u16()? as usize };
     let mut bytes = Vec::with_capacity(cch);
     let mut remaining = cch;
     while remaining > 0 {
@@ -364,9 +338,7 @@ struct Globals {
 
 impl Globals {
     fn format(&self, ixfe: u16) -> &CellFormat {
-        self.xfs
-            .get(usize::from(ixfe))
-            .unwrap_or(&CellFormat::General)
+        self.xfs.get(usize::from(ixfe)).unwrap_or(&CellFormat::General)
     }
 
     fn read_string(&self, r: &mut SegReader, short: bool) -> Option<String> {
@@ -385,9 +357,7 @@ fn read_globals(data: &[u8], records: &mut u64) -> Result<Globals, ConvertError>
         return Err(ConvertError::malformed("empty workbook stream"));
     };
     if rec_type != BOF {
-        return Err(ConvertError::malformed(
-            "workbook stream does not start with a BOF record",
-        ));
+        return Err(ConvertError::malformed("workbook stream does not start with a BOF record"));
     }
     let mut globals = Globals {
         biff8: get_u16(body, 0) == Some(0x0600),
@@ -451,18 +421,13 @@ fn read_globals(data: &[u8], records: &mut u64) -> Result<Globals, ConvertError>
     }
     // Resolved after the pass: FORMAT records are not ordered relative to
     // the XFs that reference them.
-    let custom: HashMap<u32, &str> = formats
-        .iter()
-        .map(|(&id, code)| (id, code.as_str()))
-        .collect();
+    let custom: HashMap<u32, &str> =
+        formats.iter().map(|(&id, code)| (id, code.as_str())).collect();
     let mut cache: HashMap<u16, CellFormat> = HashMap::new();
     globals.xfs = xf_ifmts
         .iter()
         .map(|&ifmt| {
-            cache
-                .entry(ifmt)
-                .or_insert_with(|| resolve_format(u32::from(ifmt), &custom))
-                .clone()
+            cache.entry(ifmt).or_insert_with(|| resolve_format(u32::from(ifmt), &custom)).clone()
         })
         .collect();
     Ok(globals)
@@ -480,11 +445,7 @@ fn read_boundsheet(body: &[u8], globals: &Globals) -> Option<BoundSheet> {
     }
     let mut r = SegReader::new(vec![body.get(6..)?]);
     let name = globals.read_string(&mut r, true)?;
-    Some(BoundSheet {
-        name: clean_text(&name),
-        offset,
-        visible: state == 0,
-    })
+    Some(BoundSheet { name: clean_text(&name), offset, visible: state == 0 })
 }
 
 /// The shared string table (trap 1: strings routinely split across
@@ -519,9 +480,7 @@ fn cell_ref(body: &[u8]) -> Option<(u32, u32, u16)> {
 }
 
 fn get_f64(body: &[u8], off: usize) -> Option<f64> {
-    Some(f64::from_le_bytes(
-        body.get(off..off.checked_add(8)?)?.try_into().ok()?,
-    ))
+    Some(f64::from_le_bytes(body.get(off..off.checked_add(8)?)?.try_into().ok()?))
 }
 
 /// One worksheet substream into the shared `SheetContent` shape. `Ok(None)`
@@ -572,8 +531,7 @@ fn read_sheet(
                     && flags & 0x01 != 0
                     && first <= last
                 {
-                    out.hidden_cols
-                        .push((u32::from(first), u32::from(last).min(MAX_COLS - 1)));
+                    out.hidden_cols.push((u32::from(first), u32::from(last).min(MAX_COLS - 1)));
                 }
             }
             MERGEDCELLS => {
@@ -603,12 +561,7 @@ fn read_sheet(
                 {
                     match globals.sst.get(isst as usize) {
                         Some(text) => {
-                            put(
-                                &mut out,
-                                row,
-                                col,
-                                format_as_text(globals.format(ixfe), text),
-                            );
+                            put(&mut out, row, col, format_as_text(globals.format(ixfe), text));
                         }
                         None => log::debug!("shared string index {isst} out of range"),
                     }
@@ -718,27 +671,17 @@ fn read_sheet(
             MSODRAWING if globals.biff8 => {
                 let (segs, after) = continued(data, body, pos, records)?;
                 pos = after;
-                shape = if segs.len() == 1 {
-                    last_shape(body)
-                } else {
-                    last_shape(&segs.concat())
-                };
+                shape = if segs.len() == 1 { last_shape(body) } else { last_shape(&segs.concat()) };
                 last_checkbox = None;
             }
             OBJ if globals.biff8 => {
                 last_checkbox = None;
                 if let Some(checked) = obj_checkbox(body)
-                    && let Some(Shape {
-                        anchor: at,
-                        hidden: false,
-                    }) = shape.take()
+                    && let Some(Shape { anchor: at, hidden: false }) = shape.take()
                     && at.1 < MAX_COLS
                 {
                     let caption = String::new();
-                    out.checkboxes
-                        .entry(at)
-                        .or_default()
-                        .push(Checkbox { checked, caption });
+                    out.checkboxes.entry(at).or_default().push(Checkbox { checked, caption });
                     last_checkbox = Some(at);
                 }
             }
@@ -930,10 +873,7 @@ mod tests {
     }
 
     fn cell6(row: u16, col: u16, ixfe: u16) -> Vec<u8> {
-        [row, col, ixfe]
-            .iter()
-            .flat_map(|v| v.to_le_bytes())
-            .collect()
+        [row, col, ixfe].iter().flat_map(|v| v.to_le_bytes()).collect()
     }
 
     fn labelsst(row: u16, col: u16, ixfe: u16, isst: u32) -> Vec<u8> {
@@ -1041,11 +981,7 @@ mod tests {
     }
 
     fn one_sheet(records: Vec<u8>) -> Wb {
-        Wb {
-            xfs: vec![0],
-            sheets: vec![("S", 0, records)],
-            ..Wb::default()
-        }
+        Wb { xfs: vec![0], sheets: vec![("S", 0, records)], ..Wb::default() }
     }
 
     fn first_table(doc: &Document) -> &Table {
@@ -1119,10 +1055,7 @@ mod tests {
         body.extend(ustr("ok"));
         let mut records = labelsst(0, 0, 0, 0);
         records.extend(labelsst(0, 1, 0, 1));
-        let wb = Wb {
-            sst: vec![rec(SST, &body)],
-            ..one_sheet(records)
-        };
+        let wb = Wb { sst: vec![rec(SST, &body)], ..one_sheet(records) };
         let doc = parse(&wb.build()).unwrap();
         assert_eq!(texts(first_table(&doc)), vec![vec!["ab", "ok"]]);
     }
@@ -1148,10 +1081,7 @@ mod tests {
             ..Wb::default()
         };
         let doc = parse(&wb.build()).unwrap();
-        assert_eq!(
-            texts(first_table(&doc)),
-            vec![vec!["1234.5", "155.5", "7", "50%"]]
-        );
+        assert_eq!(texts(first_table(&doc)), vec![vec!["1234.5", "155.5", "7", "50%"]]);
     }
 
     #[test]
@@ -1169,10 +1099,7 @@ mod tests {
             ..Wb::default()
         };
         let doc = parse(&wb.build()).unwrap();
-        assert_eq!(
-            texts(first_table(&doc)),
-            vec![vec!["15.5%", "$1,234.50", "9,876,543"]]
-        );
+        assert_eq!(texts(first_table(&doc)), vec![vec!["15.5%", "$1,234.50", "9,876,543"]]);
     }
 
     #[test]
@@ -1181,11 +1108,7 @@ mod tests {
             date1904,
             formats: vec![(164, "yyyy-mm-dd")],
             xfs: vec![164],
-            sheets: vec![(
-                "S",
-                0,
-                number(0, 0, 0, if date1904 { 100.0 } else { 46096.0 }),
-            )],
+            sheets: vec![("S", 0, number(0, 0, 0, if date1904 { 100.0 } else { 46096.0 }))],
             ..Wb::default()
         };
         let doc = parse(&dated(false).build()).unwrap();
@@ -1212,22 +1135,12 @@ mod tests {
         records.extend(rec(COLINFO, &colinfo));
         let wb = Wb {
             xfs: vec![0],
-            sheets: vec![
-                ("Shown", 0, records),
-                ("Secret", 1, label(0, 0, 0, "secret")),
-            ],
+            sheets: vec![("Shown", 0, records), ("Secret", 1, label(0, 0, 0, "secret"))],
             ..Wb::default()
         };
         let doc = parse(&wb.build()).unwrap();
-        assert_eq!(
-            doc.blocks.len(),
-            1,
-            "hidden sheet must add no heading and no table"
-        );
-        assert_eq!(
-            texts(first_table(&doc)),
-            vec![vec!["a", "c"], vec!["d", ""]]
-        );
+        assert_eq!(doc.blocks.len(), 1, "hidden sheet must add no heading and no table");
+        assert_eq!(texts(first_table(&doc)), vec![vec!["a", "c"], vec!["d", ""]]);
     }
 
     #[test]
@@ -1258,10 +1171,7 @@ mod tests {
         records.extend(formula(0, 2, 0, [0x01, 0, 1, 0, 0, 0, 0xFF, 0xFF]));
         records.extend(formula(0, 3, 0, [0x02, 0, 0x17, 0, 0, 0, 0xFF, 0xFF]));
         let doc = parse(&one_sheet(records).build()).unwrap();
-        assert_eq!(
-            texts(first_table(&doc)),
-            vec![vec!["2.5", "calc", "TRUE", "#REF!"]]
-        );
+        assert_eq!(texts(first_table(&doc)), vec![vec!["2.5", "calc", "TRUE", "#REF!"]]);
     }
 
     #[test]
@@ -1275,18 +1185,12 @@ mod tests {
         records.extend(cell(1, 0, 0));
         records.extend(cell(2, 0x07, 1));
         let doc = parse(&one_sheet(records).build()).unwrap();
-        assert_eq!(
-            texts(first_table(&doc)),
-            vec![vec!["TRUE", "FALSE", "#DIV/0!"]]
-        );
+        assert_eq!(texts(first_table(&doc)), vec![vec!["TRUE", "FALSE", "#DIV/0!"]]);
     }
 
     #[test]
     fn filepass_means_encrypted() {
-        let wb = Wb {
-            filepass: true,
-            ..one_sheet(label(0, 0, 0, "x"))
-        };
+        let wb = Wb { filepass: true, ..one_sheet(label(0, 0, 0, "x")) };
         assert!(matches!(parse(&wb.build()), Err(ConvertError::Encrypted)));
     }
 
@@ -1398,9 +1302,6 @@ mod tests {
         records.extend(msodrawing(20, 6, true));
         records.extend(obj(0x0B, 1));
         let doc = parse(&one_sheet(records).build()).unwrap();
-        assert_eq!(
-            texts(first_table(&doc)),
-            vec![vec!["14", "", "", "[x] Roof", "[ ]"]]
-        );
+        assert_eq!(texts(first_table(&doc)), vec![vec!["14", "", "", "[x] Roof", "[ ]"]]);
     }
 }

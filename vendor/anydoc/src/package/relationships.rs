@@ -45,10 +45,7 @@ impl Relationships {
 
     /// Internal-mode target for an id, the common case for parts.
     pub fn internal_target(&self, id: &str) -> Option<&str> {
-        self.0
-            .get(id)
-            .filter(|r| r.mode == TargetMode::Internal)
-            .map(|r| r.target.as_str())
+        self.0.get(id).filter(|r| r.mode == TargetMode::Internal).map(|r| r.target.as_str())
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&str, &Relationship)> {
@@ -85,14 +82,7 @@ pub fn read_rels(pkg: &mut Package, part: &str) -> Result<Relationships, Convert
         };
         let rel_type = rel.attr_any("Type").unwrap_or("");
         let rel_type = normalize_ooxml_uri(rel_type).unwrap_or_else(|| rel_type.to_string());
-        map.insert(
-            id.to_string(),
-            Relationship {
-                target: target.to_string(),
-                rel_type,
-                mode,
-            },
-        );
+        map.insert(id.to_string(), Relationship { target: target.to_string(), rel_type, mode });
     }
     Ok(Relationships(map))
 }
@@ -119,10 +109,7 @@ pub fn rel_target_bytes(
     let target = match crate::package::path::resolve(base_part, &rel.target) {
         Ok(t) => t,
         Err(e) => {
-            log::warn!(
-                "skipping unresolvable relationship target {:?}: {e}",
-                rel.target
-            );
+            log::warn!("skipping unresolvable relationship target {:?}: {e}", rel.target);
             return Ok(None);
         }
     };

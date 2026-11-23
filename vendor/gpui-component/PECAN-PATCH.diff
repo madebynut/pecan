@@ -8,7 +8,109 @@
      "tree-sitter",
      "dep:tree-sitter-cpp",
  ]
---- a/src/highlighter/languages/cmake/highlights.scm
+--- a/src/highlighter/languages.rs
++++ b/src/highlighter/languages.rs
+@@ -272,6 +272,8 @@
+             }
+             #[cfg(feature = "tree-sitter-html")]
+             Self::Html => {
++                #[cfg(feature = "tree-sitter-typescript")]
++                languages.push("typescript");
+                 #[cfg(feature = "tree-sitter-javascript")]
+                 languages.push("javascript");
+                 #[cfg(feature = "tree-sitter-css")]
+@@ -359,6 +361,14 @@
+                 #[cfg(feature = "tree-sitter-typescript")]
+                 languages.push("typescript");
+             }
++            #[cfg(feature = "tree-sitter-tsx")]
++            Self::Tsx => {
++                languages.extend(["jsdoc", "json", "css", "html", "sql", "typescript", "javascript", "yaml", "graphql"]);
++            }
++            #[cfg(feature = "tree-sitter-ejs")]
++            Self::Ejs => { languages.extend(["html", "javascript"]); }
++            #[cfg(feature = "tree-sitter-erb")]
++            Self::Erb => { languages.extend(["html", "ruby"]); }
+             _ => {}
+         }
+ 
+@@ -429,14 +439,14 @@
+             #[cfg(feature = "tree-sitter-cpp")]
+             Self::Cpp => (
+                 tree_sitter_cpp::LANGUAGE,
+-                tree_sitter_cpp::HIGHLIGHT_QUERY,
++                include_str!("languages/cpp/highlights.scm"),
+                 "",
+                 "",
+             ),
+             #[cfg(feature = "tree-sitter-javascript")]
+             Self::JavaScript => (
+                 tree_sitter_javascript::LANGUAGE,
+-                include_str!("languages/javascript/highlights.scm"),
++                concat!(include_str!("languages/javascript/highlights.scm"), "\n", include_str!("languages/jsx/highlights.scm")),
+                 include_str!("languages/javascript/injections.scm"),
+                 tree_sitter_javascript::LOCALS_QUERY,
+             ),
+@@ -497,7 +507,7 @@
+                 "",
+             ),
+             #[cfg(feature = "tree-sitter-swift")]
+-            Self::Swift => (tree_sitter_swift::LANGUAGE, "", "", ""),
++            Self::Swift => (tree_sitter_swift::LANGUAGE, tree_sitter_swift::HIGHLIGHTS_QUERY, "", tree_sitter_swift::LOCALS_QUERY),
+             #[cfg(feature = "tree-sitter-scala")]
+             Self::Scala => (
+                 tree_sitter_scala::LANGUAGE,
+@@ -508,16 +518,16 @@
+             #[cfg(feature = "tree-sitter-sql")]
+             Self::Sql => (
+                 tree_sitter_sequel::LANGUAGE,
+-                tree_sitter_sequel::HIGHLIGHTS_QUERY,
++                include_str!("languages/sql/highlights.scm"),
+                 "",
+                 "",
+             ),
+             #[cfg(feature = "tree-sitter-csharp")]
+-            Self::CSharp => (tree_sitter_c_sharp::LANGUAGE, "", "", ""),
++            Self::CSharp => (tree_sitter_c_sharp::LANGUAGE, tree_sitter_c_sharp::HIGHLIGHTS_QUERY, "", ""),
+             #[cfg(feature = "tree-sitter-graphql")]
+-            Self::GraphQL => (tree_sitter_graphql::LANGUAGE, "", "", ""),
++            Self::GraphQL => (tree_sitter_graphql::LANGUAGE, include_str!("languages/graphql/highlights.scm"), "", ""),
+             #[cfg(feature = "tree-sitter-proto")]
+-            Self::Proto => (tree_sitter_proto::LANGUAGE, "", "", ""),
++            Self::Proto => (tree_sitter_proto::LANGUAGE, include_str!("languages/proto/highlights.scm"), "", ""),
+             #[cfg(feature = "tree-sitter-make")]
+             Self::Make => (
+                 tree_sitter_make::LANGUAGE,
+@@ -526,7 +536,7 @@
+                 "",
+             ),
+             #[cfg(feature = "tree-sitter-cmake")]
+-            Self::CMake => (tree_sitter_cmake::LANGUAGE, "", "", ""),
++            Self::CMake => (tree_sitter_cmake::LANGUAGE, include_str!("languages/cmake/highlights.scm"), "", ""),
+             #[cfg(feature = "tree-sitter-typescript")]
+             Self::TypeScript => (
+                 tree_sitter_typescript::LANGUAGE_TYPESCRIPT,
+@@ -537,8 +547,8 @@
+             #[cfg(feature = "tree-sitter-tsx")]
+             Self::Tsx => (
+                 tree_sitter_typescript::LANGUAGE_TSX,
+-                tree_sitter_typescript::HIGHLIGHTS_QUERY,
+-                "",
++                concat!(include_str!("languages/typescript/highlights.scm"), "\n", include_str!("languages/jsx/highlights.scm")),
++                include_str!("languages/javascript/injections.scm"),
+                 tree_sitter_typescript::LOCALS_QUERY,
+             ),
+             #[cfg(feature = "tree-sitter-diff")]
+@@ -559,7 +569,7 @@
+             Self::Erb => (
+                 tree_sitter_embedded_template::LANGUAGE,
+                 tree_sitter_embedded_template::HIGHLIGHTS_QUERY,
+-                tree_sitter_embedded_template::INJECTIONS_EJS_QUERY,
++                tree_sitter_embedded_template::INJECTIONS_ERB_QUERY,
+                 "",
+             ),
+             #[cfg(feature = "tree-sitter-ejs")]
+--- /dev/null
 +++ b/src/highlighter/languages/cmake/highlights.scm
 @@ -0,0 +1,221 @@
 +(normal_command
@@ -232,7 +334,7 @@
 +  .
 +  (line_comment) @keyword.directive @nospell)
 +  (#match? @keyword.directive "^#!/"))
---- a/src/highlighter/languages/cpp/highlights.scm
+--- /dev/null
 +++ b/src/highlighter/languages/cpp/highlights.scm
 @@ -0,0 +1,152 @@
 +(identifier) @variable
@@ -387,7 +489,7 @@
 +; Strings
 +
 +(raw_string_literal) @string
---- a/src/highlighter/languages/graphql/highlights.scm
+--- /dev/null
 +++ b/src/highlighter/languages/graphql/highlights.scm
 @@ -0,0 +1,18 @@
 +; Queries over the upstream GraphQL grammar, shared by reading and export.
@@ -429,7 +531,7 @@
 - (#set! injection.language "css"))
 \ No newline at end of file
 + (#set! injection.language "css"))
---- a/src/highlighter/languages/jsx/highlights.scm
+--- /dev/null
 +++ b/src/highlighter/languages/jsx/highlights.scm
 @@ -0,0 +1,8 @@
 +(jsx_opening_element (identifier) @tag (#match? @tag "^[a-z][^.]*$"))
@@ -440,7 +542,61 @@
 +(jsx_opening_element (["<" ">"]) @punctuation.bracket)
 +(jsx_closing_element (["</" ">"]) @punctuation.bracket)
 +(jsx_self_closing_element (["<" "/>"]) @punctuation.bracket)
---- a/src/highlighter/languages/proto/highlights.scm
+--- a/src/highlighter/languages/markdown/highlights.scm
++++ b/src/highlighter/languages/markdown/highlights.scm
+@@ -27,11 +27,11 @@
+ 
+ [
+   (link_destination)
+-] @text.uri
++] @link_uri
+ 
+ [
+   (link_label)
+-] @text.reference
++] @link_text
+ 
+ [
+   (list_marker_plus)
+@@ -39,6 +39,8 @@
+   (list_marker_star)
+   (list_marker_dot)
+   (list_marker_parenthesis)
++  (task_list_marker_checked)
++  (task_list_marker_unchecked)
+   (thematic_break)
+ ] @punctuation.list_marker
+ 
+@@ -49,4 +51,4 @@
+ 
+ [
+   (backslash_escape)
+-] @string.escape
+\ No newline at end of file
++] @string.escape
+--- a/src/highlighter/languages/markdown/injections.scm
++++ b/src/highlighter/languages/markdown/injections.scm
+@@ -11,6 +11,6 @@
+ 
+ ((plus_metadata) @injection.content (#set! injection.language "toml"))
+ 
+-((inline) @injection.content
++([(inline) (pipe_table_cell)] @injection.content
+   (#set! injection.language "markdown_inline")
+   (#set! injection.combined))
+--- a/src/highlighter/languages/markdown_inline/highlights.scm
++++ b/src/highlighter/languages/markdown_inline/highlights.scm
+@@ -13,6 +13,9 @@
+ ((strong_emphasis) @emphasis.strong
+   (#set! highlight.allow-overlap))
+ 
++((strikethrough) @text.strikethrough
++  (#set! highlight.allow-overlap))
++
+ [
+   (link_destination)
+   (uri_autolink)
+--- /dev/null
 +++ b/src/highlighter/languages/proto/highlights.scm
 @@ -0,0 +1,51 @@
 +[
@@ -494,9 +650,9 @@
 +
 +
 +[ "\"proto2\"" "\"proto3\"" ] @string
---- a/src/highlighter/languages/sql/highlights.scm
+--- /dev/null
 +++ b/src/highlighter/languages/sql/highlights.scm
-@@ -0,0 +1,446 @@
+@@ -0,0 +1,493 @@
 +(object_reference
 +  name: (identifier) @type)
 +
@@ -518,10 +674,25 @@
 +(relation
 +  alias: (identifier) @variable)
 +
++(pivot
++  alias: (identifier) @variable)
++
++(unpivot
++  alias: (identifier) @variable)
++
 +(field
 +  name: (identifier) @property)
 +
++(path_expression
++  key: (identifier) @property)
++
 +(term
++  alias: (identifier) @variable)
++
++(rename_columns
++  name: (identifier) @property)
++
++(rename_columns
 +  alias: (identifier) @variable)
 +
 +((term
@@ -538,9 +709,12 @@
 +   (#match? @number "^[-+]?[0-9]+$"))
 +
 +((literal) @number
-+  (#match? @number "^[-+]?[0-9]*\.[0-9]*$"))
++  (#match? @number "^[-+]?[0-9]*\\.[0-9]*$"))
 +
 +(parameter) @variable.parameter
++
++(named_argument
++  name: (identifier) @variable.parameter)
 +
 +[
 + (keyword_true)
@@ -604,6 +778,11 @@
 +
 +[
 +  (keyword_select)
++  (keyword_grant)
++  (keyword_revoke)
++  (keyword_privileges)
++  (keyword_granted)
++  (keyword_maintain)
 +  (keyword_from)
 +  (keyword_where)
 +  (keyword_index)
@@ -635,8 +814,12 @@
 +  (keyword_group)
 +  (keyword_with)
 +  (keyword_without)
++  (keyword_within)
 +  (keyword_as)
 +  (keyword_having)
++  (keyword_qualify)
++  (keyword_pivot)
++  (keyword_unpivot)
 +  (keyword_limit)
 +  (keyword_offset)
 +  (keyword_table)
@@ -647,6 +830,7 @@
 +  (keyword_constraint)
 +  (keyword_force)
 +  (keyword_use)
++  (keyword_include)
 +  (keyword_for)
 +  (keyword_if)
 +  (keyword_exists)
@@ -668,6 +852,7 @@
 +  (keyword_data)
 +  (keyword_type)
 +  (keyword_rename)
++  (keyword_refresh)
 +  (keyword_to)
 +  (keyword_schema)
 +  (keyword_owner)
@@ -682,6 +867,7 @@
 +  (keyword_transaction)
 +  (keyword_only)
 +  (keyword_like)
++  (keyword_rlike)
 +  (keyword_similar)
 +  (keyword_over)
 +  (keyword_change)
@@ -697,6 +883,7 @@
 +  (keyword_others)
 +  (keyword_zerofill)
 +  (keyword_format)
++  (keyword_serde)
 +  (keyword_fields)
 +  (keyword_row)
 +  (keyword_sort)
@@ -707,6 +894,8 @@
 +  (keyword_uncached)
 +  (keyword_lines)
 +  (keyword_stored)
++  (keyword_inputformat)
++  (keyword_outputformat)
 +  (keyword_virtual)
 +  (keyword_partitioned)
 +  (keyword_analyze)
@@ -754,17 +943,28 @@
 +  (keyword_password)
 +  (keyword_reset)
 +  (keyword_role)
++  (keyword_current_role)
 +  (keyword_sequence)
 +  (keyword_start)
 +  (keyword_restart)
 +  (keyword_tablespace)
++  (keyword_split)
++  (keyword_tablets)
 +  (keyword_until)
 +  (keyword_user)
++  (keyword_current_user)
++  (keyword_session_user)
 +  (keyword_valid)
 +  (keyword_action)
 +  (keyword_definer)
 +  (keyword_invoker)
++  (keyword_enable)
++  (keyword_disable)
 +  (keyword_security)
++  (keyword_policy)
++  (keyword_permissive)
++  (keyword_restrictive)
++  (keyword_public)
 +  (keyword_extension)
 +  (keyword_version)
 +  (keyword_out)
@@ -820,6 +1020,7 @@
 +  (keyword_storage)
 +  (keyword_compression)
 +  (keyword_duplicate)
++  (keyword_while)
 +] @keyword
 +
 +[
@@ -831,6 +1032,7 @@
 + (keyword_high_priority)
 + (keyword_low_priority)
 + (keyword_ignore)
++ (keyword_respect)
 + (keyword_nothing)
 + (keyword_check)
 + (keyword_option)
@@ -922,6 +1124,7 @@
 +  "%"
 +  "^"
 +  ":="
++  "=>"
 +  "="
 +  "<"
 +  "<="
@@ -943,150 +1146,6 @@
 +  ","
 +  "."
 +] @punctuation.delimiter
---- a/src/highlighter/languages.rs
-+++ b/src/highlighter/languages.rs
-@@ -272,6 +272,8 @@
-             }
-             #[cfg(feature = "tree-sitter-html")]
-             Self::Html => {
-+                #[cfg(feature = "tree-sitter-typescript")]
-+                languages.push("typescript");
-                 #[cfg(feature = "tree-sitter-javascript")]
-                 languages.push("javascript");
-                 #[cfg(feature = "tree-sitter-css")]
-@@ -359,6 +361,14 @@
-                 #[cfg(feature = "tree-sitter-typescript")]
-                 languages.push("typescript");
-             }
-+            #[cfg(feature = "tree-sitter-tsx")]
-+            Self::Tsx => {
-+                languages.extend(["jsdoc", "json", "css", "html", "sql", "typescript", "javascript", "yaml", "graphql"]);
-+            }
-+            #[cfg(feature = "tree-sitter-ejs")]
-+            Self::Ejs => { languages.extend(["html", "javascript"]); }
-+            #[cfg(feature = "tree-sitter-erb")]
-+            Self::Erb => { languages.extend(["html", "ruby"]); }
-             _ => {}
-         }
- 
-@@ -429,14 +439,14 @@
-             #[cfg(feature = "tree-sitter-cpp")]
-             Self::Cpp => (
-                 tree_sitter_cpp::LANGUAGE,
--                tree_sitter_cpp::HIGHLIGHT_QUERY,
-+                include_str!("languages/cpp/highlights.scm"),
-                 "",
-                 "",
-             ),
-             #[cfg(feature = "tree-sitter-javascript")]
-             Self::JavaScript => (
-                 tree_sitter_javascript::LANGUAGE,
--                include_str!("languages/javascript/highlights.scm"),
-+                concat!(include_str!("languages/javascript/highlights.scm"), "\n", include_str!("languages/jsx/highlights.scm")),
-                 include_str!("languages/javascript/injections.scm"),
-                 tree_sitter_javascript::LOCALS_QUERY,
-             ),
-@@ -497,7 +507,7 @@
-                 "",
-             ),
-             #[cfg(feature = "tree-sitter-swift")]
--            Self::Swift => (tree_sitter_swift::LANGUAGE, "", "", ""),
-+            Self::Swift => (tree_sitter_swift::LANGUAGE, tree_sitter_swift::HIGHLIGHTS_QUERY, "", tree_sitter_swift::LOCALS_QUERY),
-             #[cfg(feature = "tree-sitter-scala")]
-             Self::Scala => (
-                 tree_sitter_scala::LANGUAGE,
-@@ -508,16 +518,16 @@
-             #[cfg(feature = "tree-sitter-sql")]
-             Self::Sql => (
-                 tree_sitter_sequel::LANGUAGE,
--                tree_sitter_sequel::HIGHLIGHTS_QUERY,
-+                include_str!("languages/sql/highlights.scm"),
-                 "",
-                 "",
-             ),
-             #[cfg(feature = "tree-sitter-csharp")]
--            Self::CSharp => (tree_sitter_c_sharp::LANGUAGE, "", "", ""),
-+            Self::CSharp => (tree_sitter_c_sharp::LANGUAGE, tree_sitter_c_sharp::HIGHLIGHTS_QUERY, "", ""),
-             #[cfg(feature = "tree-sitter-graphql")]
--            Self::GraphQL => (tree_sitter_graphql::LANGUAGE, "", "", ""),
-+            Self::GraphQL => (tree_sitter_graphql::LANGUAGE, include_str!("languages/graphql/highlights.scm"), "", ""),
-             #[cfg(feature = "tree-sitter-proto")]
--            Self::Proto => (tree_sitter_proto::LANGUAGE, "", "", ""),
-+            Self::Proto => (tree_sitter_proto::LANGUAGE, include_str!("languages/proto/highlights.scm"), "", ""),
-             #[cfg(feature = "tree-sitter-make")]
-             Self::Make => (
-                 tree_sitter_make::LANGUAGE,
-@@ -526,7 +536,7 @@
-                 "",
-             ),
-             #[cfg(feature = "tree-sitter-cmake")]
--            Self::CMake => (tree_sitter_cmake::LANGUAGE, "", "", ""),
-+            Self::CMake => (tree_sitter_cmake::LANGUAGE, include_str!("languages/cmake/highlights.scm"), "", ""),
-             #[cfg(feature = "tree-sitter-typescript")]
-             Self::TypeScript => (
-                 tree_sitter_typescript::LANGUAGE_TYPESCRIPT,
-@@ -537,8 +547,8 @@
-             #[cfg(feature = "tree-sitter-tsx")]
-             Self::Tsx => (
-                 tree_sitter_typescript::LANGUAGE_TSX,
--                tree_sitter_typescript::HIGHLIGHTS_QUERY,
--                "",
-+                concat!(include_str!("languages/typescript/highlights.scm"), "\n", include_str!("languages/jsx/highlights.scm")),
-+                include_str!("languages/javascript/injections.scm"),
-                 tree_sitter_typescript::LOCALS_QUERY,
-             ),
-             #[cfg(feature = "tree-sitter-diff")]
-@@ -559,7 +569,7 @@
-             Self::Erb => (
-                 tree_sitter_embedded_template::LANGUAGE,
-                 tree_sitter_embedded_template::HIGHLIGHTS_QUERY,
--                tree_sitter_embedded_template::INJECTIONS_EJS_QUERY,
-+                tree_sitter_embedded_template::INJECTIONS_ERB_QUERY,
-                 "",
-             ),
-             #[cfg(feature = "tree-sitter-ejs")]
---- a/src/setting/page.rs
-+++ b/src/setting/page.rs
-@@ -237,8 +237,10 @@
-             }
-         }
- 
-+        let debug_title = self.title.clone();
-         v_flex()
-             .id(ix)
-+            .debug_selector(move || format!("settings-content-{debug_title}"))
-             .size_full()
-             .child(
-                 v_flex()
---- a/src/setting/settings.rs
-+++ b/src/setting/settings.rs
-@@ -180,7 +180,7 @@
-                     let is_page_active = selected_index.page_ix == page_ix
-                         && (selected_index.group_ix.is_none() || groups.len() == 1);
-                     SidebarMenuItem::new(page.title.clone())
--                        .click_to_open(true)
-+                        .click_to_toggle(true)
-                         .when_some(page.icon.clone(), |this, icon| this.icon(icon))
-                         .default_open(page.default_open)
-                         .active(is_page_active)
---- a/src/sidebar/menu.rs
-+++ b/src/sidebar/menu.rs
-@@ -273,6 +273,7 @@
-         let collapsed_tooltip = self.collapsed_tooltip();
-         let id = id.into();
-         let label_text = self.label.clone();
-+        let debug_label = label_text.clone();
-         let accessibility_label = self.accessibility_label.clone();
-         let is_submenu = self.is_submenu();
-         let open_state = if is_submenu {
-@@ -292,6 +293,7 @@
-         div()
-             .id(id.clone())
-             .test_support()
-+            .debug_selector(move || format!("sidebar-item-{debug_label}"))
-             .w_full()
-             .child(
-                 h_flex()
 --- a/src/highlighter/registry.rs
 +++ b/src/highlighter/registry.rs
 @@ -15,7 +15,7 @@
@@ -1200,57 +1259,34 @@
          ];
  
          HIGHLIGHT_NAMES.get(index).and_then(|name| self.style(name))
---- a/src/highlighter/languages/markdown/highlights.scm
-+++ b/src/highlighter/languages/markdown/highlights.scm
-@@ -27,11 +27,11 @@
+--- a/src/setting/page.rs
++++ b/src/setting/page.rs
+@@ -238,8 +238,10 @@
+             }
+         }
  
- [
-   (link_destination)
--] @text.uri
-+] @link_uri
- 
- [
-   (link_label)
--] @text.reference
-+] @link_text
- 
- [
-   (list_marker_plus)
-@@ -39,6 +39,8 @@
-   (list_marker_star)
-   (list_marker_dot)
-   (list_marker_parenthesis)
-+  (task_list_marker_checked)
-+  (task_list_marker_unchecked)
-   (thematic_break)
- ] @punctuation.list_marker
- 
-@@ -49,4 +51,4 @@
- 
- [
-   (backslash_escape)
--] @string.escape
-\ No newline at end of file
-+] @string.escape
---- a/src/highlighter/languages/markdown/injections.scm
-+++ b/src/highlighter/languages/markdown/injections.scm
-@@ -11,6 +11,6 @@
- 
- ((plus_metadata) @injection.content (#set! injection.language "toml"))
- 
--((inline) @injection.content
-+([(inline) (pipe_table_cell)] @injection.content
-   (#set! injection.language "markdown_inline")
-   (#set! injection.combined))
---- a/src/highlighter/languages/markdown_inline/highlights.scm
-+++ b/src/highlighter/languages/markdown_inline/highlights.scm
-@@ -13,6 +13,9 @@
- ((strong_emphasis) @emphasis.strong
-   (#set! highlight.allow-overlap))
- 
-+((strikethrough) @text.strikethrough
-+  (#set! highlight.allow-overlap))
-+
- [
-   (link_destination)
-   (uri_autolink)
++        let debug_title = self.title.clone();
+         v_flex()
+             .id(ix)
++            .debug_selector(move || format!("settings-content-{debug_title}"))
+             .size_full()
+             .child(
+                 v_flex()
+--- a/src/sidebar/menu.rs
++++ b/src/sidebar/menu.rs
+@@ -274,6 +274,7 @@
+         let collapsed_tooltip = self.collapsed_tooltip();
+         let id = id.into();
+         let label_text = self.label.clone();
++        let debug_label = label_text.clone();
+         let accessibility_label = self.accessibility_label.clone();
+         let is_submenu = self.is_submenu();
+         let open_state = if is_submenu {
+@@ -294,6 +295,7 @@
+         div()
+             .id(id.clone())
+             .test_support()
++            .debug_selector(move || format!("sidebar-item-{debug_label}"))
+             .w_full()
+             .child(
+                 h_flex()

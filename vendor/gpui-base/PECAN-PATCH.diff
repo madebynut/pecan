@@ -1,35 +1,6 @@
---- a/Cargo.toml
-+++ b/Cargo.toml
-@@ -53,23 +53,9 @@
- path = "src/lib.rs"
- doctest = false
- 
--[[test]]
--name = "element_ext"
--path = "tests/element_ext.rs"
--
--[[test]]
--name = "text_host"
--path = "tests/text_host.rs"
--
--[[bench]]
--name = "motion"
--path = "benches/motion.rs"
--harness = false
--
--[[bench]]
--name = "text_view_scroll"
--path = "benches/text_view_scroll.rs"
--harness = false
-+
-+
-+
- 
- [dependencies.aho-corasick]
- version = "1.1.3"
 --- a/src/input/base/element.rs
 +++ b/src/input/base/element.rs
-@@ -1329,6 +1329,7 @@
+@@ -1416,6 +1416,7 @@
          state: &InputBaseState<M>,
          line_height: Pixels,
          input_height: Pixels,
@@ -37,7 +8,7 @@
      ) -> (Range<usize>, Vec<usize>, Pixels) {
          // Add extra rows to avoid showing empty space when scroll to bottom.
          let extra_rows = 1;
-@@ -1339,7 +1340,7 @@
+@@ -1426,7 +1427,7 @@
          let total_lines = state.display_map.wrap_row_count();
          let display_count = state.display_map.display_row_count();
          let buffer_line_count = state.display_map.buffer_line_count();
@@ -46,7 +17,7 @@
              return (0..0, Vec::new(), px(0.));
          }
  
-@@ -1362,8 +1363,10 @@
+@@ -1449,8 +1450,10 @@
  
          // Display rows are uniformly `line_height` tall, so the visible window maps
          // directly to a display-row range.
@@ -59,7 +30,7 @@
          let line_height_f = f32::from(line_height);
          let first_display =
              ((f32::from(viewport_top) / line_height_f).floor() as usize).min(display_count - 1);
-@@ -2074,7 +2077,8 @@
+@@ -2267,7 +2270,8 @@
                      .iter()
                      .any(|span| !cache.widths.contains_key(span.token()))
          });
@@ -69,7 +40,7 @@
          let start = state.text.line_start_offset(visible.start);
          let end = state.text.line_end_offset(visible.end.saturating_sub(1));
          let spans = state.token_spans();
-@@ -3077,8 +3081,15 @@
+@@ -3276,8 +3280,15 @@
          );
          let state = self.state.read(cx);
  
@@ -88,10 +59,13 @@
              .text
 --- a/src/text/format/markdown.rs
 +++ b/src/text/format/markdown.rs
-@@ -699,6 +699,105 @@
-     )
- }
- 
+@@ -812,7 +812,106 @@
+         span.start + body_start,
+         false,
+         false,
++    )
++}
++
 +/// Parse only emphasis within an opted-in code capsule. Preserve one native
 +/// run and compose source mappings so selection/search still address the original fence.
 +fn emphasized_code(
@@ -182,19 +156,17 @@
 +        &code[..leading],
 +        inline.text,
 +        &code[code.len() - trailing..]
-+    )
+     )
 +    .into();
 +    if let Some((range, _)) = inline.marks.last_mut() {
 +        *range = 0..inline.text.len();
 +    }
 +    inline.source_segments = segments;
 +    Some(inline)
-+}
-+
+ }
+ 
  fn mapped_inline(
-     source: &str,
-     text: impl Into<SharedString>,
-@@ -822,11 +921,16 @@
+@@ -944,11 +1043,16 @@
                  start: cx.offset + position.start.offset,
                  end: cx.offset + position.end.offset,
              });
@@ -216,10 +188,14 @@
          }
          Node::Link(val) => {
              let link_mark = Some(LinkMark {
-@@ -2541,6 +2645,105 @@
-     }
- 
-     #[test]
+@@ -2956,7 +3060,106 @@
+                     gpui::Rgba::try_from("#336699").unwrap().into()
+                 ),
+             ]
++        );
++    }
++
++    #[test]
 +    fn inline_code_emphasis_is_opt_in_and_preserves_literal_blocks() {
 +        for literal in [
 +            "snake_case",
@@ -310,34 +286,27 @@
 +            inline.text(),
 +            " 中英 italic ",
 +            "CommonMark normalizes one outside space"
-+        );
+         );
 +        let start = inline.text.find("中英").expect("CJK");
 +        let range =
 +            node::source_range_for_segments(&inline.source_segments, start..start + "中英".len())
 +                .expect("offset mapping");
 +        assert_eq!(&source[range.start - 100..range.end - 100], "中英");
-+    }
-+
-+    #[test]
-     fn unclaimed_inline_math_keeps_its_literal_source() {
-         // Math parsing is on by default, so prose that merely contains dollar
-         // signs parses as a math node. With no plugin to render it, the text
+     }
+ 
+     #[test]
 --- a/src/text/inline.rs
 +++ b/src/text/inline.rs
-@@ -18,9 +18,9 @@
+@@ -21,7 +21,7 @@
  use gpui::{
-     App, BorderStyle, Bounds, ClickEvent, CursorStyle, Edges, Element, ElementId,
+     AnyTooltip, App, BorderStyle, Bounds, ClickEvent, CursorStyle, Edges, Element, ElementId,
      ForegroundExecutor, Global, GlobalElementId, Half, HighlightStyle, Hitbox, HitboxBehavior,
--    Hsla, InspectorElementId, IntoElement, LayoutId, MouseButton, MouseClickEvent, MouseDownEvent,
--    MouseMoveEvent, MouseUpEvent, Pixels, Point, SharedString, StyleRefinement, StyledText, Task,
--    TextAlign, TextLayout, TextRun, TextStyle, Window, point, px, quad, size,
-+    Hsla, InspectorElementId, IntoElement, LayoutId, Length, MouseButton, MouseClickEvent,
-+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, SharedString, StyleRefinement,
-+    StyledText, Task, TextAlign, TextLayout, TextRun, TextStyle, Window, point, px, quad, size,
+-    Hsla, InspectorElementId, LayoutId, MouseButton, MouseClickEvent, MouseDownEvent,
++    Hsla, InspectorElementId, LayoutId, Length, MouseButton, MouseClickEvent, MouseDownEvent,
+     MouseMoveEvent, MouseUpEvent, Pixels, Point, SharedString, StyleRefinement, StyledText, Task,
+     TextAlign, TextLayout, TextRun, TextStyle, Window, point, px, size,
  };
- 
- use crate::{
-@@ -60,7 +60,29 @@
+@@ -63,7 +63,29 @@
              .unwrap_or(body * self.font_size_scale.unwrap_or(1.))
      }
  
@@ -368,7 +337,7 @@
      pub(super) fn code_insets(&self, font_size: Pixels, rem_size: Pixels) -> Edges<Pixels> {
          if self.font_size_scale.is_none() {
              return Edges::default();
-@@ -100,6 +122,9 @@
+@@ -103,6 +125,9 @@
                  }
              }
          }
@@ -378,43 +347,41 @@
          insets
      }
  
-@@ -319,6 +344,7 @@
+@@ -371,6 +396,7 @@
      /// The resolved style from a parent deferred layout, when there is one.
      text_style: Option<TextStyle>,
      paint_origin: Option<Point<Pixels>>,
 +    justification: InlineJustification,
      selection_bounds: Option<Bounds<Pixels>>,
-     selection_source: Option<(Arc<Mutex<InlineState>>, Range<usize>)>,
-     /// Range highlight backgrounds, painted behind the text.
-@@ -337,6 +363,14 @@
-     editor_piece: Option<(u64, usize)>,
- 
+     /// What a triple click selects, when the text is one row of a wrapped
+     /// inline flow: the whole paragraph, as its first and last rows.
+@@ -395,6 +421,14 @@
      state: Arc<Mutex<InlineState>>,
-+}
-+
+ }
+ 
 +#[derive(Clone, Copy, Default)]
 +enum InlineJustification {
 +    #[default]
 +    Natural,
 +    Wrapped,
 +    Single(Pixels),
- }
- 
++}
++
  /// The inline text state, used RefCell to keep the selection state.
-@@ -707,6 +741,7 @@
+ #[derive(Debug, Default)]
+ pub(crate) struct InlineState {
+@@ -764,6 +798,7 @@
              styled_text: StyledText::new(text),
              text_style: None,
              paint_origin: None,
 +            justification: InlineJustification::Natural,
              selection_bounds: None,
+             paragraph_rows: None,
              selection_source: None,
-             range_backgrounds: Vec::new(),
-@@ -717,6 +752,29 @@
-             editor_piece: None,
-             state,
+@@ -778,6 +813,29 @@
          }
-+    }
-+
+     }
+ 
 +    fn paint_bounds(&self, bounds: Bounds<Pixels>) -> Bounds<Pixels> {
 +        let mut bounds = Bounds::new(self.paint_origin.unwrap_or(bounds.origin), bounds.size);
 +        let width = match self.justification {
@@ -436,10 +403,12 @@
 +    pub(super) fn justify_single_line(mut self, width: Pixels) -> Self {
 +        self.justification = InlineJustification::Single(width);
 +        self
-     }
- 
++    }
++
      /// Use the resolved style captured by a deferred parent layout.
-@@ -1169,9 +1227,23 @@
+     pub(super) fn text_style(mut self, text_style: TextStyle) -> Self {
+         self.text_style = Some(text_style);
+@@ -1216,9 +1274,23 @@
          window: &mut Window,
          cx: &mut App,
      ) -> Self::PrepaintState {
@@ -464,7 +433,7 @@
          self.report_to_editor();
  
          // Report this element's laid-out extent so an ancestor TextView with
-@@ -1179,6 +1251,22 @@
+@@ -1226,6 +1298,22 @@
          // stack only holds an entry during prepaint when that view set
          // `max_lines`, so this is a no-op otherwise.
          if let Some(text_view_state) = GlobalState::global(cx).text_view_state() {
@@ -487,7 +456,7 @@
              let state = text_view_state.read(cx);
              if state.max_lines.is_some()
                  && let Ok(mut line_spans) = state.line_spans.lock()
-@@ -1208,9 +1296,6 @@
+@@ -1256,9 +1344,6 @@
          window: &mut Window,
          cx: &mut App,
      ) {
@@ -497,7 +466,7 @@
          let current_view = window.current_view();
          let hitbox = prepaint;
          if !self.reclaim_styled_text() {
-@@ -1219,6 +1304,9 @@
+@@ -1267,6 +1352,9 @@
              // paint an unmeasured placeholder.
              return;
          }
@@ -507,26 +476,25 @@
          let text_layout = self.styled_text.layout().clone();
          if !self.range_backgrounds.is_empty() {
              self.paint_range_highlights(&text_layout, window);
-@@ -1245,10 +1333,6 @@
-                 Some(previous) => Selection::new(previous.start.min(start), previous.end.max(end)),
-                 None => Selection::new(start, end),
-             });
--        }
--
--        if is_selection || is_selectable {
+@@ -1298,9 +1386,6 @@
+         let shows_text_cursor = GlobalState::global(cx)
+             .text_view_state()
+             .is_some_and(|view| view.read(cx).shows_text_cursor());
+-        if (is_selection || is_selectable) && shows_text_cursor {
 -            window.set_cursor_style(CursorStyle::IBeam, &hitbox);
-         }
+-        }
  
          // link cursor pointer. Only text under the pointer reads where the pointer
-@@ -1263,6 +1347,8 @@
+         // is: under GPUI's retained views, reading it makes the text depend on
+@@ -1314,6 +1399,8 @@
              .flatten();
          if hovered_link.is_some() {
              window.set_cursor_style(CursorStyle::PointingHand, &hitbox);
-+        } else if is_selection || is_selectable {
++        } else if (is_selection || is_selectable) && shows_text_cursor {
 +            window.set_cursor_style(CursorStyle::IBeam, &hitbox);
          }
  
-         if let Some(selection) = &state.selection {
+         if self.link_tooltip
 --- a/src/text/inline_flow.rs
 +++ b/src/text/inline_flow.rs
 @@ -7,12 +7,12 @@
@@ -547,8 +515,8 @@
 +    prelude::FluentBuilder as _, px, relative, size,
  };
  
- use crate::text::text_view::{LinkClickHandlerFn, handle_link_click};
-@@ -20,7 +20,7 @@
+ use super::state::ParagraphRows;
+@@ -21,7 +21,7 @@
  use super::{
      inline::{Inline, InlineHighlight, InlineState, code_insets, text_runs, text_size_ranges},
      inline_object::{InlineObject, MeasuredInlineObject},
@@ -557,7 +525,7 @@
      range_highlight::RevealAt,
  };
  
-@@ -34,6 +34,7 @@
+@@ -35,6 +35,7 @@
      /// The block editor leaf this flow renders (design D3): its fragments
      /// and atoms are reported to the editor sink as pieces.
      editor_key: Option<u64>,
@@ -565,7 +533,7 @@
  }
  
  /// Bytes an image or custom inline node occupies in an editor leaf (one
-@@ -170,6 +171,7 @@
+@@ -171,6 +172,7 @@
  /// and rem stacks are still active.
  #[derive(Clone, PartialEq)]
  struct InlineFlowTypography {
@@ -573,7 +541,7 @@
      text_style: TextStyle,
      rem_size: Pixels,
      line_height: Pixels,
-@@ -202,6 +204,7 @@
+@@ -203,6 +205,7 @@
          selection_bounds: Bounds<Pixels>,
          /// The rounded box behind a code span, relative to the flow.
          code_background: Option<CodeBox>,
@@ -581,22 +549,23 @@
      },
      Image {
          item_ix: usize,
-@@ -284,7 +287,13 @@
+@@ -320,9 +323,15 @@
              items,
              link_click_handler,
              editor_key: None,
--        }
 +            justification: false,
-+        }
-+    }
-+
+         }
+     }
+ 
 +    pub(super) fn alignment(mut self, alignment: ParagraphAlignment) -> Self {
 +        self.justification = alignment == ParagraphAlignment::Justified;
 +        self
-     }
- 
++    }
++
      pub(super) fn editor_key(mut self, key: Option<u64>) -> Self {
-@@ -376,6 +385,7 @@
+         if let Some(key) = key {
+             self.id = ("editor-leaf", key).into();
+@@ -413,6 +422,7 @@
          // is gone. Capture every resolved typography input while this element
          // is still requested under its Markdown block (notably headings).
          let typography = InlineFlowTypography {
@@ -604,7 +573,7 @@
              text_style: window.text_style(),
              rem_size: window.rem_size(),
              line_height: window.line_height(),
-@@ -442,6 +452,7 @@
+@@ -479,6 +489,7 @@
                                  &objects,
                                  &typography.text_style,
                                  wrap_width,
@@ -612,7 +581,7 @@
                                  window,
                                  cx,
                              )
-@@ -634,6 +645,7 @@
+@@ -671,6 +682,7 @@
                      highlights,
                      selection_bounds,
                      code_background,
@@ -620,7 +589,7 @@
                  } => {
                      let InlineFlowItem::Text {
                          state: source_state,
-@@ -652,6 +664,7 @@
+@@ -689,6 +701,7 @@
                      }
  
                      let insets = code_insets(highlights, font_size, window.rem_size());
@@ -628,7 +597,7 @@
                      let background = code_background
                          .as_ref()
                          .map(|code| code.clone().offset(bounds.origin));
-@@ -683,6 +696,11 @@
+@@ -720,6 +733,11 @@
                              .map(|reveal| reveal.clamp(source_range.start, source_range.end)),
                      )
                      .text_style(fragment_style.clone());
@@ -640,16 +609,16 @@
                      let element = element.editor_piece(
                          editor
                              .as_ref()
-@@ -693,7 +711,7 @@
-                             point(bounds.left(), bounds.top() + selection_bounds.top()),
+@@ -731,7 +749,7 @@
                              size(bounds.size.width, selection_bounds.size.height),
                          ))
+                         .paragraph_rows(paragraph_rows)
 -                        .paint_origin(bounds.origin + origin + point(insets.left, insets.top))
 +                        .paint_origin(text_origin)
                          .into_any_element();
                      // The `Inline` is its own layout root, with no box around
                      // it: its text measures with the window's text style, so
-@@ -703,7 +721,7 @@
+@@ -741,7 +759,7 @@
                              Some(fragment_style.subtract(&Default::default())),
                              |window| {
                                  element.prepaint_as_root(
@@ -658,7 +627,7 @@
                                      size(
                                          AvailableSpace::Definite(
                                              fragment_size.width - insets.left - insets.right,
-@@ -988,6 +1006,7 @@
+@@ -1026,6 +1044,7 @@
          &objects,
          text_style,
          wrap_width,
@@ -666,7 +635,7 @@
          window,
          cx,
      )
-@@ -1005,6 +1024,7 @@
+@@ -1043,6 +1062,7 @@
      prepared_objects: &[Option<MeasuredInlineObject>],
      text_style: &TextStyle,
      wrap_width: Option<Pixels>,
@@ -674,7 +643,7 @@
      window: &mut Window,
      _cx: &mut App,
  ) -> InlineFlowLayout {
-@@ -1028,7 +1048,10 @@
+@@ -1091,7 +1111,10 @@
      let mut max_width = Pixels::ZERO;
      let mut y = Pixels::ZERO;
  
@@ -686,7 +655,7 @@
          let mut line_fragments = Vec::new();
          let mut line_width = Pixels::ZERO;
          // `LineLayout` is the metric source used by the text paint path. Its
-@@ -1114,6 +1137,14 @@
+@@ -1177,6 +1200,14 @@
                                  )
                              })
                              .flatten();
@@ -701,7 +670,7 @@
                          line_ascent = line_ascent.max(baseline - body_overflow_above);
                          line_descent =
                              line_descent.max(glyph_size.height - baseline - body_overflow_below);
-@@ -1180,8 +1211,39 @@
+@@ -1243,8 +1274,39 @@
                  ),
              ));
          }
@@ -742,7 +711,7 @@
              // Give a text run's glyph box equal leading on both sides, as
              // much as the line allows: its glyphs are painted centered in the
              // box, so this keeps them on the line's baseline, and a body run
-@@ -1219,6 +1281,7 @@
+@@ -1282,6 +1344,7 @@
                      size: fragment.size,
                      source_range: fragment.source_range,
                      selection_bounds,
@@ -750,7 +719,7 @@
                      font_size,
                      text,
                      links,
-@@ -1236,7 +1299,7 @@
+@@ -1299,7 +1362,7 @@
              fragments.push(positioned);
          }
  
@@ -759,7 +728,7 @@
          y += line_ascent + line_descent;
      }
  
-@@ -1283,6 +1346,11 @@
+@@ -1346,6 +1409,11 @@
      for (_, highlight) in highlights.iter_mut() {
          highlight.style.background_color = None;
      }
@@ -771,7 +740,7 @@
      let insets = code_insets(highlights, font_size, window.rem_size());
      let top = if style.padding.top.is_some() {
          shaped_line.ascent - cap_height + insets.top
-@@ -1306,8 +1374,11 @@
+@@ -1369,8 +1437,11 @@
      };
      Some(CodeBox {
          bounds: Bounds::new(
@@ -785,10 +754,11 @@
          ),
          style: Arc::new(style),
      })
-@@ -1817,6 +1888,66 @@
+@@ -1873,6 +1944,66 @@
+ mod tests {
      use super::*;
      use gpui::SharedUri;
- 
++
 +    #[gpui::test]
 +    fn inline_code_neighbor_spaces_keep_their_width_when_justified(cx: &mut gpui::TestAppContext) {
 +        use super::super::inline::test_fonts::{BODY, WideMonoTextSystem};
@@ -848,11 +818,10 @@
 +            });
 +        }
 +    }
-+
+ 
      mod frames {
          use super::super::FLOW_LAYOUTS;
-         use crate::text::{TextView, TextViewState};
-@@ -1863,6 +1994,63 @@
+@@ -1920,6 +2051,63 @@
              }
  
              assert_eq!(layouts(), after_first_frame, "a frame that changes nothing");
@@ -916,7 +885,7 @@
          }
  
          #[gpui::test]
-@@ -2193,6 +2381,39 @@
+@@ -2349,6 +2537,39 @@
      }
  
      #[test]
@@ -956,7 +925,7 @@
      fn inline_code_style_keeps_equal_size_prose_separate_and_measures_its_box() {
          use super::super::inline::test_fonts::{BODY, MONO, WideMonoTextSystem};
          use gpui::{Empty, HighlightStyle, TestApp, rems};
-@@ -2209,6 +2430,7 @@
+@@ -2365,6 +2586,7 @@
                  let code_style = StyleRefinement::default()
                      .text_size(rems(1.))
                      .px(rems(0.25))
@@ -964,7 +933,7 @@
                      .py(rems(0.125))
                      .bg(gpui::red())
                      .border_1()
-@@ -2233,6 +2455,7 @@
+@@ -2389,6 +2611,7 @@
                  for fragment in &layout.fragments {
                      let PositionedFragment::Text {
                          text,
@@ -972,7 +941,7 @@
                          size,
                          font_size,
                          code_background,
-@@ -2247,12 +2470,13 @@
+@@ -2403,12 +2626,13 @@
                          assert_eq!(code.style.background, code_style.background);
                          assert_eq!(code.style.border_color, Some(gpui::blue()));
                          assert_eq!(code.style.corner_radii, code_style.corner_radii);
@@ -988,7 +957,7 @@
                          );
                      } else {
                          assert!(code_background.is_none());
-@@ -2266,7 +2490,7 @@
+@@ -2422,7 +2646,7 @@
                  let wrap_width = WideMonoTextSystem::width_of("before ", BODY, rem_size)
                      + WideMonoTextSystem::width_of("code", MONO, rem_size)
                      + rem_size * 0.5
@@ -999,18 +968,20 @@
                  assert!(wrapped.size.height > layout.size.height);
 --- a/src/text/markdown_ext.rs
 +++ b/src/text/markdown_ext.rs
-@@ -246,6 +246,7 @@
+@@ -249,6 +249,7 @@
  pub struct MarkdownExtensions {
      enable_mdx: bool,
      enable_frontmatter: bool,
 +    enable_inline_code_emphasis: bool,
+     disable_raw_html: bool,
      block_parsers: Vec<Arc<MarkdownBlockParserFn>>,
      block_renderers: HashMap<SharedString, Arc<MarkdownBlockRenderFn>>,
-     inline_parsers: Vec<Arc<MarkdownInlineParserFn>>,
-@@ -273,6 +274,20 @@
+@@ -276,10 +277,24 @@
+     /// resulting [`mdast::Node::Yaml`] node.
+     pub fn frontmatter(mut self) -> Self {
          self.enable_frontmatter = true;
-         self.bump_revision();
-         self
++        self.bump_revision();
++        self
 +    }
 +
 +    /// Render bold, italic and strikethrough inside inline code as native text marks.
@@ -1019,23 +990,25 @@
 +    /// links, HTML and block syntax are unaffected. Parsing runs once with the document.
 +    pub fn inline_code_emphasis(mut self) -> Self {
 +        self.enable_inline_code_emphasis = true;
-+        self.bump_revision();
-+        self
-+    }
-+
-+    pub(crate) fn parses_inline_code_emphasis(&self) -> bool {
-+        self.enable_inline_code_emphasis
+         self.bump_revision();
+         self
      }
  
++    pub(crate) fn parses_inline_code_emphasis(&self) -> bool {
++        self.enable_inline_code_emphasis
++    }
++
      /// Enable MDX JSX/expression constructs.
-@@ -352,6 +367,7 @@
+     ///
+     /// This disables raw HTML constructs because `markdown-rs` gives HTML
+@@ -426,6 +441,7 @@
          self.parser_revision == other.parser_revision
              && self.enable_mdx == other.enable_mdx
              && self.enable_frontmatter == other.enable_frontmatter
 +            && self.enable_inline_code_emphasis == other.enable_inline_code_emphasis
+             && self.disable_raw_html == other.disable_raw_html
              && self.block_parsers.len() == other.block_parsers.len()
              && self.block_renderers.len() == other.block_renderers.len()
-             && self.inline_parsers.len() == other.inline_parsers.len()
 --- a/src/text/node.rs
 +++ b/src/text/node.rs
 @@ -7,11 +7,11 @@
@@ -1063,7 +1036,7 @@
  
  /// The block-level nodes.
  ///
-@@ -955,7 +955,7 @@
+@@ -1010,7 +1010,7 @@
      }
  }
  
@@ -1072,7 +1045,7 @@
      segments: &[SourceSegment],
      selection: Range<usize>,
  ) -> Option<Range<usize>> {
-@@ -2615,7 +2615,9 @@
+@@ -2725,7 +2725,9 @@
          // The id scopes the caller's action ids per code block, so plain ids
          // like `"copy"` don't collide across blocks.
          let id = block_element_id("codeblock", self.span, options.ix);
@@ -1083,7 +1056,7 @@
              let scroll_handle = window
                  .use_keyed_state(
                      block_element_id("codeblock-scroll", self.span, options.ix),
-@@ -2624,24 +2626,40 @@
+@@ -2734,24 +2736,40 @@
                  )
                  .read(cx)
                  .clone();
@@ -1133,7 +1106,7 @@
                  )
                  .children(actions)
                  .children(lang_label)
-@@ -2760,7 +2778,9 @@
+@@ -2907,7 +2925,9 @@
  fn mark_highlight(mark: &TextMark, node_cx: &NodeContext, cx: &App) -> InlineHighlight {
      let mut highlight = HighlightStyle::default();
      if mark.bold {
@@ -1144,7 +1117,7 @@
      }
      if mark.italic {
          highlight.font_style = Some(FontStyle::Italic);
-@@ -2814,6 +2834,12 @@
+@@ -2961,6 +2981,12 @@
          font_size_scale: mark.code.then_some(0.875),
          code_style: mark.code.then(|| node_cx.style.inline_code_style().clone()),
      }
@@ -1156,8 +1129,8 @@
 +    Justified,
  }
  
- impl Paragraph {
-@@ -2850,6 +2876,7 @@
+ fn append_node_highlights(
+@@ -3014,6 +3040,7 @@
      fn render(
          &self,
          fade_key: Option<TextLeafKey>,
@@ -1165,7 +1138,7 @@
          node_cx: &NodeContext,
          _window: &mut Window,
          cx: &mut App,
-@@ -2864,6 +2891,7 @@
+@@ -3028,6 +3055,7 @@
                  self.inline_flow_items(fade_key, fades, backgrounds, node_cx, cx),
                  node_cx.link_click_handler.clone(),
              )
@@ -1173,7 +1146,7 @@
              .editor_key(self.leaf_key())
              .into_any_element();
          }
-@@ -2891,15 +2919,19 @@
+@@ -3048,15 +3076,19 @@
              if let Ok(mut state) = self.state.lock() {
                  state.set_text(text);
              }
@@ -1196,7 +1169,7 @@
          }
  
          let mut child_nodes: Vec<AnyElement> = vec![];
-@@ -3722,12 +3754,7 @@
+@@ -3922,12 +3954,7 @@
                  )
              })
              .when_some(checked, |this, checked| {
@@ -1210,7 +1183,7 @@
                  this.child(
                      div()
                          .flex()
-@@ -3739,25 +3766,30 @@
+@@ -3939,25 +3966,30 @@
                          .child(
                              div()
                                  .flex()
@@ -1250,8 +1223,8 @@
 +                                            .size(px(14.)),
                                      )
                                  }),
-                         ),
-@@ -3777,7 +3809,6 @@
+                         )
+@@ -3988,7 +4020,6 @@
                      .child(content),
              )
      }
@@ -1259,7 +1232,7 @@
      fn render_list_item(
          item: &BlockNode,
          ix: usize,
-@@ -4171,7 +4202,8 @@
+@@ -4416,7 +4447,8 @@
                          .span
                          .map(|span| TextLeafKey::table_cell(span.start, cell_ordinal));
                      cell_ordinal += 1;
@@ -1269,7 +1242,7 @@
                  });
  
                  let grow = SLACK_GROW * column.max / total_w;
-@@ -4273,6 +4305,11 @@
+@@ -4535,6 +4567,11 @@
              BlockNode::Paragraph(paragraph) => gapped(
                  paragraph.render(
                      paragraph.span.map(|span| TextLeafKey::block(span.start)),
@@ -1281,7 +1254,7 @@
                      node_cx,
                      window,
                      cx,
-@@ -4324,6 +4361,7 @@
+@@ -4586,6 +4623,7 @@
                      .refine_style(&refinement)
                      .child(children.render(
                          span.map(|span| TextLeafKey::block(span.start)),
@@ -1289,7 +1262,7 @@
                          node_cx,
                          window,
                          cx,
-@@ -4758,7 +4796,7 @@
+@@ -5456,7 +5494,7 @@
              let InlineFlowItem::Object { style, link, .. } = &items[0] else {
                  panic!()
              };
@@ -1300,7 +1273,7 @@
              assert_eq!(link.as_ref().unwrap().url.as_ref(), "https://example.com");
 --- a/src/text/state.rs
 +++ b/src/text/state.rs
-@@ -120,6 +120,8 @@
+@@ -124,6 +124,8 @@
      pub(super) selection_format: SelectionFormat,
      pub(super) scrollable: bool,
      pub(super) max_lines: Option<usize>,
@@ -1309,7 +1282,7 @@
      /// Line spans reported by `Inline` during prepaint (collected only while
      /// [`Self::max_lines`] is set); cleared by `TextView` at each frame start.
      pub(super) line_spans: Arc<Mutex<Vec<LineSpan>>>,
-@@ -224,6 +226,8 @@
+@@ -237,6 +239,8 @@
              selection_format: SelectionFormat::default(),
              scrollable: false,
              max_lines: None,
@@ -1328,7 +1301,7 @@
      heading: Arc<dyn Fn(u8) -> StyleRefinement + Send + Sync + 'static>,
      code_block: StyleRefinement,
      table: StyleRefinement,
-@@ -41,6 +42,7 @@
+@@ -44,6 +45,7 @@
  impl PartialEq for TextViewStyle {
      fn eq(&self, other: &Self) -> bool {
          self.paragraph_gap == other.paragraph_gap
@@ -1336,7 +1309,7 @@
              && self.foreground == other.foreground
              && self.muted_foreground == other.muted_foreground
              && self.link == other.link
-@@ -91,6 +93,7 @@
+@@ -95,6 +97,7 @@
              code_background: colors.accent,
              border: colors.border,
              paragraph_gap: rems(0.75),
@@ -1344,16 +1317,19 @@
              heading: Arc::new(|_| StyleRefinement::default()),
              code_block: StyleRefinement::default(),
              table: StyleRefinement::default(),
-@@ -147,6 +150,16 @@
-         self
-     }
- 
-+    /// Justifies body paragraphs while keeping final rows and other block types naturally aligned.
-+    pub fn with_paragraph_justification(mut self) -> Self {
-+        self.paragraph_justification = true;
+@@ -149,9 +152,19 @@
+     /// Sets the color of borders and horizontal rules.
+     pub fn with_border(mut self, color: Hsla) -> Self {
+         self.border = color;
 +        self
 +    }
 +
++    /// Justifies body paragraphs while keeping final rows and other block types naturally aligned.
++    pub fn with_paragraph_justification(mut self) -> Self {
++        self.paragraph_justification = true;
+         self
+     }
+ 
 +    pub(super) fn paragraph_justification(&self) -> bool {
 +        self.paragraph_justification
 +    }
@@ -1361,7 +1337,7 @@
      /// Sets the gap between paragraphs. Defaults to 0.75 rem.
      pub fn with_paragraph_gap(mut self, gap: Rems) -> Self {
          self.paragraph_gap = gap;
-@@ -203,8 +216,9 @@
+@@ -208,8 +221,9 @@
      /// a minimum width of the list indent, right-aligned text, and a right
      /// padding of 0.3 times that indent. Text properties such as color, font
      /// family, size, and weight style the bullet or number. The text color
@@ -1375,7 +1351,41 @@
          self.list_style = style;
 --- a/src/text/text_view.rs
 +++ b/src/text/text_view.rs
-@@ -164,6 +164,7 @@
+@@ -210,8 +210,32 @@
+         ClickEvent::Keyboard(_) => true,
+         ClickEvent::Touch(click) => !click.long_press,
+     } {
+-        cx.open_url(&url);
++        if is_web_link(&url) {
++            cx.open_url(&url);
++        }
+     }
++}
++
++/// Whether a document link may be handed to the system opener.
++///
++/// The opener launches whatever the OS associates with a URL. Document text is untrusted,
++/// so `file:`, `smb:`, registered app protocols (`ms-msdt:`, `search-ms:`) and relative
++/// paths, which `ShellExecute` and `xdg-open` resolve against the working directory and
++/// could run a program next to the document, are not opened.
++pub fn is_web_link(url: &str) -> bool {
++    let url = url.trim_start_matches(|c: char| c.is_whitespace() || c.is_control());
++    if url.chars().any(char::is_control) {
++        return false;
++    }
++    let Some((scheme, rest)) = url.split_once(':') else {
++        return false;
++    };
++    if scheme.eq_ignore_ascii_case("mailto") {
++        return !rest.is_empty();
++    }
++    (scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https"))
++        && rest.starts_with("//")
++        && rest.len() > 2
+ }
+ 
+ /// A text view that can render Markdown or HTML.
+@@ -245,6 +269,7 @@
      selection_format: SelectionFormat,
      scrollable: bool,
      max_lines: Option<usize>,
@@ -1383,16 +1393,16 @@
      code_block_actions: Option<Arc<CodeBlockActionsFn>>,
      code_block_highlighter: Option<Arc<CodeBlockHighlighterFn>>,
      table_actions: Option<Arc<TableActionsFn>>,
-@@ -178,6 +179,8 @@
- pub trait TextViewPlugin {
+@@ -263,6 +288,8 @@
      fn setup(self, text_view: TextView) -> TextView;
  }
-+
-+type FirstInkHandler = dyn Fn(Option<Bounds<Pixels>>, &mut Window, &mut App);
  
++type FirstInkHandler = dyn Fn(Option<Bounds<Pixels>>, &mut Window, &mut App);
++
  impl<P> TextViewPlugin for P
  where
-@@ -214,6 +217,7 @@
+     P: MarkdownPlugin,
+@@ -298,6 +325,7 @@
              selection_format: SelectionFormat::default(),
              scrollable: false,
              max_lines: None,
@@ -1400,7 +1410,7 @@
              code_block_actions: None,
              code_block_highlighter: None,
              table_actions: None,
-@@ -241,6 +245,7 @@
+@@ -328,6 +356,7 @@
              selection_format: SelectionFormat::default(),
              scrollable: false,
              max_lines: None,
@@ -1408,7 +1418,7 @@
              code_block_actions: None,
              code_block_highlighter: None,
              table_actions: None,
-@@ -268,6 +273,7 @@
+@@ -358,6 +387,7 @@
              selection_format: SelectionFormat::default(),
              scrollable: false,
              max_lines: None,
@@ -1416,7 +1426,7 @@
              code_block_actions: None,
              code_block_highlighter: None,
              table_actions: None,
-@@ -377,6 +383,16 @@
+@@ -475,6 +505,16 @@
          self
      }
  
@@ -1433,7 +1443,7 @@
      /// Set custom block actions for code blocks.
      ///
      /// The closure receives the [`CodeBlock`],
-@@ -763,6 +779,7 @@
+@@ -928,6 +968,7 @@
              state.selection_format = self.selection_format;
              state.scrollable = self.scrollable;
              state.max_lines = max_lines;
@@ -1441,7 +1451,7 @@
              if let Some(text_view_style) = text_view_style {
                  state.text_view_style = text_view_style;
              }
-@@ -838,6 +855,7 @@
+@@ -1008,6 +1049,7 @@
          cx: &mut App,
      ) -> Self::PrepaintState {
          let state = request_layout.state.clone();
@@ -1449,14 +1459,14 @@
          let max_lines_active = state.read(cx).max_lines.is_some();
          if max_lines_active {
              if let Ok(mut line_spans) = state.read(cx).line_spans.lock() {
-@@ -851,6 +869,10 @@
-         GlobalState::global(cx).push_text_view_state(state.clone());
+@@ -1022,6 +1064,10 @@
          request_layout.element.prepaint(window, cx);
          GlobalState::global(cx).pop_text_view_state();
-+
+ 
 +        if let Some(handler) = &self.first_ink_handler {
 +            handler(state.read(cx).first_line_ink, window, cx);
 +        }
- 
++
          let mut clip_bottom = None;
          if max_lines_active {
+             let (line_spans, content_bottom) = {

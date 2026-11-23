@@ -134,10 +134,7 @@ fn parse_std(record: &[u8], cb_std_base: usize) -> Option<Std> {
             upx.get(1).copied().unwrap_or_default().to_vec(),
         )
     } else {
-        (
-            Vec::new(),
-            upx.first().copied().unwrap_or_default().to_vec(),
-        )
+        (Vec::new(), upx.first().copied().unwrap_or_default().to_vec())
     };
     Some(Std {
         sti,

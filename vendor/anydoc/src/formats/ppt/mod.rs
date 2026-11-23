@@ -48,11 +48,7 @@ pub fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
         return Err(ConvertError::Encrypted);
     }
     let assets = collect_pictures(&mut ole)?;
-    Ok(Document {
-        blocks: ex.into_blocks(),
-        notes: Vec::new(),
-        assets,
-    })
+    Ok(Document { blocks: ex.into_blocks(), notes: Vec::new(), assets })
 }
 
 /// Retain the deck's embedded pictures from the `Pictures` stream (OfficeArt
@@ -167,9 +163,7 @@ fn locate_document<'a>(data: &'a [u8], current_user: &[u8]) -> Option<DocLayout<
                 pos += 4;
                 for k in 0..count {
                     // Newer edits win: keep the first offset seen.
-                    persist
-                        .entry(id + k as u32)
-                        .or_insert(get_u32(dir, pos)? as usize);
+                    persist.entry(id + k as u32).or_insert(get_u32(dir, pos)? as usize);
                     pos += 4;
                 }
             }
@@ -193,12 +187,7 @@ fn locate_document<'a>(data: &'a [u8], current_user: &[u8]) -> Option<DocLayout<
     let master_list = children(doc)
         .find(|&(ver_inst, rec_type, _)| rec_type == 0x0FF0 && ver_inst >> 4 == 1)
         .map(|(.., body)| body);
-    Some(DocLayout {
-        persist,
-        slide_list,
-        notes_list,
-        master_list,
-    })
+    Some(DocLayout { persist, slide_list, notes_list, master_list })
 }
 
 /// One master's TxMasterStyleAtoms, keyed by text-type instance.
@@ -207,9 +196,7 @@ fn master_styles(master: &[u8]) -> MasterStyles {
     for (ver_inst, rec_type, body) in children(master) {
         if rec_type == 0x0FA3 {
             let instance = ver_inst >> 4;
-            styles
-                .entry(instance)
-                .or_insert_with(|| styletext::parse_master_style(body, instance));
+            styles.entry(instance).or_insert_with(|| styletext::parse_master_style(body, instance));
         }
     }
     styles
@@ -313,11 +300,7 @@ impl Extractor {
         let Some((persist_ref, slide_id)) = pending else {
             return Ok(None);
         };
-        let mut id = if is_notes {
-            None
-        } else {
-            (slide_id != 0).then_some(slide_id)
-        };
+        let mut id = if is_notes { None } else { (slide_id != 0).then_some(slide_id) };
         if let Some(off) = persist.get(&persist_ref)
             && let Some((_, t, body)) = record_at(data, *off)
             && t == container_type
@@ -487,9 +470,8 @@ impl Extractor {
             // TextCharsAtom: UTF-16LE.
             0x0FA0 => {
                 let units = utf16le_units(body);
-                let text: String = char::decode_utf16(units)
-                    .map(|r| r.unwrap_or('\u{fffd}'))
-                    .collect();
+                let text: String =
+                    char::decode_utf16(units).map(|r| r.unwrap_or('\u{fffd}')).collect();
                 self.push_text(text);
             }
             // TextBytesAtom: low bytes of UTF-16 code units.
@@ -517,11 +499,7 @@ impl Extractor {
         match &mut self.pending {
             Some(pending) => pending.text.push_str(&text),
             None => {
-                self.pending = Some(PendingShape {
-                    tx_type: 1,
-                    text,
-                    styles: None,
-                });
+                self.pending = Some(PendingShape { tx_type: 1, text, styles: None });
             }
         }
     }
@@ -547,12 +525,8 @@ impl Extractor {
             .and_then(|(_, m)| m.get(&(shape.tx_type as u16)))
             .cloned()
             .unwrap_or_default();
-        let level_default = |depth: u16| {
-            master_levels
-                .get(depth as usize)
-                .copied()
-                .unwrap_or_default()
-        };
+        let level_default =
+            |depth: u16| master_levels.get(depth as usize).copied().unwrap_or_default();
 
         // Cursors over the style runs, counted in UTF-16 units.
         let mut char_runs = styles.chars.iter();
@@ -575,10 +549,7 @@ impl Extractor {
             let d = level_default(para_props(para_run).0);
             let style = Style {
                 bold: char_run.and_then(|r| r.bold).or(d.bold).unwrap_or(false),
-                italic: char_run
-                    .and_then(|r| r.italic)
-                    .or(d.italic)
-                    .unwrap_or(false),
+                italic: char_run.and_then(|r| r.italic).or(d.italic).unwrap_or(false),
                 strike: false,
                 code: false,
             };
@@ -586,10 +557,7 @@ impl Extractor {
                 if !run_text.is_empty() {
                     let text = clean_text(&std::mem::take(&mut run_text));
                     if !text.is_empty() {
-                        inlines.push(Inline::Text {
-                            text,
-                            style: run_style,
-                        });
+                        inlines.push(Inline::Text { text, style: run_style });
                     }
                 }
                 let (depth, bullet) = para_props(para_run);
@@ -598,10 +566,7 @@ impl Extractor {
                 if !run_text.is_empty() {
                     let text = clean_text(&std::mem::take(&mut run_text));
                     if !text.is_empty() {
-                        inlines.push(Inline::Text {
-                            text,
-                            style: run_style,
-                        });
+                        inlines.push(Inline::Text { text, style: run_style });
                     }
                 }
                 inlines.push(Inline::LineBreak);
@@ -609,10 +574,7 @@ impl Extractor {
                 if style != run_style && !run_text.is_empty() {
                     let text = clean_text(&std::mem::take(&mut run_text));
                     if !text.is_empty() {
-                        inlines.push(Inline::Text {
-                            text,
-                            style: run_style,
-                        });
+                        inlines.push(Inline::Text { text, style: run_style });
                     }
                 }
                 run_style = style;
@@ -634,10 +596,7 @@ impl Extractor {
         if !run_text.is_empty() {
             let text = clean_text(&run_text);
             if !text.is_empty() {
-                inlines.push(Inline::Text {
-                    text,
-                    style: run_style,
-                });
+                inlines.push(Inline::Text { text, style: run_style });
             }
         }
         if !inlines.is_empty() {
@@ -653,28 +612,17 @@ impl Extractor {
             if is_title {
                 flush_list(&mut self.current, &mut self.list_run);
                 let d = level_default(depth);
-                let base = StyleDelta {
-                    bold: d.bold,
-                    italic: d.italic,
-                    ..Default::default()
-                };
+                let base = StyleDelta { bold: d.bold, italic: d.italic, ..Default::default() };
                 rebase_emphasis(&mut inlines, base.resolve());
                 let anchor = Some(crate::model::inlines_to_plain_text(&inlines));
-                self.current.push(Block::Heading {
-                    level: 2,
-                    anchor,
-                    content: inlines,
-                });
+                self.current.push(Block::Heading { level: 2, anchor, content: inlines });
                 continue;
             }
             let bullet = bullet.or(level_default(depth).bullet).unwrap_or(false);
             if bullet {
                 self.list_run.push(ListEntry {
                     level: depth as usize,
-                    key: ListKey {
-                        instance: shape_id,
-                        marker: MarkerKind::Bullet,
-                    },
+                    key: ListKey { instance: shape_id, marker: MarkerKind::Bullet },
                     number: 0,
                     label: None,
                     blocks: vec![Block::Paragraph(inlines)],

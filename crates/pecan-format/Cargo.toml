@@ -18,9 +18,9 @@ taplo.workspace = true
 yaml-rust2.workspace = true
 similar.workspace = true
 logos.workspace = true
-dprint-plugin-typescript = "0.96"
+dprint-plugin-typescript = "0.101"
 malva = "0.16"
-markup_fmt = "0.27"
+markup_fmt = "0.28"
 sqlformat = "0.5"
 [dev-dependencies]
 futures-lite.workspace = true

@@ -3566,6 +3566,36 @@ mod image_tests {
             assert_eq!(pixel, &[0xF8, 0xBD, 0x38, 0xFF]);
         }
     }
+
+    #[test]
+    fn test_animated_webp_image_to_image_data_decodes_frames() {
+        // 1x1 2-frame animated WebP (frame 0: red, frame 1: blue, 100ms delay each).
+        const ANIMATED_WEBP: &[u8] = &[
+            82, 73, 70, 70, 192, 0, 0, 0, 87, 69, 66, 80, 86, 80, 56, 88, 10, 0, 0, 0, 2, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 65, 78, 73, 77, 6, 0, 0, 0, 255, 255, 255, 255, 0, 0, 65, 78, 77, 70,
+            72, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 2, 86, 80, 56, 32, 48, 0,
+            0, 0, 208, 1, 0, 157, 1, 42, 1, 0, 1, 0, 2, 0, 52, 37, 160, 2, 116, 186, 1, 248, 0, 3,
+            176, 0, 254, 240, 196, 11, 255, 32, 185, 97, 117, 200, 215, 255, 32, 63, 228, 7, 252,
+            128, 255, 248, 242, 0, 0, 0, 65, 78, 77, 70, 68, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 100, 0, 0, 0, 86, 80, 56, 32, 44, 0, 0, 0, 148, 1, 0, 157, 1, 42, 1, 0, 1, 0, 0,
+            0, 52, 37, 160, 2, 116, 186, 0, 3, 152, 0, 254, 249, 147, 111, 255, 144, 31, 255, 144,
+            31, 255, 144, 31, 255, 32, 63, 226, 23, 123, 32, 48, 0,
+        ];
+
+        let image = Image::from_bytes(ImageFormat::Webp, ANIMATED_WEBP.to_vec());
+        let render_image = image.to_image_data(SvgRenderer::new(Arc::new(()))).unwrap();
+
+        assert_eq!(render_image.frame_count(), 2);
+        assert_eq!(render_image.size(0), size(1.into(), 1.into()));
+        assert_eq!(
+            Duration::from(render_image.delay(0)),
+            Duration::from_millis(100)
+        );
+        assert_eq!(
+            Duration::from(render_image.delay(1)),
+            Duration::from_millis(100)
+        );
+    }
 }
 
 #[cfg(test)]

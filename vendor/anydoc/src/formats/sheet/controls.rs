@@ -76,10 +76,7 @@ fn vml_checkboxes(root: &Element, out: &mut Checkboxes) {
         {
             continue;
         }
-        let Some(at) = data
-            .find(ns::X_VML, "Anchor")
-            .and_then(|a| anchor_cell(&a.text()))
-        else {
+        let Some(at) = data.find(ns::X_VML, "Anchor").and_then(|a| anchor_cell(&a.text())) else {
             log::debug!("skipping a checkbox with no readable anchor");
             continue;
         };
@@ -96,9 +93,7 @@ fn vml_checkboxes(root: &Element, out: &mut Checkboxes) {
             .find(ns::VML, "textbox")
             .map(|t| collapse_ws(&clean_text(&t.text())).trim().to_string())
             .unwrap_or_default();
-        out.entry(at)
-            .or_default()
-            .push(Checkbox { checked, caption });
+        out.entry(at).or_default().push(Checkbox { checked, caption });
     }
 }
 

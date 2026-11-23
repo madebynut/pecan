@@ -1,6 +1,6 @@
 # Pecan rich text refinements
 
-Upstream: gpui-base 0.9.0, Apache-2.0. LICENSE-APACHE is preserved. The workspace uses a local crates.io patch. Cargo.toml omits upstream integration-test and benchmark targets not included in this runtime copy.
+Upstream: gpui-base 0.10.0, Apache-2.0. LICENSE-APACHE is preserved. The workspace uses a local crates.io patch. Cargo.toml is the published manifest.
 
 Inline code explicitly configured with self_center is vertically centered with its glyphs. The compact background and padding retain the native selection and copying paths.
 
@@ -10,7 +10,7 @@ Read-only task markers use 16px neutral checkboxes with a 1px subdued border, 3p
 
 TextViewStyle has opt-in paragraph justification. Body paragraphs use the patched GPUI TextLayout for shared painting, selection, and link coordinates. Headings and ordinary table cells retain their alignment; nowrap tables do not stretch. Mixed inline flows distribute available width among text fragments, keeping code and math atoms intact. Their width/typography cache includes alignment, so unchanged frames reuse wrapping and positioning.
 
-Scrollable nested CodeBlock uses a native div border outside its scroll track, with fixed actions and masks/scrollbars only on opted-in axes. Top-level application fences use the native readonly Editor instead of synthetic paged Markdown. The fully expanded Editor intersects its text bounds with the ancestor content mask to shape only visible rows while retaining complete scroll geometry. Link hover submits one cursor request, choosing PointingHand for actual link glyphs and IBeam for selectable plain text. Existing table and text-selection behavior is preserved.
+Scrollable nested CodeBlock uses a native div border outside its scroll track, with fixed actions and masks/scrollbars only on opted-in axes. Top-level application fences use the native readonly Editor instead of synthetic paged Markdown. The fully expanded Editor intersects its text bounds with the ancestor content mask to shape only visible rows while retaining complete scroll geometry. Link hover submits one cursor request, choosing PointingHand for actual link glyphs and IBeam for selectable plain text in views that show a text cursor. Existing table and text-selection behavior is preserved.
 
 PECAN-PATCH.diff contains the text changes against the registry source. Application tests cover capsule centering, paragraph endings and copying, table vertical centering/explicit breaks/horizontal scrolling, and native code-border paint/clipping at 1x and 2x. These geometric tests do not substitute for actual desktop pixel verification.
 

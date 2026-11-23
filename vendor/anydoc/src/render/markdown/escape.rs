@@ -207,9 +207,7 @@ pub(crate) fn escape_text(text: &str, ctx: InlineContext, opts: EscapeOpts) -> S
                 continue;
             }
             '#' if start_of_line => {
-                let j = (i..chars.len())
-                    .find(|&j| chars[j] != '#')
-                    .unwrap_or(chars.len());
+                let j = (i..chars.len()).find(|&j| chars[j] != '#').unwrap_or(chars.len());
                 chars.get(j).is_none_or(|n| n.is_whitespace())
             }
             '-' if start_of_line => !next_nonspace || line_is_only(&chars[i..], '-'),
@@ -247,10 +245,7 @@ pub(crate) fn escape_text(text: &str, ctx: InlineContext, opts: EscapeOpts) -> S
 /// True when the rest of the current line is just `c`, spaces, and tabs
 /// (a setext underline or thematic break).
 fn line_is_only(chars: &[char], c: char) -> bool {
-    chars
-        .iter()
-        .take_while(|&&ch| ch != '\n')
-        .all(|&ch| ch == c || ch == ' ' || ch == '\t')
+    chars.iter().take_while(|&&ch| ch != '\n').all(|&ch| ch == c || ch == ' ' || ch == '\t')
 }
 
 fn entity_ahead(chars: &[char]) -> bool {
@@ -288,10 +283,7 @@ pub(crate) fn format_url(url: &str) -> String {
             c => escaped.push(c),
         }
     }
-    if escaped
-        .chars()
-        .any(|c| c.is_whitespace() || c == '(' || c == ')')
-    {
+    if escaped.chars().any(|c| c.is_whitespace() || c == '(' || c == ')') {
         format!("<{escaped}>")
     } else {
         escaped
@@ -299,18 +291,11 @@ pub(crate) fn format_url(url: &str) -> String {
 }
 
 pub(crate) fn escape_url_as_text(url: &str, ctx: InlineContext) -> String {
-    let cleaned: String = url
-        .chars()
-        .map(|c| if c.is_control() { ' ' } else { c })
-        .collect();
+    let cleaned: String = url.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
     escape_text(
         &cleaned,
         ctx,
-        EscapeOpts {
-            trailing_active: true,
-            in_label: true,
-            ..Default::default()
-        },
+        EscapeOpts { trailing_active: true, in_label: true, ..Default::default() },
     )
 }
 

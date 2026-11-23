@@ -62,10 +62,7 @@ impl fmt::Display for ConvertError {
                 }
                 _ => write!(f, "pages {} of {page_count} need OCR", page_ranges(pages)),
             },
-            ConvertError::Malformed {
-                part: Some(part),
-                detail,
-            } => {
+            ConvertError::Malformed { part: Some(part), detail } => {
                 write!(f, "malformed document ({part}): {detail}")
             }
             ConvertError::Malformed { part: None, detail } => {
@@ -113,17 +110,11 @@ impl ConvertError {
     }
 
     pub(crate) fn malformed(detail: impl Into<String>) -> Self {
-        ConvertError::Malformed {
-            part: None,
-            detail: detail.into(),
-        }
+        ConvertError::Malformed { part: None, detail: detail.into() }
     }
 
     pub(crate) fn malformed_part(part: impl Into<String>, detail: impl Into<String>) -> Self {
-        ConvertError::Malformed {
-            part: Some(part.into()),
-            detail: detail.into(),
-        }
+        ConvertError::Malformed { part: Some(part.into()), detail: detail.into() }
     }
 
     /// True when recovery must not swallow this error: fixed safety limits
@@ -142,11 +133,7 @@ fn page_ranges(pages: &[u32]) -> String {
         while pages.next_if_eq(&(end + 1)).is_some() {
             end += 1;
         }
-        ranges.push(if end > start {
-            format!("{start}-{end}")
-        } else {
-            start.to_string()
-        });
+        ranges.push(if end > start { format!("{start}-{end}") } else { start.to_string() });
     }
     ranges.join(", ")
 }
@@ -158,15 +145,9 @@ mod tests {
     /// The CLI shows only the message, so it has to name the pages.
     #[test]
     fn needs_ocr_names_the_pages() {
-        let scattered = ConvertError::NeedsOcr {
-            pages: vec![2, 5, 6, 7, 12],
-            page_count: 20,
-        };
+        let scattered = ConvertError::NeedsOcr { pages: vec![2, 5, 6, 7, 12], page_count: 20 };
         assert_eq!(scattered.to_string(), "pages 2, 5-7, 12 of 20 need OCR");
-        let all = ConvertError::NeedsOcr {
-            pages: vec![1, 2],
-            page_count: 2,
-        };
+        let all = ConvertError::NeedsOcr { pages: vec![1, 2], page_count: 2 };
         assert_eq!(all.to_string(), "all 2 pages need OCR");
     }
 
@@ -174,39 +155,14 @@ mod tests {
     /// breaks every caller that branches on it.
     #[test]
     fn codes_name_every_variant() {
-        assert_eq!(
-            ConvertError::Unsupported(String::new()).code(),
-            "unsupported"
-        );
-        assert_eq!(
-            ConvertError::NeedsOcr {
-                pages: vec![1],
-                page_count: 1
-            }
-            .code(),
-            "needsOcr"
-        );
+        assert_eq!(ConvertError::Unsupported(String::new()).code(), "unsupported");
+        assert_eq!(ConvertError::NeedsOcr { pages: vec![1], page_count: 1 }.code(), "needsOcr");
         assert_eq!(ConvertError::malformed("").code(), "malformed");
-        assert_eq!(
-            ConvertError::malformed_part("word/document.xml", "").code(),
-            "malformed"
-        );
+        assert_eq!(ConvertError::malformed_part("word/document.xml", "").code(), "malformed");
         assert_eq!(ConvertError::Encrypted.code(), "encrypted");
-        let limit = ConvertError::ResourceLimit {
-            limit: "max_entry_bytes",
-            detail: String::new(),
-        };
+        let limit = ConvertError::ResourceLimit { limit: "max_entry_bytes", detail: String::new() };
         assert_eq!(limit.code(), "resourceLimit");
-        assert_eq!(
-            ConvertError::MissingPart {
-                part: String::new()
-            }
-            .code(),
-            "missingPart"
-        );
-        assert_eq!(
-            ConvertError::Io(std::io::ErrorKind::NotFound.into()).code(),
-            "io"
-        );
+        assert_eq!(ConvertError::MissingPart { part: String::new() }.code(), "missingPart");
+        assert_eq!(ConvertError::Io(std::io::ErrorKind::NotFound.into()).code(), "io");
     }
 }

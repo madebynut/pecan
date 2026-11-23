@@ -17,10 +17,7 @@ pub fn chart_blocks(root: &Element) -> Vec<Block> {
     if let Some(title) = title {
         blocks.push(Block::Paragraph(vec![Inline::Text {
             text: title,
-            style: Style {
-                bold: true,
-                ..Style::PLAIN
-            },
+            style: Style { bold: true, ..Style::PLAIN },
         }]));
     }
     struct Series {
@@ -38,22 +35,14 @@ pub fn chart_blocks(root: &Element) -> Vec<Block> {
             .unwrap_or_default();
         let cats: Vec<String> = ser
             .find(ns::CHART, "cat")
-            .map(|c| {
-                c.descendants(ns::CHART, "v")
-                    .map(|v| clean_text(&v.text()))
-                    .collect()
-            })
+            .map(|c| c.descendants(ns::CHART, "v").map(|v| clean_text(&v.text())).collect())
             .unwrap_or_default();
         if categories.is_empty() {
             categories = cats;
         }
         let values: Vec<String> = ser
             .find(ns::CHART, "val")
-            .map(|v| {
-                v.descendants(ns::CHART, "v")
-                    .map(|p| clean_text(&p.text()))
-                    .collect()
-            })
+            .map(|v| v.descendants(ns::CHART, "v").map(|p| clean_text(&p.text())).collect())
             .unwrap_or_default();
         series.push(Series { name, values });
     }
@@ -64,11 +53,8 @@ pub fn chart_blocks(root: &Element) -> Vec<Block> {
             .map(|t| clean_text(&drawing_text(t)))
             .unwrap_or_default();
         let mut header: Vec<Cell> = vec![Cell::from_inlines(vec![Inline::plain(cat_title)])];
-        header.extend(
-            series
-                .iter()
-                .map(|s| Cell::from_inlines(vec![Inline::plain(s.name.clone())])),
-        );
+        header
+            .extend(series.iter().map(|s| Cell::from_inlines(vec![Inline::plain(s.name.clone())])));
         let mut rows = vec![header];
         for (i, cat) in categories.iter().enumerate() {
             let mut row = vec![Cell::from_inlines(vec![Inline::plain(cat.clone())])];
@@ -101,11 +87,7 @@ pub fn diagram_blocks(root: &Element) -> Vec<Block> {
     if items.is_empty() {
         return Vec::new();
     }
-    vec![Block::List(List {
-        marker: crate::model::MarkerKind::Bullet,
-        start: 1,
-        items,
-    })]
+    vec![Block::List(List { marker: crate::model::MarkerKind::Bullet, start: 1, items })]
 }
 
 /// Text runs inside DrawingML rich text (`a:p`/`a:r`/`a:t`), joined.
@@ -117,9 +99,5 @@ pub fn drawing_text(elem: &Element) -> String {
             parts.push(text);
         }
     }
-    if parts.is_empty() {
-        elem.text()
-    } else {
-        parts.join(" ")
-    }
+    if parts.is_empty() { elem.text() } else { parts.join(" ") }
 }

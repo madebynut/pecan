@@ -18,10 +18,7 @@ use std::collections::{HashMap, HashSet};
 /// characters collapse to spaces and Markdown syntax is neutralized so a
 /// crafted label cannot alter document structure.
 pub(crate) fn escape_marker_label(label: &str, ctx: InlineContext) -> String {
-    let cleaned: String = label
-        .chars()
-        .map(|c| if c.is_control() { ' ' } else { c })
-        .collect();
+    let cleaned: String = label.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
     let opts = EscapeOpts {
         // List-item content re-opens block syntax after the `- ` marker.
         at_line_start: ctx == InlineContext::Block,
@@ -41,21 +38,11 @@ pub(crate) struct Ctx {
 }
 
 pub fn document_to_markdown(doc: &Document) -> String {
-    let rc = Ctx {
-        nums: number_notes(doc),
-        anchors: resolve_anchors(doc),
-    };
-    let mut parts: Vec<String> = doc
-        .blocks
-        .iter()
-        .filter_map(|b| render_block(b, &rc))
-        .collect();
+    let rc = Ctx { nums: number_notes(doc), anchors: resolve_anchors(doc) };
+    let mut parts: Vec<String> = doc.blocks.iter().filter_map(|b| render_block(b, &rc)).collect();
     let mut rendered_defs: HashSet<usize> = HashSet::new();
-    let mut ordered: Vec<(&Note, usize)> = doc
-        .notes
-        .iter()
-        .filter_map(|n| rc.nums.get(&n.id).map(|&num| (n, num)))
-        .collect();
+    let mut ordered: Vec<(&Note, usize)> =
+        doc.notes.iter().filter_map(|n| rc.nums.get(&n.id).map(|&num| (n, num))).collect();
     ordered.sort_by_key(|(_, num)| *num);
     for (note, num) in ordered {
         let body = render_blocks(&note.blocks, &rc);
@@ -103,11 +90,7 @@ fn number_notes(doc: &Document) -> NoteNumbers {
             order.push(note.id.clone());
         }
     }
-    order
-        .into_iter()
-        .enumerate()
-        .map(|(i, id)| (id, i + 1))
-        .collect()
+    order.into_iter().enumerate().map(|(i, id)| (id, i + 1)).collect()
 }
 
 fn block_is_blank(block: &Block) -> bool {
@@ -188,18 +171,12 @@ fn render_block(block: &Block, rc: &Ctx) -> Option<String> {
         Block::Paragraph(inlines) => {
             let text = render_inlines(inlines, InlineContext::Block, rc);
             let trimmed = trim_paragraph(&text);
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed)
-            }
+            if trimmed.is_empty() { None } else { Some(trimmed) }
         }
         Block::List(list) => render_list(list, rc),
         // Trivial layout tables are scaffolding; render their content directly.
         Block::Table(t) if t.kind == TableKind::Layout && t.is_single_cell() => {
-            let crate::model::CellSlot::Origin(cell) = &t.grid[0][0] else {
-                unreachable!()
-            };
+            let crate::model::CellSlot::Origin(cell) = &t.grid[0][0] else { unreachable!() };
             let inner = render_blocks(&cell.blocks, rc);
             if inner.is_empty() { None } else { Some(inner) }
         }
@@ -211,13 +188,7 @@ fn render_block(block: &Block, rc: &Ctx) -> Option<String> {
             }
             let quoted: Vec<String> = inner
                 .lines()
-                .map(|l| {
-                    if l.is_empty() {
-                        ">".to_string()
-                    } else {
-                        format!("> {l}")
-                    }
-                })
+                .map(|l| if l.is_empty() { ">".to_string() } else { format!("> {l}") })
                 .collect();
             Some(quoted.join("\n"))
         }
@@ -297,16 +268,8 @@ fn trim_paragraph(text: &str) -> String {
         .lines()
         .map(|l| {
             let t = l.trim_start();
-            let t = if ends_with_hard_break(t) {
-                t
-            } else {
-                t.trim_end()
-            };
-            if t.trim_end_matches('\\').trim().is_empty() {
-                ""
-            } else {
-                t
-            }
+            let t = if ends_with_hard_break(t) { t } else { t.trim_end() };
+            if t.trim_end_matches('\\').trim().is_empty() { "" } else { t }
         })
         .collect();
     let start = lines.iter().position(|l| !l.is_empty());

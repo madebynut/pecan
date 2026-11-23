@@ -76,10 +76,7 @@ fn classify(pkg: &mut Package, part: &str) -> Result<Option<Container>, ConvertE
     };
     let body = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(&bytes);
     // A UTF-16 part opens on its byte order mark rather than the tag.
-    let is_xml = matches!(
-        body.iter().find(|b| !b.is_ascii_whitespace()),
-        Some(b'<' | 0xFF | 0xFE)
-    );
+    let is_xml = matches!(body.iter().find(|b| !b.is_ascii_whitespace()), Some(b'<' | 0xFF | 0xFE));
     if is_xml {
         return Ok(Some(Container::Xml));
     }

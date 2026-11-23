@@ -18,58 +18,55 @@ pub fn html_image(source: &str) -> Option<HtmlImage> {
         tendril::StrTendril,
         tokenizer::{BufferQueue, StartTag, Token, TokenSink, TokenSinkResult, Tokenizer},
     };
+    use std::cell::{Cell, RefCell};
 
+    // The tokenizer shares its sink, so the sink records what it saw through cells.
     #[derive(Default)]
     struct ImageTag {
-        image: Option<HtmlImage>,
-        other_content: bool,
+        image: RefCell<Option<HtmlImage>>,
+        other_content: Cell<bool>,
     }
     impl TokenSink for ImageTag {
         type Handle = ();
-        fn process_token(&mut self, token: Token, _: u64) -> TokenSinkResult<()> {
+        fn process_token(&self, token: Token, _: u64) -> TokenSinkResult<()> {
             match token {
                 Token::TagToken(tag)
                     if tag.kind == StartTag
-                        && tag.name.as_ref() == "img"
-                        && self.image.is_none() =>
+                        && &*tag.name == "img"
+                        && self.image.borrow().is_none() =>
                 {
-                    let uri = tag
-                        .attrs
-                        .iter()
-                        .find(|attr| attr.name.local.as_ref() == "src")
-                        .map(|attr| attr.value.to_string());
-                    let alt = tag
-                        .attrs
-                        .iter()
-                        .find(|attr| attr.name.local.as_ref() == "alt")
-                        .map_or_else(String::new, |attr| attr.value.to_string());
-                    let dimension = |name: &str| {
+                    let value = |name: &str| {
                         tag.attrs
                             .iter()
-                            .find(|attr| attr.name.local.as_ref() == name)
-                            .and_then(|attr| attr.value.parse::<f32>().ok())
+                            .find(|attr| &*attr.name.local == name)
+                            .map(|attr| attr.value.to_string())
+                    };
+                    let dimension = |name: &str| {
+                        value(name)
+                            .and_then(|value| value.parse::<f32>().ok())
                             .filter(|value| value.is_finite() && *value > 0.)
                     };
-                    self.image = uri.map(|uri| HtmlImage {
+                    *self.image.borrow_mut() = value("src").map(|uri| HtmlImage {
                         uri,
-                        alt,
+                        alt: value("alt").unwrap_or_default(),
                         width: dimension("width"),
                         height: dimension("height"),
                     });
                 }
                 Token::CharacterTokens(text) if text.trim().is_empty() => {}
                 Token::EOFToken | Token::ParseError(_) => {}
-                _ => self.other_content = true,
+                _ => self.other_content.set(true),
             }
             TokenSinkResult::Continue
         }
     }
-    let mut input = BufferQueue::default();
+    let input = BufferQueue::default();
     input.push_back(StrTendril::from(source));
-    let mut tokenizer = Tokenizer::new(ImageTag::default(), Default::default());
-    let _ = tokenizer.feed(&mut input);
+    let tokenizer = Tokenizer::new(ImageTag::default(), Default::default());
+    let _ = tokenizer.feed(&input);
     tokenizer.end();
-    (!tokenizer.sink.other_content)
-        .then_some(tokenizer.sink.image)
+    let sink = tokenizer.sink;
+    (!sink.other_content.get())
+        .then(|| sink.image.into_inner())
         .flatten()
 }

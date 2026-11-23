@@ -5,18 +5,11 @@ use crate::model::{
 };
 
 fn doc(blocks: Vec<Block>) -> String {
-    document_to_markdown(&Document {
-        blocks,
-        notes: Vec::new(),
-        assets: Vec::new(),
-    })
+    document_to_markdown(&Document { blocks, notes: Vec::new(), assets: Vec::new() })
 }
 
 fn styled(text: &str, style: Style) -> Inline {
-    Inline::Text {
-        text: text.into(),
-        style,
-    }
+    Inline::Text { text: text.into(), style }
 }
 
 fn heading(level: u8, text: &str) -> Block {
@@ -27,25 +20,12 @@ fn table_from(rows: Vec<Vec<Cell>>, header_rows: usize) -> Block {
     Block::Table(Table::from_rows(rows, header_rows, TableKind::Data))
 }
 
-const BOLD: Style = Style {
-    bold: true,
-    italic: false,
-    strike: false,
-    code: false,
-};
-const ITALIC: Style = Style {
-    bold: false,
-    italic: true,
-    strike: false,
-    code: false,
-};
+const BOLD: Style = Style { bold: true, italic: false, strike: false, code: false };
+const ITALIC: Style = Style { bold: false, italic: true, strike: false, code: false };
 
 #[test]
 fn heading_and_paragraph() {
-    let md = doc(vec![
-        heading(2, "Title"),
-        Block::Paragraph(vec![Inline::plain("Hello world.")]),
-    ]);
+    let md = doc(vec![heading(2, "Title"), Block::Paragraph(vec![Inline::plain("Hello world.")])]);
     assert_eq!(md, "## Title\n\nHello world.\n");
 }
 
@@ -70,16 +50,9 @@ fn math_renders_in_dollar_delimiters_and_text_dollars_are_escaped() {
 
 #[test]
 fn math_in_a_table_cell_escapes_pipes() {
-    let cell = |inlines| Cell {
-        blocks: vec![Block::Paragraph(inlines)],
-        col_span: 1,
-        row_span: 1,
-    };
+    let cell = |inlines| Cell { blocks: vec![Block::Paragraph(inlines)], col_span: 1, row_span: 1 };
     let md = doc(vec![table_from(
-        vec![vec![
-            cell(vec![Inline::plain("abs")]),
-            cell(vec![Inline::Math("|x|".into())]),
-        ]],
+        vec![vec![cell(vec![Inline::plain("abs")]), cell(vec![Inline::Math("|x|".into())])]],
         0,
     )]);
     assert!(md.contains("| $\\|x\\|$ |"), "{md}");
@@ -87,25 +60,17 @@ fn math_in_a_table_cell_escapes_pipes() {
 
 #[test]
 fn escapes_paired_syntax_chars() {
-    let md = doc(vec![Block::Paragraph(vec![Inline::plain(
-        "a *bold* _it_ ~st~ `code`",
-    )])]);
+    let md = doc(vec![Block::Paragraph(vec![Inline::plain("a *bold* _it_ ~st~ `code`")])]);
     assert_eq!(md, "a \\*bold* \\_it_ \\~st~ \\`code`\n");
-    let md = doc(vec![Block::Paragraph(vec![Inline::plain(
-        "see [really] and <b>hi</b>",
-    )])]);
+    let md = doc(vec![Block::Paragraph(vec![Inline::plain("see [really] and <b>hi</b>")])]);
     assert_eq!(md, "see \\[really] and \\<b>hi\\</b>\n");
 }
 
 #[test]
 fn lone_syntax_chars_left_alone() {
-    let md = doc(vec![Block::Paragraph(vec![Inline::plain(
-        "2 * 3 = 6 and 5*6 #tag",
-    )])]);
+    let md = doc(vec![Block::Paragraph(vec![Inline::plain("2 * 3 = 6 and 5*6 #tag")])]);
     assert_eq!(md, "2 * 3 = 6 and 5*6 #tag\n");
-    let md = doc(vec![Block::Paragraph(vec![Inline::plain(
-        "x < 5, ~10%, file_name, a[1",
-    )])]);
+    let md = doc(vec![Block::Paragraph(vec![Inline::plain("x < 5, ~10%, file_name, a[1")])]);
     assert_eq!(md, "x < 5, ~10%, file_name, a[1\n");
 }
 
@@ -140,9 +105,7 @@ fn partners_that_cannot_close_leave_delimiters_raw() {
 
 #[test]
 fn intraword_underscores_unescaped() {
-    let md = doc(vec![Block::Paragraph(vec![Inline::plain(
-        "snake_case_name vs _lead_",
-    )])]);
+    let md = doc(vec![Block::Paragraph(vec![Inline::plain("snake_case_name vs _lead_")])]);
     assert_eq!(md, "snake_case_name vs \\_lead_\n");
 }
 
@@ -152,9 +115,7 @@ fn escapes_line_start_only_chars() {
     assert_eq!(md, "\\- not a list\n");
     let md = doc(vec![Block::Paragraph(vec![Inline::plain("1. not a list")])]);
     assert_eq!(md, "1\\. not a list\n");
-    let md = doc(vec![Block::Paragraph(vec![Inline::plain(
-        "take 2. then rest",
-    )])]);
+    let md = doc(vec![Block::Paragraph(vec![Inline::plain("take 2. then rest")])]);
     assert_eq!(md, "take 2. then rest\n");
 }
 
@@ -162,13 +123,9 @@ fn escapes_line_start_only_chars() {
 fn line_start_lookalikes_unescaped() {
     let md = doc(vec![Block::Paragraph(vec![Inline::plain("-5°C at dawn")])]);
     assert_eq!(md, "-5°C at dawn\n");
-    let md = doc(vec![Block::Paragraph(vec![Inline::plain(
-        "1.5 million users",
-    )])]);
+    let md = doc(vec![Block::Paragraph(vec![Inline::plain("1.5 million users")])]);
     assert_eq!(md, "1.5 million users\n");
-    let md = doc(vec![Block::Paragraph(vec![Inline::plain(
-        "#hashtag first",
-    )])]);
+    let md = doc(vec![Block::Paragraph(vec![Inline::plain("#hashtag first")])]);
     assert_eq!(md, "#hashtag first\n");
     let md = doc(vec![Block::Paragraph(vec![Inline::plain("--- ruled")])]);
     assert_eq!(md, "--- ruled\n");
@@ -190,10 +147,7 @@ fn negative_number_in_cell_unescaped() {
 
 #[test]
 fn trailing_delimiter_before_styled_run_escaped() {
-    let md = doc(vec![Block::Paragraph(vec![
-        Inline::plain("star*"),
-        styled("x", BOLD),
-    ])]);
+    let md = doc(vec![Block::Paragraph(vec![Inline::plain("star*"), styled("x", BOLD)])]);
     assert_eq!(md, "star\\***x**\n");
 }
 
@@ -217,13 +171,7 @@ fn delimiters_do_not_pair_across_run_seams() {
     let md = doc(vec![Block::Paragraph(vec![
         Inline::plain("a `"),
         Inline::LineBreak,
-        styled(
-            "x",
-            Style {
-                code: true,
-                ..Style::PLAIN
-            },
-        ),
+        styled("x", Style { code: true, ..Style::PLAIN }),
     ])]);
     assert_eq!(md, "a \\`\\\n`x`\n");
 }
@@ -268,16 +216,7 @@ fn escaped_backtick_in_later_run_still_pairs() {
         Inline::plain("a `"),
         Inline::LineBreak,
         Inline::Link {
-            content: vec![
-                styled(
-                    "  ",
-                    Style {
-                        code: true,
-                        ..Style::PLAIN
-                    },
-                ),
-                Inline::plain("x"),
-            ],
+            content: vec![styled("  ", Style { code: true, ..Style::PLAIN }), Inline::plain("x")],
             target: LinkTarget::External("https://e.test".into()),
         },
     ])]);
@@ -286,19 +225,13 @@ fn escaped_backtick_in_later_run_still_pairs() {
 
 #[test]
 fn bold_trailing_space_moved_out() {
-    let md = doc(vec![Block::Paragraph(vec![
-        styled("bold ", BOLD),
-        Inline::plain("plain"),
-    ])]);
+    let md = doc(vec![Block::Paragraph(vec![styled("bold ", BOLD), Inline::plain("plain")])]);
     assert_eq!(md, "**bold** plain\n");
 }
 
 #[test]
 fn adjacent_same_style_runs_merged() {
-    let md = doc(vec![Block::Paragraph(vec![
-        styled("bo", BOLD),
-        styled("ld", BOLD),
-    ])]);
+    let md = doc(vec![Block::Paragraph(vec![styled("bo", BOLD), styled("ld", BOLD)])]);
     assert_eq!(md, "**bold**\n");
 }
 
@@ -306,12 +239,7 @@ fn adjacent_same_style_runs_merged() {
 fn bold_italic_combo() {
     let md = doc(vec![Block::Paragraph(vec![styled(
         "both",
-        Style {
-            bold: true,
-            italic: true,
-            strike: false,
-            code: false,
-        },
+        Style { bold: true, italic: true, strike: false, code: false },
     )])]);
     assert_eq!(md, "***both***\n");
 }
@@ -379,40 +307,24 @@ fn composite_marker_labels_are_escaped() {
         }],
     };
     let md = doc(vec![Block::List(list)]);
-    assert_eq!(
-        md.lines().count(),
-        1,
-        "control characters must not split the marker"
-    );
-    assert!(
-        !md.contains("*a*"),
-        "emphasis in a label must be escaped: {md}"
-    );
-    assert!(
-        md.starts_with("- "),
-        "labelled items render as literal markers: {md}"
-    );
+    assert_eq!(md.lines().count(), 1, "control characters must not split the marker");
+    assert!(!md.contains("*a*"), "emphasis in a label must be escaped: {md}");
+    assert!(md.starts_with("- "), "labelled items render as literal markers: {md}");
 }
 
 #[test]
 fn layout_table_unwrapped() {
     let mut b = GridBuilder::new();
     b.next_row();
-    b.place(Cell::new(vec![
-        heading(1, "Boxed"),
-        Block::Paragraph(vec![Inline::plain("body")]),
-    ]))
-    .unwrap();
+    b.place(Cell::new(vec![heading(1, "Boxed"), Block::Paragraph(vec![Inline::plain("body")])]))
+        .unwrap();
     let md = doc(vec![Block::Table(b.finish(TableKind::Layout))]);
     assert_eq!(md, "# Boxed\n\nbody\n");
 }
 
 #[test]
 fn data_table_1x1_not_unwrapped() {
-    let md = doc(vec![table_from(
-        vec![vec![Cell::from_inlines(vec![Inline::plain("x")])]],
-        0,
-    )]);
+    let md = doc(vec![table_from(vec![vec![Cell::from_inlines(vec![Inline::plain("x")])]], 0)]);
     assert_eq!(md, "|  |\n| --- |\n| x |\n");
 }
 
@@ -470,10 +382,8 @@ fn table_multiparagraph_cell() {
         Block::Paragraph(vec![Inline::plain("one")]),
         Block::Paragraph(vec![Inline::plain("two")]),
     ]);
-    let md = doc(vec![table_from(
-        vec![vec![cell, Cell::from_inlines(vec![Inline::plain("x")])]],
-        0,
-    )]);
+    let md =
+        doc(vec![table_from(vec![vec![cell, Cell::from_inlines(vec![Inline::plain("x")])]], 0)]);
     assert_eq!(md, "|  |  |\n| --- | --- |\n| one<br>two | x |\n");
 }
 
@@ -481,14 +391,8 @@ fn table_multiparagraph_cell() {
 fn merged_cells_render_blank_covered_positions() {
     let mut b = GridBuilder::new();
     b.next_row();
-    b.place(Cell::spanning(
-        vec![Block::Paragraph(vec![Inline::plain("wide")])],
-        2,
-        1,
-    ))
-    .unwrap();
-    b.place(Cell::from_inlines(vec![Inline::plain("end")]))
-        .unwrap();
+    b.place(Cell::spanning(vec![Block::Paragraph(vec![Inline::plain("wide")])], 2, 1)).unwrap();
+    b.place(Cell::from_inlines(vec![Inline::plain("end")])).unwrap();
     b.next_row();
     for t in ["a", "b", "c"] {
         b.place(Cell::from_inlines(vec![Inline::plain(t)])).unwrap();
@@ -496,22 +400,14 @@ fn merged_cells_render_blank_covered_positions() {
     let mut table = b.finish(TableKind::Data);
     table.header_rows = 1;
     let md = doc(vec![Block::Table(table)]);
-    assert_eq!(
-        md,
-        "| wide |  | end |\n| --- | --- | --- |\n| a | b | c |\n"
-    );
+    assert_eq!(md, "| wide |  | end |\n| --- | --- | --- |\n| a | b | c |\n");
 }
 
 #[test]
 fn trailing_covered_columns_are_preserved() {
     let mut b = GridBuilder::new();
     b.next_row();
-    b.place(Cell::spanning(
-        vec![Block::Paragraph(vec![Inline::plain("wide")])],
-        3,
-        1,
-    ))
-    .unwrap();
+    b.place(Cell::spanning(vec![Block::Paragraph(vec![Inline::plain("wide")])], 3, 1)).unwrap();
     let mut table = b.finish(TableKind::Data);
     table.header_rows = 1;
     let md = doc(vec![Block::Table(table)]);
@@ -525,10 +421,7 @@ fn url_pipes_cannot_split_table_cells() {
         target: LinkTarget::External("https://e.test/a|b".into()),
     }]);
     let md = doc(vec![table_from(vec![vec![cell]], 0)]);
-    assert_eq!(
-        md,
-        "|  |\n| --- |\n| [https://e.test/a\\|b](https://e.test/a%7Cb) |\n"
-    );
+    assert_eq!(md, "|  |\n| --- |\n| [https://e.test/a\\|b](https://e.test/a%7Cb) |\n");
 }
 
 #[test]
@@ -536,25 +429,11 @@ fn code_span_pipes_cannot_split_table_cells() {
     let code = |t: &str| {
         Cell::from_inlines(vec![Inline::Text {
             text: t.into(),
-            style: Style {
-                code: true,
-                ..Style::PLAIN
-            },
+            style: Style { code: true, ..Style::PLAIN },
         }])
     };
-    let md = doc(vec![table_from(
-        vec![vec![code("a | b"), code(r"a \| b")]],
-        0,
-    )]);
-    assert_eq!(
-        md,
-        concat!(
-            "|  |  |\n",
-            "| --- | --- |\n",
-            r"| `a \| b` | `a \\\| b` |",
-            "\n"
-        )
-    );
+    let md = doc(vec![table_from(vec![vec![code("a | b"), code(r"a \| b")]], 0)]);
+    assert_eq!(md, concat!("|  |  |\n", "| --- | --- |\n", r"| `a \| b` | `a \\\| b` |", "\n"));
 }
 
 #[test]
@@ -625,13 +504,7 @@ fn roman_and_alpha_markers_render_literally() {
 
 #[test]
 fn code_span_with_backticks() {
-    let md = doc(vec![Block::Paragraph(vec![styled(
-        "a`b",
-        Style {
-            code: true,
-            ..Style::PLAIN
-        },
-    )])]);
+    let md = doc(vec![Block::Paragraph(vec![styled("a`b", Style { code: true, ..Style::PLAIN })])]);
     assert_eq!(md, "``a`b``\n");
 }
 
@@ -657,9 +530,7 @@ fn line_start_escape_after_hard_break() {
 
 #[test]
 fn blockquote() {
-    let md = doc(vec![Block::BlockQuote(vec![Block::Paragraph(vec![
-        Inline::plain("quoted"),
-    ])])]);
+    let md = doc(vec![Block::BlockQuote(vec![Block::Paragraph(vec![Inline::plain("quoted")])])]);
     assert_eq!(md, "> quoted\n");
 }
 
@@ -680,11 +551,7 @@ fn entity_escaped_but_plain_ampersand_kept() {
 }
 
 fn note(id: &str, blocks: Vec<Block>) -> Note {
-    Note {
-        id: id.into(),
-        kind: NoteKind::Footnote,
-        blocks,
-    }
+    Note { id: id.into(), kind: NoteKind::Footnote, blocks }
 }
 
 #[test]
@@ -697,10 +564,7 @@ fn footnotes() {
             Inline::NoteRef("a".into()),
         ])],
         notes: vec![
-            note(
-                "a",
-                vec![Block::Paragraph(vec![Inline::plain("Second note.")])],
-            ),
+            note("a", vec![Block::Paragraph(vec![Inline::plain("Second note.")])]),
             note(
                 "b",
                 vec![
@@ -726,10 +590,7 @@ fn empty_and_unreferenced_notes() {
         ])],
         notes: vec![
             note("empty", vec![Block::Paragraph(vec![])]),
-            note(
-                "orphan",
-                vec![Block::Paragraph(vec![Inline::plain("Kept.")])],
-            ),
+            note("orphan", vec![Block::Paragraph(vec![Inline::plain("Kept.")])]),
         ],
         assets: Vec::new(),
     });
@@ -739,19 +600,10 @@ fn empty_and_unreferenced_notes() {
 #[test]
 fn duplicate_note_ids_render_one_definition() {
     let md = document_to_markdown(&Document {
-        blocks: vec![Block::Paragraph(vec![
-            Inline::plain("Text"),
-            Inline::NoteRef("a".into()),
-        ])],
+        blocks: vec![Block::Paragraph(vec![Inline::plain("Text"), Inline::NoteRef("a".into())])],
         notes: vec![
-            note(
-                "a",
-                vec![Block::Paragraph(vec![Inline::plain("First wins.")])],
-            ),
-            note(
-                "a",
-                vec![Block::Paragraph(vec![Inline::plain("Duplicate dropped.")])],
-            ),
+            note("a", vec![Block::Paragraph(vec![Inline::plain("First wins.")])]),
+            note("a", vec![Block::Paragraph(vec![Inline::plain("Duplicate dropped.")])]),
         ],
         assets: Vec::new(),
     });
@@ -761,10 +613,7 @@ fn duplicate_note_ids_render_one_definition() {
 #[test]
 fn blank_duplicate_note_does_not_suppress_a_later_definition() {
     let md = document_to_markdown(&Document {
-        blocks: vec![Block::Paragraph(vec![
-            Inline::plain("Text"),
-            Inline::NoteRef("a".into()),
-        ])],
+        blocks: vec![Block::Paragraph(vec![Inline::plain("Text"), Inline::NoteRef("a".into())])],
         notes: vec![
             note("a", vec![Block::Paragraph(Vec::new())]),
             note("a", vec![Block::Paragraph(vec![Inline::plain("Usable.")])]),
@@ -805,10 +654,7 @@ fn task_list() {
         start: 1,
         items: vec![
             ListItem {
-                blocks: vec![Block::Paragraph(vec![
-                    Inline::Checkbox(true),
-                    Inline::plain("done"),
-                ])],
+                blocks: vec![Block::Paragraph(vec![Inline::Checkbox(true), Inline::plain("done")])],
                 marker_label: None,
             },
             ListItem {
@@ -860,19 +706,13 @@ fn image_alt_brackets_and_backslash_escaped() {
 fn anchor_on_plain_paragraph_round_trips() {
     let mark: AnchorId = "My Mark".into();
     let md = doc(vec![
-        Block::Paragraph(vec![
-            Inline::Anchor(mark.clone()),
-            Inline::plain("Target here."),
-        ]),
+        Block::Paragraph(vec![Inline::Anchor(mark.clone()), Inline::plain("Target here.")]),
         Block::Paragraph(vec![Inline::Link {
             content: vec![Inline::plain("jump")],
             target: LinkTarget::Anchor(mark),
         }]),
     ]);
-    assert_eq!(
-        md,
-        "<a id=\"my-mark\"></a>Target here.\n\n[jump](#my-mark)\n"
-    );
+    assert_eq!(md, "<a id=\"my-mark\"></a>Target here.\n\n[jump](#my-mark)\n");
 }
 
 #[test]
@@ -906,11 +746,7 @@ fn heading_coincident_anchor_uses_slug() {
 fn duplicate_heading_slugs_deduped() {
     let md = doc(vec![
         heading(1, "Same"),
-        Block::Heading {
-            level: 1,
-            anchor: Some("x".into()),
-            content: vec![Inline::plain("Same")],
-        },
+        Block::Heading { level: 1, anchor: Some("x".into()), content: vec![Inline::plain("Same")] },
         Block::Paragraph(vec![Inline::Link {
             content: vec![Inline::plain("second")],
             target: LinkTarget::Anchor("x".into()),
@@ -921,20 +757,14 @@ fn duplicate_heading_slugs_deduped() {
 
 #[test]
 fn code_block_in_cell_uses_code_span() {
-    let cell = Cell::new(vec![Block::CodeBlock {
-        lang: None,
-        text: "let `x` = 1;".into(),
-    }]);
+    let cell = Cell::new(vec![Block::CodeBlock { lang: None, text: "let `x` = 1;".into() }]);
     let md = doc(vec![table_from(vec![vec![cell]], 0)]);
     assert_eq!(md, "|  |\n| --- |\n| ``let `x` = 1;`` |\n");
 }
 
 #[test]
 fn code_block_keeps_its_language_hint() {
-    let md = doc(vec![Block::CodeBlock {
-        lang: Some("rust".into()),
-        text: "fn main() {}".into(),
-    }]);
+    let md = doc(vec![Block::CodeBlock { lang: Some("rust".into()), text: "fn main() {}".into() }]);
     assert_eq!(md, "```rust\nfn main() {}\n```\n");
 }
 

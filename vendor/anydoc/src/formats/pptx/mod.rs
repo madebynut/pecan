@@ -151,9 +151,7 @@ pub fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
             layouts.insert(lp.clone(), info);
         }
         let layout = layout_path.as_ref().and_then(|lp| layouts.get(lp));
-        let master = layout
-            .and_then(|l| l.master_path.as_ref())
-            .and_then(|mp| masters.get(mp));
+        let master = layout.and_then(|l| l.master_path.as_ref()).and_then(|mp| masters.get(mp));
 
         let ctx = SlideCtx {
             pkg: &pkg,
@@ -197,10 +195,8 @@ pub fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
                 // Keep note text bodies (real producers use a body
                 // placeholder; LibreOffice writes plain text boxes) but skip
                 // the slide-image and chrome placeholders.
-                if matches!(
-                    placeholder_type(sp),
-                    Some("sldImg" | "sldNum" | "hdr" | "ftr" | "dt")
-                ) {
+                if matches!(placeholder_type(sp), Some("sldImg" | "sldNum" | "hdr" | "ftr" | "dt"))
+                {
                     continue;
                 }
                 if let Some(tx) = sp.find(ns::P, "txBody") {
@@ -213,17 +209,11 @@ pub fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
         }
     }
     if failed == slide_paths.len() {
-        return Err(ConvertError::malformed(
-            "no slide in the presentation could be read",
-        ));
+        return Err(ConvertError::malformed("no slide in the presentation could be read"));
     }
 
     let assets = std::mem::take(&mut assets.borrow_mut().assets);
-    Ok(Document {
-        blocks,
-        notes: Vec::new(),
-        assets,
-    })
+    Ok(Document { blocks, notes: Vec::new(), assets })
 }
 
 fn rel_target_of_type(rels: &Relationships, base: &str, rel_type: &str) -> Option<String> {
@@ -244,10 +234,7 @@ fn load_layout(pkg: &RefCell<Package>, layout_path: &str) -> Result<LayoutInfo, 
     };
     let rels = read_rels(&mut pkg.borrow_mut(), &rels_part_for(layout_path))?;
     let master_path = rel_target_of_type(&rels, layout_path, MASTER_REL);
-    Ok(LayoutInfo {
-        placeholders,
-        master_path,
-    })
+    Ok(LayoutInfo { placeholders, master_path })
 }
 
 fn load_master(pkg: &RefCell<Package>, master_path: &str) -> Result<MasterInfo, ConvertError> {
@@ -339,8 +326,7 @@ struct PhInfo {
 }
 
 fn placeholder_type(sp: &Element) -> Option<&str> {
-    sp.first_descendant(ns::P, "ph")
-        .map(|ph| ph.attr(ns::P, "type").unwrap_or("body"))
+    sp.first_descendant(ns::P, "ph").map(|ph| ph.attr(ns::P, "type").unwrap_or("body"))
 }
 
 fn parse_shapes(
@@ -370,8 +356,7 @@ fn parse_shapes(
                     .map(clean_text)
                     .unwrap_or_default();
                 let rid = child.first_descendant(ns::A, "blip").and_then(|b| {
-                    b.attr_qualified(ns::R, "embed")
-                        .or_else(|| b.attr_qualified(ns::R, "link"))
+                    b.attr_qualified(ns::R, "embed").or_else(|| b.attr_qualified(ns::R, "link"))
                 });
                 // External-mode targets (`r:link`) become external image
                 // sources; embedded targets are retained as assets.
@@ -412,10 +397,7 @@ fn parse_shape(sp: &Element, ctx: &SlideCtx, blocks: &mut Vec<Block>) -> Result<
         return Ok(());
     };
     // Titles get heading semantics but keep their shape-order position.
-    if ph
-        .as_ref()
-        .is_some_and(|p| cascade::title_class(&p.ph_type) == TitleClass::Title)
-    {
+    if ph.as_ref().is_some_and(|p| cascade::title_class(&p.ph_type) == TitleClass::Title) {
         push_title_heading(tx, ctx, ph.as_ref(), blocks)?;
     } else {
         parse_text_body(tx, ctx, ph.as_ref(), blocks)?;
@@ -435,10 +417,8 @@ fn push_title_heading(
     let mut inlines: Vec<Inline> = Vec::new();
     for p in tx.find_all(ns::A, "p") {
         let ppr = p.find(ns::A, "pPr");
-        let lvl: usize = ppr
-            .and_then(|pr| pr.attr(ns::A, "lvl"))
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0);
+        let lvl: usize =
+            ppr.and_then(|pr| pr.attr(ns::A, "lvl")).and_then(|v| v.parse().ok()).unwrap_or(0);
         let mut props = ctx.base_props(ph, &shape_styles, lvl);
         if let Some(ppr) = ppr {
             props = props.merge(cascade::paragraph_props(ppr));
@@ -456,11 +436,7 @@ fn push_title_heading(
     }
     if !inlines_are_empty(&inlines) {
         let anchor = Some(crate::model::inlines_to_plain_text(&inlines));
-        blocks.push(Block::Heading {
-            level: 2,
-            anchor,
-            content: inlines,
-        });
+        blocks.push(Block::Heading { level: 2, anchor, content: inlines });
     }
     Ok(())
 }
@@ -483,10 +459,8 @@ fn parse_text_body(
 
     for p in tx.find_all(ns::A, "p") {
         let ppr = p.find(ns::A, "pPr");
-        let lvl: usize = ppr
-            .and_then(|pr| pr.attr(ns::A, "lvl"))
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0);
+        let lvl: usize =
+            ppr.and_then(|pr| pr.attr(ns::A, "lvl")).and_then(|v| v.parse().ok()).unwrap_or(0);
         let mut props = ctx.base_props(ph, &shape_styles, lvl);
         if let Some(ppr) = ppr {
             props = props.merge(cascade::paragraph_props(ppr));
@@ -498,11 +472,7 @@ fn parse_text_body(
             continue;
         }
         match props.bullet {
-            Bullet::AutoNum {
-                marker,
-                start,
-                wrap,
-            } => {
+            Bullet::AutoNum { marker, start, wrap } => {
                 let lvl_idx = lvl.min(cascade::LEVELS - 1);
                 let number = if started[lvl_idx] {
                     counters[lvl_idx].saturating_add(1)
@@ -524,10 +494,7 @@ fn parse_text_body(
             }
             Bullet::Char => list_run.push(ListEntry {
                 level: lvl,
-                key: ListKey {
-                    instance,
-                    marker: MarkerKind::Bullet,
-                },
+                key: ListKey { instance, marker: MarkerKind::Bullet },
                 number: 0,
                 label: None,
                 blocks: vec![Block::Paragraph(inlines)],
@@ -580,10 +547,7 @@ fn parse_para_inlines(p: &Element, ctx: &SlideCtx, base: Style) -> Vec<Inline> {
                     .and_then(|rid| ctx.rels.get(rid))
                     .map(|rel| ctx.link_target(rel));
                 match target {
-                    Some(target) => out.push(Inline::Link {
-                        content: vec![inline],
-                        target,
-                    }),
+                    Some(target) => out.push(Inline::Link { content: vec![inline], target }),
                     None => out.push(inline),
                 }
             }
@@ -607,11 +571,8 @@ fn parse_graphic_frame(
     if let Some(ole) = frame.first_descendant(ns::P, "oleObj") {
         let prog_id = ole.attr(ns::P, "progId").unwrap_or("object");
         let name = ole.attr(ns::P, "name").unwrap_or("").trim();
-        let alt = if name.is_empty() {
-            format!("Embedded object: {prog_id}")
-        } else {
-            name.to_string()
-        };
+        let alt =
+            if name.is_empty() { format!("Embedded object: {prog_id}") } else { name.to_string() };
         let source = match ole.attr_qualified(ns::R, "id") {
             Some(rid) => match ctx.rel_part(rid)? {
                 Some((part, bytes)) => Some(ImageSource::Asset(ctx.assets.borrow_mut().add(
@@ -670,16 +631,10 @@ fn parse_table(tbl: &Element, ctx: &SlideCtx, blocks: &mut Vec<Block>) -> Result
                 builder.covered();
                 continue;
             }
-            let col_span: u32 = tc
-                .attr(ns::A, "gridSpan")
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(1)
-                .max(1);
-            let row_span: u32 = tc
-                .attr(ns::A, "rowSpan")
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(1)
-                .max(1);
+            let col_span: u32 =
+                tc.attr(ns::A, "gridSpan").and_then(|v| v.parse().ok()).unwrap_or(1).max(1);
+            let row_span: u32 =
+                tc.attr(ns::A, "rowSpan").and_then(|v| v.parse().ok()).unwrap_or(1).max(1);
             let mut cell_blocks = Vec::new();
             if let Some(tx) = tc.find(ns::A, "txBody") {
                 parse_text_body(tx, ctx, None, &mut cell_blocks)?;

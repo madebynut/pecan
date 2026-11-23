@@ -25,9 +25,7 @@ impl Tex {
     }
 
     pub fn push_str(&mut self, s: &str) {
-        let Some(first) = s.chars().next() else {
-            return;
-        };
+        let Some(first) = s.chars().next() else { return };
         if self.after_macro && first.is_ascii_alphabetic() {
             self.out.push(' ');
         }
@@ -72,11 +70,7 @@ impl Tex {
             || inner.out.strip_prefix('\\').is_some_and(|name| {
                 !name.is_empty() && name.chars().all(|c| c.is_ascii_alphabetic())
             });
-        if atom {
-            self.push_tex(inner)
-        } else {
-            self.push_group(inner)
-        }
+        if atom { self.push_tex(inner) } else { self.push_group(inner) }
     }
 
     /// `\name{inner}`.
@@ -113,9 +107,7 @@ impl Tex {
     }
 
     fn flush_variant(&mut self, pending: Option<(Variant, String)>) {
-        let Some((variant, run)) = pending else {
-            return;
-        };
+        let Some((variant, run)) = pending else { return };
         let mut inner = Tex::new();
         inner.push_math_text(&run);
         self.push_command(variant.command(), &inner);
@@ -184,11 +176,7 @@ impl Tex {
 /// Whether `s` ends in a letter-named control word (`\alpha`, `\left\langle`),
 /// which would swallow a letter written directly after it.
 fn ends_with_control_word(s: &str) -> bool {
-    let name_len = s
-        .chars()
-        .rev()
-        .take_while(|c| c.is_ascii_alphabetic())
-        .count();
+    let name_len = s.chars().rev().take_while(|c| c.is_ascii_alphabetic()).count();
     name_len > 0 && s[..s.len() - name_len].ends_with('\\')
 }
 
@@ -294,11 +282,7 @@ pub(crate) fn fold_alnum(c: char) -> Option<(char, Variant)> {
                     Monospace,
                 ];
                 let (style, i) = ((offset / 52) as usize, offset % 52);
-                let base = if i < 26 {
-                    b'A' + i as u8
-                } else {
-                    b'a' + (i - 26) as u8
-                };
+                let base = if i < 26 { b'A' + i as u8 } else { b'a' + (i - 26) as u8 };
                 return Some((base as char, LATIN[style]));
             }
             let greek = cp.checked_sub(0x1D6A8)?;

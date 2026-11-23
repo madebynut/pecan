@@ -96,23 +96,20 @@ impl<'a> OdfStyles<'a> {
                     if style.is(ns::STYLE, "default-style")
                         && let Some(family) = style.attr(ns::STYLE, "family")
                     {
-                        self.defaults
-                            .insert(family.to_string(), text_properties_delta(style));
+                        self.defaults.insert(family.to_string(), text_properties_delta(style));
                     }
                     if style.is(ns::STYLE, "style")
                         && let Some(name) = style.attr(ns::STYLE, "name")
                     {
                         let family = style.attr(ns::STYLE, "family").unwrap_or("");
-                        let parent = style
-                            .attr(ns::STYLE, "parent-style-name")
-                            .map(|p| key(family, p));
+                        let parent =
+                            style.attr(ns::STYLE, "parent-style-name").map(|p| key(family, p));
                         self.raw.insert(key(family, name), (style, parent));
                     }
                     if style.is(ns::TEXT, "list-style")
                         && let Some(name) = style.attr(ns::STYLE, "name")
                     {
-                        self.list_styles
-                            .insert(name.to_string(), parse_list_style(style));
+                        self.list_styles.insert(name.to_string(), parse_list_style(style));
                     }
                     if style.is(ns::TEXT, "outline-style") {
                         self.outline = Some(parse_list_style(style));
@@ -140,10 +137,9 @@ impl<'a> OdfStyles<'a> {
             }
             chain.push(current);
             cursor = match self.raw.get(current) {
-                Some((_, Some(parent))) => self
-                    .raw
-                    .get_key_value(parent.as_str())
-                    .map(|(k, _)| k.as_str()),
+                Some((_, Some(parent))) => {
+                    self.raw.get_key_value(parent.as_str()).map(|(k, _)| k.as_str())
+                }
                 _ => None,
             };
         }
@@ -164,10 +160,7 @@ impl<'a> OdfStyles<'a> {
         let mut visited: HashSet<String> = HashSet::new();
         while visited.insert(id.clone()) {
             let (def, parent) = self.raw.get(&id)?;
-            if let Some(hit) = def
-                .attr(ns::STYLE, "name")
-                .and_then(blockstyle::from_style_name)
-            {
+            if let Some(hit) = def.attr(ns::STYLE, "name").and_then(blockstyle::from_style_name) {
                 return Some(hit);
             }
             id = parent.clone()?;
@@ -203,10 +196,7 @@ pub fn parse_start(v: &str) -> Option<u64> {
 fn parse_list_style(style: &Element) -> [ListLevel; LIST_LEVELS] {
     let mut levels: [ListLevel; LIST_LEVELS] = std::array::from_fn(|_| ListLevel::default());
     for lvl in style.child_elems() {
-        let Some(n) = lvl
-            .attr(ns::TEXT, "level")
-            .and_then(|v| v.parse::<usize>().ok())
-        else {
+        let Some(n) = lvl.attr(ns::TEXT, "level").and_then(|v| v.parse::<usize>().ok()) else {
             continue;
         };
         if !(1..=LIST_LEVELS).contains(&n) {
@@ -222,19 +212,11 @@ fn parse_list_style(style: &Element) -> [ListLevel; LIST_LEVELS] {
                 Some("") => MarkerKind::Bullet,
                 _ => MarkerKind::Decimal,
             };
-            slot.start = lvl
-                .attr(ns::TEXT, "start-value")
-                .and_then(parse_start)
-                .unwrap_or(1);
-            slot.prefix = lvl
-                .attr(ns::STYLE, "num-prefix")
-                .unwrap_or_default()
-                .to_string();
+            slot.start = lvl.attr(ns::TEXT, "start-value").and_then(parse_start).unwrap_or(1);
+            slot.prefix = lvl.attr(ns::STYLE, "num-prefix").unwrap_or_default().to_string();
             slot.suffix = lvl.attr(ns::STYLE, "num-suffix").map(str::to_string);
-            slot.display_levels = lvl
-                .attr(ns::TEXT, "display-levels")
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(1);
+            slot.display_levels =
+                lvl.attr(ns::TEXT, "display-levels").and_then(|v| v.parse().ok()).unwrap_or(1);
         }
     }
     levels
@@ -249,12 +231,8 @@ pub fn text_properties_delta(elem: &Element) -> StyleDelta {
         bold: props
             .attr(ns::FO, "font-weight")
             .map(|w| w == "bold" || w.parse::<u32>().is_ok_and(|n| n >= 600)),
-        italic: props
-            .attr(ns::FO, "font-style")
-            .map(|s| s == "italic" || s == "oblique"),
-        strike: props
-            .attr(ns::STYLE, "text-line-through-style")
-            .map(|lt| lt != "none"),
+        italic: props.attr(ns::FO, "font-style").map(|s| s == "italic" || s == "oblique"),
+        strike: props.attr(ns::STYLE, "text-line-through-style").map(|lt| lt != "none"),
         code: None,
     }
 }

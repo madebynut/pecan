@@ -42,12 +42,7 @@ impl AssetSink {
         }
         let id = AssetId(self.assets.len());
         self.by_part.insert(origin_part.clone(), id);
-        self.assets.push(Asset {
-            id,
-            media_type,
-            origin_part,
-            bytes: bytes.to_vec(),
-        });
+        self.assets.push(Asset { id, media_type, origin_part, bytes: bytes.to_vec() });
         Ok(id)
     }
 }
@@ -81,10 +76,7 @@ pub fn rel_image_source(
 
 /// MIME type from a part path's extension.
 pub fn media_type_for(part: &str) -> String {
-    let ext = part
-        .rsplit_once('.')
-        .map(|(_, e)| e.to_ascii_lowercase())
-        .unwrap_or_default();
+    let ext = part.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
     match ext.as_str() {
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
@@ -107,18 +99,11 @@ mod tests {
     #[test]
     fn repeated_origin_parts_share_one_asset() {
         let mut sink = AssetSink::new();
-        let a = sink
-            .add("image/png".into(), "media/one.png".into(), &[1; 64])
-            .unwrap();
-        let b = sink
-            .add("image/png".into(), "media/one.png".into(), &[1; 64])
-            .unwrap();
+        let a = sink.add("image/png".into(), "media/one.png".into(), &[1; 64]).unwrap();
+        let b = sink.add("image/png".into(), "media/one.png".into(), &[1; 64]).unwrap();
         assert_eq!(a, b);
         assert_eq!(sink.assets.len(), 1);
-        assert_eq!(
-            sink.total, 64,
-            "repeated references must not re-count bytes"
-        );
+        assert_eq!(sink.total, 64, "repeated references must not re-count bytes");
     }
 
     #[test]
@@ -128,10 +113,7 @@ mod tests {
         let mut sink = AssetSink::new();
         sink.total = limits::MAX_ASSET_TOTAL_BYTES - 10;
         for _ in 0..8 {
-            assert!(
-                sink.add("image/png".into(), "media/big.png".into(), &[0; 8])
-                    .is_ok()
-            );
+            assert!(sink.add("image/png".into(), "media/big.png".into(), &[0; 8]).is_ok());
         }
     }
 
@@ -139,15 +121,7 @@ mod tests {
     fn crossing_the_cap_is_a_hard_error() {
         let mut sink = AssetSink::new();
         sink.total = limits::MAX_ASSET_TOTAL_BYTES - 10;
-        let err = sink
-            .add("image/png".into(), "media/big.png".into(), &[0; 11])
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            ConvertError::ResourceLimit {
-                limit: "max_asset_total_bytes",
-                ..
-            }
-        ));
+        let err = sink.add("image/png".into(), "media/big.png".into(), &[0; 11]).unwrap_err();
+        assert!(matches!(err, ConvertError::ResourceLimit { limit: "max_asset_total_bytes", .. }));
     }
 }

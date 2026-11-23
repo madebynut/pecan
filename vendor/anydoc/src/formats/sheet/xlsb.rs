@@ -78,9 +78,8 @@ pub(super) fn parse(pkg: &mut Package, wb_part: &str) -> Result<Document, Conver
     // One budget for the workbook, so sheets cannot multiply the cap.
     let mut slots = 0u64;
     for (name, part) in &sheets {
-        let content = pkg
-            .optional_part(part)?
-            .map(|bytes| read_sheet(&bytes, &shared, &xfs, date1904));
+        let content =
+            pkg.optional_part(part)?.map(|bytes| read_sheet(&bytes, &shared, &xfs, date1904));
         let mut content = match content {
             Some(Ok(c)) => c,
             Some(Err(e)) if e.is_fatal() => return Err(e),
@@ -100,15 +99,12 @@ pub(super) fn parse(pkg: &mut Package, wb_part: &str) -> Result<Document, Conver
             continue;
         };
         if multi_sheet {
-            doc.blocks
-                .push(Block::heading(2, vec![Inline::plain(name.clone())]));
+            doc.blocks.push(Block::heading(2, vec![Inline::plain(name.clone())]));
         }
         doc.blocks.push(Block::Table(table));
     }
     if !sheets.is_empty() && failed == sheets.len() {
-        return Err(ConvertError::malformed(
-            "no sheet in the workbook could be read",
-        ));
+        return Err(ConvertError::malformed("no sheet in the workbook could be read"));
     }
     Ok(doc)
 }
@@ -195,12 +191,7 @@ fn read_styles(data: &[u8]) -> Result<Vec<CellFormat>, ConvertError> {
     let mut cache: HashMap<u32, CellFormat> = HashMap::new();
     Ok(fmt_ids
         .iter()
-        .map(|id| {
-            cache
-                .entry(*id)
-                .or_insert_with(|| resolve_format(*id, &custom))
-                .clone()
-        })
+        .map(|id| cache.entry(*id).or_insert_with(|| resolve_format(*id, &custom)).clone())
         .collect())
 }
 
@@ -264,8 +255,7 @@ fn read_sheet(
                     continue;
                 }
                 if r1 != r2 || c1 != c2 {
-                    out.merges
-                        .push((r1.min(r2), c1.min(c2), r1.max(r2), c1.max(c2)));
+                    out.merges.push((r1.min(r2), c1.min(c2), r1.max(r2), c1.max(c2)));
                 }
             }
             BRT_CELL_RK | BRT_CELL_ERROR | BRT_CELL_BOOL | BRT_CELL_REAL | BRT_CELL_ST
@@ -350,11 +340,7 @@ struct Records<'a> {
 
 impl<'a> Records<'a> {
     fn new(data: &'a [u8]) -> Self {
-        Records {
-            data,
-            pos: 0,
-            seen: 0,
-        }
+        Records { data, pos: 0, seen: 0 }
     }
 
     fn next(&mut self) -> Result<Option<(u16, &'a [u8])>, ConvertError> {
@@ -437,21 +423,15 @@ impl<'a> Fields<'a> {
     }
 
     fn u16(&mut self) -> Result<u16, ConvertError> {
-        Ok(u16::from_le_bytes(
-            self.take(2)?.try_into().expect("2-byte slice"),
-        ))
+        Ok(u16::from_le_bytes(self.take(2)?.try_into().expect("2-byte slice")))
     }
 
     fn u32(&mut self) -> Result<u32, ConvertError> {
-        Ok(u32::from_le_bytes(
-            self.take(4)?.try_into().expect("4-byte slice"),
-        ))
+        Ok(u32::from_le_bytes(self.take(4)?.try_into().expect("4-byte slice")))
     }
 
     fn f64(&mut self) -> Result<f64, ConvertError> {
-        Ok(f64::from_le_bytes(
-            self.take(8)?.try_into().expect("8-byte slice"),
-        ))
+        Ok(f64::from_le_bytes(self.take(8)?.try_into().expect("8-byte slice")))
     }
 
     /// XLWideString (MS-XLSB 2.5.169): a u32 character count, then that many
@@ -463,9 +443,7 @@ impl<'a> Fields<'a> {
             .ok_or_else(|| ConvertError::malformed("oversized string length"))
             .and_then(|n| self.take(n))?;
         let units = utf16le_units(bytes);
-        Ok(char::decode_utf16(units)
-            .map(|r| r.unwrap_or(char::REPLACEMENT_CHARACTER))
-            .collect())
+        Ok(char::decode_utf16(units).map(|r| r.unwrap_or(char::REPLACEMENT_CHARACTER)).collect())
     }
 
     /// XLNullableWideString: the reserved count 0xFFFFFFFF is the null
@@ -560,13 +538,7 @@ mod tests {
     }
 
     fn merge(r1: u32, r2: u32, c1: u32, c2: u32) -> Vec<u8> {
-        let p = [
-            r1.to_le_bytes(),
-            r2.to_le_bytes(),
-            c1.to_le_bytes(),
-            c2.to_le_bytes(),
-        ]
-        .concat();
+        let p = [r1.to_le_bytes(), r2.to_le_bytes(), c1.to_le_bytes(), c2.to_le_bytes()].concat();
         rec(BRT_MERGE_CELL, &p)
     }
 
@@ -586,10 +558,7 @@ mod tests {
             out.extend(rec(BRT_FMT, &p));
         }
         out.extend(xf(0xFFFF, 9)); // cell-style XF outside cellXfs
-        out.extend(rec(
-            BRT_BEGIN_CELL_XFS,
-            &(xf_fmt_ids.len() as u32).to_le_bytes(),
-        ));
+        out.extend(rec(BRT_BEGIN_CELL_XFS, &(xf_fmt_ids.len() as u32).to_le_bytes()));
         for id in xf_fmt_ids {
             out.extend(xf(0, *id));
         }
@@ -676,10 +645,7 @@ mod tests {
     }
 
     fn one_sheet(body: Vec<u8>) -> Wb<'static> {
-        Wb {
-            sheets: vec![("S", 0, body)],
-            ..Wb::default()
-        }
+        Wb { sheets: vec![("S", 0, body)], ..Wb::default() }
     }
 
     fn first_table(doc: &Document) -> &Table {
@@ -735,10 +701,7 @@ mod tests {
         let mut stream = rec(BRT_CELL_RK, &[0u8; 10]);
         stream.truncate(stream.len() - 1);
         let mut records = Records::new(&stream);
-        assert!(
-            records.next().is_err(),
-            "payload shorter than its declared size must error"
-        );
+        assert!(records.next().is_err(), "payload shorter than its declared size must error");
     }
 
     #[test]
@@ -793,10 +756,7 @@ mod tests {
             p.extend(wstr("  inline  "));
             rec(BRT_CELL_ST, &p)
         });
-        let wb = Wb {
-            shared: Some(shared_strings(&["zeroth", "shared"])),
-            ..one_sheet(body)
-        };
+        let wb = Wb { shared: Some(shared_strings(&["zeroth", "shared"])), ..one_sheet(body) };
         let doc = parse(&wb.build()).unwrap();
         // Untrimmed: leading/trailing whitespace in a cell is source content.
         assert_eq!(texts(first_table(&doc)), vec![vec!["shared", "  inline  "]]);
@@ -815,10 +775,7 @@ mod tests {
         body.extend(byte_cell(BRT_CELL_ERROR, 2, 0x07));
         body.extend(byte_cell(BRT_CELL_ERROR, 3, 0x2A));
         let doc = parse(&one_sheet(body).build()).unwrap();
-        assert_eq!(
-            texts(first_table(&doc)),
-            vec![vec!["TRUE", "FALSE", "#DIV/0!", "#N/A"]]
-        );
+        assert_eq!(texts(first_table(&doc)), vec![vec!["TRUE", "FALSE", "#DIV/0!", "#N/A"]]);
     }
 
     #[test]
@@ -864,15 +821,8 @@ mod tests {
             ..Wb::default()
         };
         let doc = parse(&wb.build()).unwrap();
-        assert_eq!(
-            doc.blocks.len(),
-            1,
-            "hidden sheets must add no heading and no table"
-        );
-        assert_eq!(
-            texts(first_table(&doc)),
-            vec![vec!["1", "3"], vec!["5", ""]]
-        );
+        assert_eq!(doc.blocks.len(), 1, "hidden sheets must add no heading and no table");
+        assert_eq!(texts(first_table(&doc)), vec![vec!["1", "3"], vec!["5", ""]]);
     }
 
     #[test]

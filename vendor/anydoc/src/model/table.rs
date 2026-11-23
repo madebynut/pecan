@@ -58,11 +58,7 @@ pub struct Cell {
 impl Cell {
     /// A cell spanning one position.
     pub fn new(blocks: Vec<Block>) -> Self {
-        Cell {
-            blocks,
-            col_span: 1,
-            row_span: 1,
-        }
+        Cell { blocks, col_span: 1, row_span: 1 }
     }
 
     /// A one-paragraph cell spanning one position.
@@ -73,11 +69,7 @@ impl Cell {
     /// A cell covering `col_span` by `row_span` positions; either span given
     /// as 0 is raised to 1.
     pub fn spanning(blocks: Vec<Block>, col_span: u32, row_span: u32) -> Self {
-        Cell {
-            blocks,
-            col_span: col_span.max(1),
-            row_span: row_span.max(1),
-        }
+        Cell { blocks, col_span: col_span.max(1), row_span: row_span.max(1) }
     }
 
     /// True when the cell holds nothing that would render: only paragraphs
@@ -99,12 +91,8 @@ impl Table {
             b.next_row();
             for cell in row {
                 // Span-less placement never charges the expansion budget.
-                b.place(Cell {
-                    col_span: 1,
-                    row_span: 1,
-                    ..cell
-                })
-                .expect("span-less placement cannot exceed the expansion budget");
+                b.place(Cell { col_span: 1, row_span: 1, ..cell })
+                    .expect("span-less placement cannot exceed the expansion budget");
             }
         }
         let mut table = b.finish(kind);
@@ -166,10 +154,7 @@ impl GridBuilder {
     fn skip_pending(&mut self, row: usize) {
         while let Some((origin_row, origin_col)) = self.pending.remove(&(row, self.grid[row].len()))
         {
-            self.grid[row].push(CellSlot::Covered {
-                origin_row,
-                origin_col,
-            });
+            self.grid[row].push(CellSlot::Covered { origin_row, origin_col });
         }
     }
 
@@ -236,10 +221,7 @@ impl GridBuilder {
         let col = self.grid[row].len();
         match self.pending.remove(&(row, col)) {
             Some((origin_row, origin_col)) => {
-                self.grid[row].push(CellSlot::Covered {
-                    origin_row,
-                    origin_col,
-                });
+                self.grid[row].push(CellSlot::Covered { origin_row, origin_col });
                 true
             }
             None => {
@@ -270,10 +252,7 @@ impl GridBuilder {
                 // Placement always consumes pending slots at the cursor, so a
                 // still-pending position can only sit at or past the row end.
                 debug_assert_eq!(self.grid[row].len(), col);
-                self.grid[row].push(CellSlot::Covered {
-                    origin_row,
-                    origin_col,
-                });
+                self.grid[row].push(CellSlot::Covered { origin_row, origin_col });
             }
         }
         // Drop trailing all-empty rows.
@@ -288,20 +267,16 @@ impl GridBuilder {
         // Clamp stored spans to the surviving grid so every claimed
         // position is backed by a covered marker (exactly-once invariant).
         let rows = self.grid.len();
-        for r in 0..rows {
-            let width = self.grid[r].len();
-            for c in 0..width {
-                if let CellSlot::Origin(cell) = &mut self.grid[r][c] {
+        for (r, row) in self.grid.iter_mut().enumerate() {
+            let width = row.len();
+            for (c, slot) in row.iter_mut().enumerate() {
+                if let CellSlot::Origin(cell) = slot {
                     cell.row_span = cell.row_span.min((rows - r) as u32);
                     cell.col_span = cell.col_span.min((width - c) as u32);
                 }
             }
         }
-        Table {
-            grid: self.grid,
-            header_rows: 0,
-            kind,
-        }
+        Table { grid: self.grid, header_rows: 0, kind }
     }
 }
 
@@ -325,13 +300,7 @@ mod tests {
         b.place(text_cell("end")).unwrap();
         let t = b.finish(TableKind::Data);
         assert_eq!(widths(&t), vec![3]);
-        assert!(matches!(
-            t.grid[0][1],
-            CellSlot::Covered {
-                origin_row: 0,
-                origin_col: 0
-            }
-        ));
+        assert!(matches!(t.grid[0][1], CellSlot::Covered { origin_row: 0, origin_col: 0 }));
     }
 
     #[test]
@@ -344,13 +313,7 @@ mod tests {
         b.place(text_cell("b2")).unwrap();
         let t = b.finish(TableKind::Data);
         assert_eq!(widths(&t), vec![2, 2]);
-        assert!(matches!(
-            t.grid[1][0],
-            CellSlot::Covered {
-                origin_row: 0,
-                origin_col: 0
-            }
-        ));
+        assert!(matches!(t.grid[1][0], CellSlot::Covered { origin_row: 0, origin_col: 0 }));
         assert!(matches!(&t.grid[1][1], CellSlot::Origin(c) if !c.is_empty()));
     }
 
@@ -471,12 +434,7 @@ mod tests {
         // not keep claiming them.
         let mut b = GridBuilder::new();
         b.next_row();
-        b.place(Cell::spanning(
-            vec![Block::Paragraph(vec![Inline::plain("x")])],
-            1,
-            3,
-        ))
-        .unwrap();
+        b.place(Cell::spanning(vec![Block::Paragraph(vec![Inline::plain("x")])], 1, 3)).unwrap();
         b.next_row();
         b.next_row();
         let t = b.finish(TableKind::Data);
@@ -489,16 +447,8 @@ mod tests {
     fn huge_span_hits_the_expansion_budget_before_expanding() {
         let mut b = GridBuilder::new();
         b.next_row();
-        let err = b
-            .place(Cell::spanning(vec![], u32::MAX, u32::MAX))
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            ConvertError::ResourceLimit {
-                limit: "max_expansion",
-                ..
-            }
-        ));
+        let err = b.place(Cell::spanning(vec![], u32::MAX, u32::MAX)).unwrap_err();
+        assert!(matches!(err, ConvertError::ResourceLimit { limit: "max_expansion", .. }));
     }
 
     #[test]
@@ -510,13 +460,7 @@ mod tests {
         b.next_row();
         b.place(Cell::spanning(vec![], 3, 3)).unwrap(); // 8 more: still within
         let err = b.place(Cell::spanning(vec![], 2, 2)).unwrap_err(); // 3 more: over
-        assert!(matches!(
-            err,
-            ConvertError::ResourceLimit {
-                limit: "max_expansion",
-                ..
-            }
-        ));
+        assert!(matches!(err, ConvertError::ResourceLimit { limit: "max_expansion", .. }));
     }
 
     #[test]
@@ -533,13 +477,7 @@ mod tests {
         b.place(text_cell("only")).unwrap();
         let t = b.finish(TableKind::Data);
         assert_eq!(t.grid[1].len(), 6);
-        assert!(matches!(
-            t.grid[1][5],
-            CellSlot::Covered {
-                origin_row: 0,
-                origin_col: 5
-            }
-        ));
+        assert!(matches!(t.grid[1][5], CellSlot::Covered { origin_row: 0, origin_col: 5 }));
         assert!(matches!(&t.grid[0][5], CellSlot::Origin(c) if c.row_span == 2));
         assert_spans_backed(&t);
     }

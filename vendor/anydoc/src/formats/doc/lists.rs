@@ -156,11 +156,8 @@ fn parse_lvl(plf: &[u8], pos: usize) -> Option<(LevelDef, usize)> {
     let no_restart = flags & 0x08 != 0;
     // rgbxchNums: one-based offsets of number placeholders within xst,
     // zero-terminated unless full.
-    let placeholder_offsets: Vec<u8> = header[6..15]
-        .iter()
-        .copied()
-        .take_while(|&b| b != 0)
-        .collect();
+    let placeholder_offsets: Vec<u8> =
+        header[6..15].iter().copied().take_while(|&b| b != 0).collect();
     let restart_lim = header[26];
     let cb_papx = header[25] as usize;
     let cb_chpx = header[24] as usize;
@@ -186,12 +183,7 @@ fn parse_lvl(plf: &[u8], pos: usize) -> Option<(LevelDef, usize)> {
     next = next.checked_add(xch_count.checked_mul(2)?)?;
     let restart = no_restart.then_some(restart_lim as u32);
     Some((
-        LevelDef {
-            marker,
-            start,
-            restart,
-            pattern: NumberPattern { text, legal },
-        },
+        LevelDef { marker, start, restart, pattern: NumberPattern { text, legal } },
         pos.checked_add(next)?,
     ))
 }
@@ -221,11 +213,9 @@ fn parse_plf_lfo(plf: &[u8], by_lsid: &HashMap<u32, [LevelDef; LEVELS]>, lists: 
     for (i, (lsid, clfolvl)) in lfos.into_iter().enumerate() {
         let ilfo = (i + 1) as u16;
         let mut def = match by_lsid.get(&lsid) {
-            Some(levels) => ListDef {
-                lsid,
-                levels: levels.clone(),
-                start_override: [None; LEVELS],
-            },
+            Some(levels) => {
+                ListDef { lsid, levels: levels.clone(), start_override: [None; LEVELS] }
+            }
             None => ListDef::unknown(ilfo),
         };
         for _ in 0..clfolvl {

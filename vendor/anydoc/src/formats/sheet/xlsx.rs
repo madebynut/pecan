@@ -29,11 +29,7 @@ pub(super) fn parse(pkg: &mut Package, wb_part: &str) -> Result<Document, Conver
     let workbook = pkg.required_xml_part(wb_part)?;
     // Any OOXML main part resolves here; a document or presentation would
     // otherwise convert to an empty workbook.
-    if !workbook
-        .child_elems()
-        .next()
-        .is_some_and(|e| e.is(ns::SML, "workbook"))
-    {
+    if !workbook.child_elems().next().is_some_and(|e| e.is(ns::SML, "workbook")) {
         return Err(ConvertError::malformed("main part is not a workbook"));
     }
     let wb_rels = read_rels(pkg, &rels_part_for(wb_part))?;
@@ -42,23 +38,13 @@ pub(super) fn parse(pkg: &mut Package, wb_part: &str) -> Result<Document, Conver
         .and_then(|e| e.attr_unqualified("date1904"))
         .is_some_and(bool_attr);
 
-    let shared = match sibling_part(
-        pkg,
-        &wb_rels,
-        wb_part,
-        SHARED_STRINGS_REL,
-        "sharedStrings.xml",
-    )? {
-        Some(root) => shared_strings(&root),
-        None => Vec::new(),
-    };
-    let styles = Styles::read(sibling_part(
-        pkg,
-        &wb_rels,
-        wb_part,
-        rel_type::STYLES,
-        "styles.xml",
-    )?);
+    let shared =
+        match sibling_part(pkg, &wb_rels, wb_part, SHARED_STRINGS_REL, "sharedStrings.xml")? {
+            Some(root) => shared_strings(&root),
+            None => Vec::new(),
+        };
+    let styles =
+        Styles::read(sibling_part(pkg, &wb_rels, wb_part, rel_type::STYLES, "styles.xml")?);
 
     // Visible sheets in workbook order; hidden and veryHidden sheets are
     // omitted entirely, heading included.
@@ -68,19 +54,12 @@ pub(super) fn parse(pkg: &mut Package, wb_part: &str) -> Result<Document, Conver
         .into_iter()
         .flat_map(|s| s.find_all(ns::SML, "sheet"))
     {
-        if matches!(
-            sheet.attr_unqualified("state"),
-            Some("hidden" | "veryHidden")
-        ) {
+        if matches!(sheet.attr_unqualified("state"), Some("hidden" | "veryHidden")) {
             continue;
         }
-        let name = sheet
-            .attr_unqualified("name")
-            .unwrap_or_default()
-            .to_string();
-        let Some(target) = sheet
-            .attr_qualified(ns::R, "id")
-            .and_then(|rid| wb_rels.internal_target(rid))
+        let name = sheet.attr_unqualified("name").unwrap_or_default().to_string();
+        let Some(target) =
+            sheet.attr_qualified(ns::R, "id").and_then(|rid| wb_rels.internal_target(rid))
         else {
             log::warn!("skipping sheet {name:?} with no worksheet relationship");
             continue;
@@ -98,10 +77,7 @@ pub(super) fn parse(pkg: &mut Package, wb_part: &str) -> Result<Document, Conver
     let mut slots = 0u64;
     for (name, part) in &sheets {
         let worksheet = pkg.optional_xml_part(part)?;
-        let Some(worksheet) = worksheet
-            .as_ref()
-            .and_then(|r| r.find(ns::SML, "worksheet"))
-        else {
+        let Some(worksheet) = worksheet.as_ref().and_then(|r| r.find(ns::SML, "worksheet")) else {
             log::warn!("skipping unreadable sheet {name:?}");
             failed += 1;
             continue;
@@ -112,15 +88,12 @@ pub(super) fn parse(pkg: &mut Package, wb_part: &str) -> Result<Document, Conver
             continue;
         };
         if multi_sheet {
-            doc.blocks
-                .push(Block::heading(2, vec![Inline::plain(name.clone())]));
+            doc.blocks.push(Block::heading(2, vec![Inline::plain(name.clone())]));
         }
         doc.blocks.push(Block::Table(table));
     }
     if !sheets.is_empty() && failed == sheets.len() {
-        return Err(ConvertError::malformed(
-            "no sheet in the workbook could be read",
-        ));
+        return Err(ConvertError::malformed("no sheet in the workbook could be read"));
     }
     Ok(doc)
 }
@@ -159,9 +132,7 @@ fn shared_strings(root: &Element) -> Vec<String> {
     let Some(sst) = root.find(ns::SML, "sst") else {
         return Vec::new();
     };
-    sst.find_all(ns::SML, "si")
-        .map(|si| clean_text(&rich_text(si)))
-        .collect()
+    sst.find_all(ns::SML, "si").map(|si| clean_text(&rich_text(si))).collect()
 }
 
 /// Text of an `si` or `is`: a single `t`, or rich-text `r` runs
@@ -221,10 +192,7 @@ impl Styles {
                             .attr_unqualified("numFmtId")
                             .and_then(|v| v.parse().ok())
                             .unwrap_or(0u32);
-                        cache
-                            .entry(id)
-                            .or_insert_with(|| resolve_format(id, &custom))
-                            .clone()
+                        cache.entry(id).or_insert_with(|| resolve_format(id, &custom)).clone()
                     })
                     .collect()
             })
@@ -302,10 +270,7 @@ fn read_sheet(
         }
     }
     let mut next_row: u32 = 0;
-    for row in worksheet
-        .find_all(ns::SML, "sheetData")
-        .flat_map(|sd| sd.find_all(ns::SML, "row"))
-    {
+    for row in worksheet.find_all(ns::SML, "sheetData").flat_map(|sd| sd.find_all(ns::SML, "row")) {
         let r = row
             .attr_unqualified("r")
             .and_then(|v| v.parse::<u32>().ok())
@@ -337,9 +302,8 @@ fn read_sheet(
             }
         }
     }
-    for merge in worksheet
-        .find_all(ns::SML, "mergeCells")
-        .flat_map(|mc| mc.find_all(ns::SML, "mergeCell"))
+    for merge in
+        worksheet.find_all(ns::SML, "mergeCells").flat_map(|mc| mc.find_all(ns::SML, "mergeCell"))
     {
         let Some(region) = merge.attr_unqualified("ref").and_then(parse_region) else {
             log::debug!("skipping unparseable merge reference");
@@ -400,11 +364,7 @@ pub(super) fn render_number(fmt: &CellFormat, n: f64, date1904: bool) -> String 
     let text = match fmt {
         CellFormat::General => format_float(n),
         CellFormat::Fmt(f) => match f.format_number(n) {
-            Rendered::General {
-                value,
-                prefix,
-                suffix,
-            } => {
+            Rendered::General { value, prefix, suffix } => {
                 format!("{prefix}{}{suffix}", format_float(value))
             }
             Rendered::Text(s) => s,
@@ -489,9 +449,7 @@ pub(super) fn build_table(
     // Merge regions touching the populated extent widen it to their full
     // size; the rest are dropped, so a crafted merge list can neither force
     // unbounded materialization nor saturate onto (0,0).
-    sheet
-        .merges
-        .retain(|&(mr1, mc1, mr2, mc2)| mr1 <= r2 && mr2 >= r1 && mc1 <= c2 && mc2 >= c1);
+    sheet.merges.retain(|&(mr1, mc1, mr2, mc2)| mr1 <= r2 && mr2 >= r1 && mc1 <= c2 && mc2 >= c1);
     for &(mr1, mc1, mr2, mc2) in &sheet.merges {
         (r1, c1, r2, c2) = (r1.min(mr1), c1.min(mc1), r2.max(mr2), c2.max(mc2));
     }
@@ -627,11 +585,7 @@ fn render_serial(serial: f64, parts: DateParts, date1904: bool) -> String {
     // A serial carrying no whole day has no date for a date format to show;
     // the clock a combined format also names still renders.
     if serial.abs() < 1.0 {
-        return if parts.time {
-            format_time_of_day(serial)
-        } else {
-            format_float(serial)
-        };
+        return if parts.time { format_time_of_day(serial) } else { format_float(serial) };
     }
     // Out of the representable date range (through 9999-12-31): the serial
     // is not a date, show the number.
@@ -663,12 +617,7 @@ fn render_serial(serial: f64, parts: DateParts, date1904: bool) -> String {
     }
     let mut out = format!("{y:04}-{m:02}-{d:02}");
     if parts.time && secs != 0 {
-        out.push_str(&format!(
-            " {:02}:{:02}:{:02}",
-            secs / 3600,
-            (secs % 3600) / 60,
-            secs % 60
-        ));
+        out.push_str(&format!(" {:02}:{:02}:{:02}", secs / 3600, (secs % 3600) / 60, secs % 60));
     }
     out
 }
@@ -711,9 +660,7 @@ fn parse_ref(r: &str) -> Option<(u32, u32)> {
         if !ch.is_ascii_alphabetic() {
             return None;
         }
-        col = col
-            .checked_mul(26)?
-            .checked_add(ch.to_ascii_uppercase() as u32 - 'A' as u32 + 1)?;
+        col = col.checked_mul(26)?.checked_add(ch.to_ascii_uppercase() as u32 - 'A' as u32 + 1)?;
         if col > MAX_COLS {
             return None;
         }
@@ -777,11 +724,8 @@ mod tests {
             let mut rels = String::new();
             for (i, (name, state, _)) in self.sheets.iter().enumerate() {
                 let id = i + 1;
-                let state = if state.is_empty() {
-                    String::new()
-                } else {
-                    format!(" state=\"{state}\"")
-                };
+                let state =
+                    if state.is_empty() { String::new() } else { format!(" state=\"{state}\"") };
                 sheets.push_str(&format!(
                     r#"<sheet name="{name}" sheetId="{id}"{state} r:id="rId{id}"/>"#
                 ));
@@ -799,11 +743,7 @@ mod tests {
                     r#"<Relationship Id="rId91" Type="{SHARED_STRINGS_REL}" Target="sharedStrings.xml"/>"#
                 ));
             }
-            let pr = if self.date1904 {
-                r#"<workbookPr date1904="1"/>"#
-            } else {
-                ""
-            };
+            let pr = if self.date1904 { r#"<workbookPr date1904="1"/>"# } else { "" };
             let workbook = format!(
                 r#"<?xml version="1.0"?><workbook xmlns="{SML}" xmlns:r="{R}">{pr}<sheets>{sheets}</sheets></workbook>"#
             );
@@ -846,10 +786,7 @@ mod tests {
     }
 
     fn one_sheet(body: &str) -> Wb<'_> {
-        Wb {
-            sheets: vec![("S", "", body)],
-            ..Wb::default()
-        }
+        Wb { sheets: vec![("S", "", body)], ..Wb::default() }
     }
 
     fn first_table(doc: &Document) -> &Table {
@@ -885,12 +822,7 @@ mod tests {
     }
 
     fn covered_count(table: &Table) -> usize {
-        table
-            .grid
-            .iter()
-            .flatten()
-            .filter(|s| matches!(s, CellSlot::Covered { .. }))
-            .count()
+        table.grid.iter().flatten().filter(|s| matches!(s, CellSlot::Covered { .. })).count()
     }
 
     #[test]
@@ -907,10 +839,7 @@ mod tests {
             )
         };
         let doc = parse(&wb.build()).unwrap();
-        assert_eq!(
-            texts(first_table(&doc)),
-            vec![vec!["7.5%", "$1,234.50", "2026-03-15"]]
-        );
+        assert_eq!(texts(first_table(&doc)), vec![vec!["7.5%", "$1,234.50", "2026-03-15"]]);
     }
 
     #[test]
@@ -1006,11 +935,7 @@ mod tests {
         // must neither cover cells nor drag the grid out to column A.
         let doc = parse(&sheet_with_merge("A1:B12")).unwrap();
         let table = first_table(&doc);
-        assert_eq!(
-            covered_count(table),
-            0,
-            "out-of-range merge must not cover cells"
-        );
+        assert_eq!(covered_count(table), 0, "out-of-range merge must not cover cells");
         assert_eq!(table.grid[0].len(), 2);
     }
 
@@ -1026,15 +951,8 @@ mod tests {
             ..Wb::default()
         };
         let doc = parse(&wb.build()).unwrap();
-        assert_eq!(
-            doc.blocks.len(),
-            1,
-            "hidden sheet must add no heading and no table"
-        );
-        assert_eq!(
-            texts(first_table(&doc)),
-            vec![vec!["a", "c"], vec!["d", ""]]
-        );
+        assert_eq!(doc.blocks.len(), 1, "hidden sheet must add no heading and no table");
+        assert_eq!(texts(first_table(&doc)), vec![vec!["a", "c"], vec!["d", ""]]);
     }
 
     #[test]
@@ -1078,40 +996,21 @@ mod tests {
         );
         let err = parse(&wb.build()).unwrap_err();
         assert!(
-            matches!(
-                err,
-                ConvertError::ResourceLimit {
-                    limit: "max_grid_slots",
-                    ..
-                }
-            ),
+            matches!(err, ConvertError::ResourceLimit { limit: "max_grid_slots", .. }),
             "got {err:?}"
         );
 
         // Sheets accumulate, so a pile of them cannot each sit under the cap.
         let half = r#"<sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>a</t></is></c></row><row r="150000"><c r="P150000" t="inlineStr"><is><t>b</t></is></c></row></sheetData>"#;
-        let wb = Wb {
-            sheets: vec![("A", "", half), ("B", "", half)],
-            ..Wb::default()
-        };
+        let wb = Wb { sheets: vec![("A", "", half), ("B", "", half)], ..Wb::default() };
         let err = parse(&wb.build()).unwrap_err();
         assert!(
-            matches!(
-                err,
-                ConvertError::ResourceLimit {
-                    limit: "max_grid_slots",
-                    ..
-                }
-            ),
+            matches!(err, ConvertError::ResourceLimit { limit: "max_grid_slots", .. }),
             "got {err:?}"
         );
     }
 
-    const DATE_ONLY: DateParts = DateParts {
-        date: true,
-        time: false,
-        elapsed: false,
-    };
+    const DATE_ONLY: DateParts = DateParts { date: true, time: false, elapsed: false };
 
     #[test]
     fn the_fictitious_leap_day_keeps_its_own_value() {
@@ -1128,11 +1027,7 @@ mod tests {
 
     #[test]
     fn a_sub_day_serial_keeps_the_clock_a_combined_format_names() {
-        let both = DateParts {
-            date: true,
-            time: true,
-            elapsed: false,
-        };
+        let both = DateParts { date: true, time: true, elapsed: false };
         assert_eq!(render_serial(0.5, both, false), "12:00:00");
         // A date-only format still has nothing to show but the number.
         assert_eq!(render_serial(0.5, DATE_ONLY, false), "0.5");
@@ -1181,9 +1076,6 @@ mod tests {
             ..Wb::default()
         };
         let doc = parse(&wb.build()).unwrap();
-        assert_eq!(
-            texts(first_table(&doc)),
-            vec![vec!["14", "L/R [x] Roof", "[ ]"]]
-        );
+        assert_eq!(texts(first_table(&doc)), vec![vec!["14", "L/R [x] Roof", "[ ]"]]);
     }
 }

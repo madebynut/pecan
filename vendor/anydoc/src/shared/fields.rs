@@ -130,11 +130,7 @@ pub fn hyperlink_target(instr: &str) -> Option<LinkTarget> {
 /// targets are parsed like hyperlink field targets (scheme detection);
 /// internal-mode targets stay package-relative.
 pub fn classify_rel_target(external: bool, target: &str) -> LinkTarget {
-    if external {
-        classify(target.to_string())
-    } else {
-        LinkTarget::Relative(target.to_string())
-    }
+    if external { classify(target.to_string()) } else { LinkTarget::Relative(target.to_string()) }
 }
 
 fn classify(url: String) -> LinkTarget {

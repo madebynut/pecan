@@ -18,7 +18,5 @@ fn choice_supported(choice: &Element, supported: &[&str]) -> bool {
     // Requires prefixes were resolved to namespace URIs at parse time, in
     // the element's own lexical scope; an unresolved prefix stays literal
     // and matches nothing.
-    requires
-        .split_whitespace()
-        .all(|uri| supported.contains(&uri))
+    requires.split_whitespace().all(|uri| supported.contains(&uri))
 }

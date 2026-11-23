@@ -72,20 +72,12 @@ pub fn composite_label(
             NumberText::Literal(s) => out.push_str(s),
             NumberText::Level(l) => {
                 let l = *l as usize;
-                let kind = if pattern.legal {
-                    MarkerKind::Decimal
-                } else {
-                    level_marker(l)
-                };
+                let kind = if pattern.legal { MarkerKind::Decimal } else { level_marker(l) };
                 out.push_str(&kind.ordinal(level_value(l)));
             }
         }
     }
-    if out == own_marker.label(own_value) {
-        None
-    } else {
-        Some(out)
-    }
+    if out == own_marker.label(own_value) { None } else { Some(out) }
 }
 
 #[cfg(test)]
@@ -112,46 +104,26 @@ mod tests {
             ]
         );
         // `%0` and a trailing `%` are literal.
-        assert_eq!(
-            parse_percent_pattern("%0%"),
-            vec![NumberText::Literal("%0%".into())]
-        );
+        assert_eq!(parse_percent_pattern("%0%"), vec![NumberText::Literal("%0%".into())]);
     }
 
     #[test]
     fn default_pattern_yields_no_label() {
-        let pattern = NumberPattern {
-            text: parse_percent_pattern("%1."),
-            legal: false,
-        };
-        let label = composite_label(
-            &pattern,
-            MarkerKind::Decimal,
-            3,
-            |_| MarkerKind::Decimal,
-            |_| 3,
-        );
+        let pattern = NumberPattern { text: parse_percent_pattern("%1."), legal: false };
+        let label =
+            composite_label(&pattern, MarkerKind::Decimal, 3, |_| MarkerKind::Decimal, |_| 3);
         assert_eq!(label, None);
     }
 
     #[test]
     fn composite_pattern_renders_parent_values() {
-        let pattern = NumberPattern {
-            text: parse_percent_pattern("%1-%2)"),
-            legal: false,
-        };
+        let pattern = NumberPattern { text: parse_percent_pattern("%1-%2)"), legal: false };
         let values = [2u64, 5];
         let label = composite_label(
             &pattern,
             MarkerKind::LowerAlpha,
             5,
-            |l| {
-                if l == 0 {
-                    MarkerKind::Decimal
-                } else {
-                    MarkerKind::LowerAlpha
-                }
-            },
+            |l| if l == 0 { MarkerKind::Decimal } else { MarkerKind::LowerAlpha },
             |l| values[l.min(1)],
         );
         assert_eq!(label.as_deref(), Some("2-e)"));
@@ -159,10 +131,7 @@ mod tests {
 
     #[test]
     fn legal_numbering_forces_decimal_references() {
-        let pattern = NumberPattern {
-            text: parse_percent_pattern("%1.%2"),
-            legal: true,
-        };
+        let pattern = NumberPattern { text: parse_percent_pattern("%1.%2"), legal: true };
         let label = composite_label(
             &pattern,
             MarkerKind::LowerRoman,

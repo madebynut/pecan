@@ -52,11 +52,7 @@ pub(super) fn builtin_code(id: u32) -> Option<&'static str> {
 #[derive(Debug, PartialEq)]
 pub(super) enum Rendered<'a> {
     /// Render this value the way an unformatted cell renders.
-    General {
-        value: f64,
-        prefix: &'a str,
-        suffix: &'a str,
-    },
+    General { value: f64, prefix: &'a str, suffix: &'a str },
     /// The section is a date/time format: render the serial as the parts it
     /// asks for.
     DateTime(DateParts),
@@ -191,10 +187,8 @@ impl NumberFormat {
         if parts.is_empty() || parts.len() > 4 {
             return None;
         }
-        let sections: Vec<Section> = parts
-            .iter()
-            .map(|p| parse_section(p))
-            .collect::<Option<_>>()?;
+        let sections: Vec<Section> =
+            parts.iter().map(|p| parse_section(p)).collect::<Option<_>>()?;
         if sections.iter().filter(|s| s.condition.is_some()).count() > 2 {
             return None;
         }
@@ -223,41 +217,21 @@ impl NumberFormat {
 
     pub(super) fn format_number(&self, v: f64) -> Rendered<'_> {
         if !v.is_finite() {
-            return Rendered::General {
-                value: v,
-                prefix: "",
-                suffix: "",
-            };
+            return Rendered::General { value: v, prefix: "", suffix: "" };
         }
         let Some((section, value, auto_minus)) = select(self.numeric_sections(), v) else {
-            return Rendered::General {
-                value: v,
-                prefix: "",
-                suffix: "",
-            };
+            return Rendered::General { value: v, prefix: "", suffix: "" };
         };
         match &section.body {
-            Body::General { prefix, suffix } => Rendered::General {
-                value,
-                prefix,
-                suffix,
-            },
+            Body::General { prefix, suffix } => Rendered::General { value, prefix, suffix },
             Body::DateTime(parts) => Rendered::DateTime(*parts),
             Body::Number(spec) => {
                 match render_number(spec, value.abs(), auto_minus && value < 0.0) {
                     Some(s) => Rendered::Text(s),
-                    None => Rendered::General {
-                        value: v,
-                        prefix: "",
-                        suffix: "",
-                    },
+                    None => Rendered::General { value: v, prefix: "", suffix: "" },
                 }
             }
-            Body::Text(_) => Rendered::General {
-                value: v,
-                prefix: "",
-                suffix: "",
-            },
+            Body::Text(_) => Rendered::General { value: v, prefix: "", suffix: "" },
         }
     }
 
@@ -320,11 +294,7 @@ fn select(sections: &[Section], v: f64) -> Option<(&Section, f64, bool)> {
     // The positional negative section renders the magnitude; its code
     // supplies the sign (parens, a literal minus).
     let neg_positional = idx == 1;
-    Some((
-        &sections[idx],
-        if neg_positional { v.abs() } else { v },
-        !neg_positional,
-    ))
+    Some((&sections[idx], if neg_positional { v.abs() } else { v }, !neg_positional))
 }
 
 /// Split a code on `;` outside quotes, brackets, and escapes.
@@ -358,9 +328,7 @@ fn split_sections(code: &str) -> Option<Vec<String>> {
     Some(parts)
 }
 
-const COLORS: &[&str] = &[
-    "black", "blue", "cyan", "green", "magenta", "red", "white", "yellow",
-];
+const COLORS: &[&str] = &["black", "blue", "cyan", "green", "magenta", "red", "white", "yellow"];
 
 /// The text literal tokens render as, used to carry the decoration around a
 /// `General` body.
@@ -376,10 +344,7 @@ fn decoration(toks: &[Tok]) -> String {
 /// Which parts a date/time section asks for. `m` is minutes when an hour run
 /// precedes it or a seconds run follows it, and months otherwise.
 fn date_parts(runs: &[char], elapsed: bool) -> DateParts {
-    let mut parts = DateParts {
-        elapsed,
-        ..DateParts::default()
-    };
+    let mut parts = DateParts { elapsed, ..DateParts::default() };
     for (i, &run) in runs.iter().enumerate() {
         match run {
             'y' | 'd' => parts.date = true,
@@ -430,14 +395,7 @@ fn parse_section(s: &str) -> Option<Section> {
                 let end = chars[i..].iter().position(|&c| c == ']')? + i;
                 let inner: String = chars[i + 1..end].iter().collect();
                 i = end + 1;
-                bracket(
-                    &inner,
-                    &mut raw,
-                    &mut condition,
-                    &mut has_date,
-                    &mut elapsed,
-                    &mut runs,
-                )?;
+                bracket(&inner, &mut raw, &mut condition, &mut has_date, &mut elapsed, &mut runs)?;
             }
             '"' => {
                 let end = chars[i + 1..].iter().position(|&c| c == '"')? + i + 1;
@@ -461,10 +419,7 @@ fn parse_section(s: &str) -> Option<Section> {
                 i += 2;
             }
             '0' | '#' | '?' => {
-                raw.push(Tok::Digit {
-                    place: c,
-                    region: Region::Int,
-                });
+                raw.push(Tok::Digit { place: c, region: Region::Int });
                 i += 1;
             }
             '.' => {
@@ -484,9 +439,7 @@ fn parse_section(s: &str) -> Option<Section> {
                 i += 1;
             }
             'E' | 'e' if matches!(chars.get(i + 1), Some('+') | Some('-')) => {
-                raw.push(Tok::Exp {
-                    plus: chars[i + 1] == '+',
-                });
+                raw.push(Tok::Exp { plus: chars[i + 1] == '+' });
                 i += 2;
             }
             'y' | 'Y' | 'd' | 'D' | 'h' | 'H' | 's' | 'S' | 'm' | 'M' => {
@@ -544,26 +497,14 @@ fn parse_section(s: &str) -> Option<Section> {
         }
     }
     let body = if has_general {
-        if raw
-            .iter()
-            .any(|t| !matches!(t, Tok::Literal(_) | Tok::Skip))
-        {
+        if raw.iter().any(|t| !matches!(t, Tok::Literal(_) | Tok::Skip)) {
             return None;
         }
         let text = decoration(&raw);
-        let split = text
-            .char_indices()
-            .nth(general_at)
-            .map_or(text.len(), |(b, _)| b);
-        Body::General {
-            prefix: text[..split].to_string(),
-            suffix: text[split..].to_string(),
-        }
+        let split = text.char_indices().nth(general_at).map_or(text.len(), |(b, _)| b);
+        Body::General { prefix: text[..split].to_string(), suffix: text[split..].to_string() }
     } else if has_date {
-        if raw
-            .iter()
-            .any(|t| matches!(t, Tok::At | Tok::Exp { .. } | Tok::BareDigits(_)))
-        {
+        if raw.iter().any(|t| matches!(t, Tok::At | Tok::Exp { .. } | Tok::BareDigits(_))) {
             return None;
         }
         Body::DateTime(date_parts(&runs, elapsed))
@@ -621,10 +562,7 @@ fn bracket(
             } else {
                 (Op::Eq, inner.strip_prefix('=')?)
             };
-            *condition = Some(Cond {
-                op,
-                operand: rest.trim().parse().ok()?,
-            });
+            *condition = Some(Cond { op, operand: rest.trim().parse().ok()? });
         }
         '$' => {
             // `[$sym-lcid]`: the currency string emits literally, the
@@ -703,15 +641,7 @@ fn resolve_number(raw: Vec<Tok>) -> Option<NumSpec> {
                 let run = toks
                     .iter()
                     .rev()
-                    .take_while(|t| {
-                        matches!(
-                            t,
-                            Tok::Digit {
-                                region: Region::Int,
-                                ..
-                            }
-                        )
-                    })
+                    .take_while(|t| matches!(t, Tok::Digit { region: Region::Int, .. }))
                     .count();
                 if run == 0 || region != Region::Int || spec.fixed_den.is_some() {
                     push_literal(&mut toks, '/');
@@ -726,9 +656,7 @@ fn resolve_number(raw: Vec<Tok>) -> Option<NumSpec> {
                 toks.push(Tok::Slash);
                 region = Region::Den;
                 if let Some(Tok::BareDigits(_)) = iter.peek() {
-                    let Some(Tok::BareDigits(d)) = iter.next() else {
-                        unreachable!()
-                    };
+                    let Some(Tok::BareDigits(d)) = iter.next() else { unreachable!() };
                     spec.fixed_den = Some(d.parse().ok()?);
                     toks.push(Tok::Literal(d));
                 }
@@ -745,10 +673,7 @@ fn resolve_number(raw: Vec<Tok>) -> Option<NumSpec> {
     }
     // Commas between digit placeholders group; commas after the last digit
     // placeholder scale by 1000 each; the rest are literal.
-    let digit_at: Vec<bool> = toks
-        .iter()
-        .map(|t| matches!(t, Tok::Digit { .. }))
-        .collect();
+    let digit_at: Vec<bool> = toks.iter().map(|t| matches!(t, Tok::Digit { .. })).collect();
     let first_digit = digit_at.iter().position(|&d| d);
     let last_digit = digit_at.iter().rposition(|&d| d);
     let mut out: Vec<Tok> = Vec::new();
@@ -774,17 +699,7 @@ fn resolve_number(raw: Vec<Tok>) -> Option<NumSpec> {
             }
         }
     }
-    if spec.exp
-        && !out.iter().any(|t| {
-            matches!(
-                t,
-                Tok::Digit {
-                    region: Region::Exp,
-                    ..
-                }
-            )
-        })
-    {
+    if spec.exp && !out.iter().any(|t| matches!(t, Tok::Digit { region: Region::Exp, .. })) {
         return None;
     }
     if spec.num_places > 0 && spec.den_places == 0 && spec.fixed_den.is_none() {
@@ -923,17 +838,11 @@ fn emit(
     let int_assigned = assign(int_digits, &places(&spec.toks, Region::Int));
     let exp_assigned = assign(exp_digits, &places(&spec.toks, Region::Exp));
     let is_digit = |c: &char| c.is_ascii_digit();
-    let total_int: usize = int_assigned
-        .iter()
-        .map(|s| s.chars().filter(is_digit).count())
-        .sum();
+    let total_int: usize = int_assigned.iter().map(|s| s.chars().filter(is_digit).count()).sum();
     // Fractional digits kept: everything up to the rightmost `0` placeholder
     // always shows; beyond that, trailing zeros drop from `#` and pad `?`.
     let frac_places = places(&spec.toks, Region::Frac);
-    let min_frac = frac_places
-        .iter()
-        .rposition(|&p| p == '0')
-        .map_or(0, |i| i + 1);
+    let min_frac = frac_places.iter().rposition(|&p| p == '0').map_or(0, |i| i + 1);
     let keep_frac = frac_digits.trim_end_matches('0').len().max(min_frac);
 
     // The point hides only when its placeholders all produced nothing; a
@@ -945,10 +854,7 @@ fn emit(
     let mut int_remaining = total_int;
     for tok in &spec.toks {
         match tok {
-            Tok::Digit {
-                region: Region::Int,
-                ..
-            } => {
+            Tok::Digit { region: Region::Int, .. } => {
                 for c in int_assigned[int_i].chars() {
                     out.push(c);
                     if c.is_ascii_digit() {
@@ -960,10 +866,7 @@ fn emit(
                 }
                 int_i += 1;
             }
-            Tok::Digit {
-                place,
-                region: Region::Frac,
-            } => {
+            Tok::Digit { place, region: Region::Frac } => {
                 if frac_i < keep_frac {
                     out.push(frac_digits.as_bytes()[frac_i] as char);
                 } else if *place == '?' {
@@ -971,10 +874,7 @@ fn emit(
                 }
                 frac_i += 1;
             }
-            Tok::Digit {
-                region: Region::Exp,
-                ..
-            } => {
+            Tok::Digit { region: Region::Exp, .. } => {
                 out.push_str(&exp_assigned[exp_i]);
                 exp_i += 1;
             }
@@ -1026,17 +926,9 @@ fn render_scientific(spec: &NumSpec, v: f64) -> Option<String> {
         (i, f, e)
     };
     let bare = exp10.unsigned_abs().to_string();
-    let pad = places(&spec.toks, Region::Exp)
-        .len()
-        .saturating_sub(bare.len());
+    let pad = places(&spec.toks, Region::Exp).len().saturating_sub(bare.len());
     let exp_digits = format!("{}{}", "0".repeat(pad), bare);
-    Some(emit(
-        spec,
-        &int_digits,
-        &frac_digits,
-        &exp_digits,
-        if exp10 < 0 { -1 } else { 1 },
-    ))
+    Some(emit(spec, &int_digits, &frac_digits, &exp_digits, if exp10 < 0 { -1 } else { 1 }))
 }
 
 fn render_fraction(spec: &NumSpec, v: f64) -> Option<String> {
@@ -1044,11 +936,7 @@ fn render_fraction(spec: &NumSpec, v: f64) -> Option<String> {
         return None;
     }
     let has_int = spec.int_places > 0;
-    let (mut whole, target) = if has_int {
-        (v.trunc(), v.fract())
-    } else {
-        (0.0, v)
-    };
+    let (mut whole, target) = if has_int { (v.trunc(), v.fract()) } else { (0.0, v) };
     let (mut num, den) = best_fraction(target, spec.fixed_den, spec.den_places)?;
     if has_int && num == den && den > 0 {
         whole += 1.0;
@@ -1056,11 +944,7 @@ fn render_fraction(spec: &NumSpec, v: f64) -> Option<String> {
     }
     let int_digits = if whole == 0.0 {
         // A zero integer part still shows when the whole value is zero.
-        if num == 0 {
-            "0".to_string()
-        } else {
-            String::new()
-        }
+        if num == 0 { "0".to_string() } else { String::new() }
     } else {
         split_digits(whole, 0)?.0
     };
@@ -1072,24 +956,15 @@ fn render_fraction(spec: &NumSpec, v: f64) -> Option<String> {
     let mut out = String::new();
     for tok in &spec.toks {
         match tok {
-            Tok::Digit {
-                region: Region::Int,
-                ..
-            } => {
+            Tok::Digit { region: Region::Int, .. } => {
                 out.push_str(&int_assigned.next().unwrap_or_default());
             }
-            Tok::Digit {
-                region: Region::Num,
-                ..
-            } => {
+            Tok::Digit { region: Region::Num, .. } => {
                 if !hide {
                     out.push_str(&num_assigned.next().unwrap_or_default());
                 }
             }
-            Tok::Digit {
-                region: Region::Den,
-                ..
-            } => {
+            Tok::Digit { region: Region::Den, .. } => {
                 if !hide {
                     out.push_str(&den_assigned.next().unwrap_or_default());
                 }
@@ -1150,10 +1025,7 @@ fn closest_rational(x: f64, max_den: u64) -> (u64, u64) {
         let a = p / q;
         let rem = p % q;
         let next = u64::try_from(a).ok().and_then(|a| {
-            Some((
-                a.checked_mul(n)?.checked_add(pn)?,
-                a.checked_mul(d)?.checked_add(pd)?,
-            ))
+            Some((a.checked_mul(n)?.checked_add(pn)?, a.checked_mul(d)?.checked_add(pd)?))
         });
         let (nn, nd) = match next {
             Some((nn, nd)) if nd <= max_den => (nn, nd),
@@ -1161,10 +1033,8 @@ fn closest_rational(x: f64, max_den: u64) -> (u64, u64) {
             _ if d == 0 => return (0, 1),
             _ => {
                 let k = (max_den - pd) / d;
-                let semi = k
-                    .checked_mul(n)
-                    .and_then(|v| v.checked_add(pn))
-                    .map(|sn| (sn, k * d + pd));
+                let semi =
+                    k.checked_mul(n).and_then(|v| v.checked_add(pn)).map(|sn| (sn, k * d + pd));
                 // With the exact tail r = p/q, the semiconvergent is closer
                 // iff (r - k)d < kd + pd, i.e. rem*d < q*((2k - a)d + pd):
                 // certain for 2k > a, impossible for 2k < a (pd < d).
@@ -1193,11 +1063,7 @@ fn dyadic(x: f64) -> Option<(u128, u128)> {
     let bits = x.to_bits();
     let exp = (bits >> 52) as i32;
     let frac = bits & ((1u64 << 52) - 1);
-    let (m, e) = if exp == 0 {
-        (frac, -1074)
-    } else {
-        (frac | 1 << 52, exp - 1075)
-    };
+    let (m, e) = if exp == 0 { (frac, -1074) } else { (frac | 1 << 52, exp - 1075) };
     if m == 0 {
         return Some((0, 1));
     }
@@ -1223,10 +1089,7 @@ mod tests {
     use super::*;
 
     fn fmt(code: &str, v: f64) -> String {
-        match NumberFormat::parse(code)
-            .expect("code must parse")
-            .format_number(v)
-        {
+        match NumberFormat::parse(code).expect("code must parse").format_number(v) {
             Rendered::Text(s) => s,
             other => panic!("expected text for {code:?} on {v}, got {other:?}"),
         }
@@ -1343,29 +1206,17 @@ mod tests {
         let f = NumberFormat::parse("yyyy\\-mm\\-dd").unwrap();
         assert_eq!(
             f.format_number(45000.0),
-            Rendered::DateTime(DateParts {
-                date: true,
-                time: false,
-                elapsed: false
-            })
+            Rendered::DateTime(DateParts { date: true, time: false, elapsed: false })
         );
         let f = NumberFormat::parse("[hh]:mm:ss").unwrap();
         assert_eq!(
             f.format_number(1.5),
-            Rendered::DateTime(DateParts {
-                date: false,
-                time: true,
-                elapsed: true
-            })
+            Rendered::DateTime(DateParts { date: false, time: true, elapsed: true })
         );
         let f = NumberFormat::parse("h:mm AM/PM").unwrap();
         assert_eq!(
             f.format_number(0.5),
-            Rendered::DateTime(DateParts {
-                date: false,
-                time: true,
-                elapsed: false
-            })
+            Rendered::DateTime(DateParts { date: false, time: true, elapsed: false })
         );
     }
 
@@ -1376,35 +1227,17 @@ mod tests {
         let f = NumberFormat::parse(r#""~"General" kg""#).unwrap();
         assert_eq!(
             f.format_number(1234.5),
-            Rendered::General {
-                value: 1234.5,
-                prefix: "~",
-                suffix: " kg"
-            }
+            Rendered::General { value: 1234.5, prefix: "~", suffix: " kg" }
         );
     }
 
     #[test]
     fn general_renders_generally() {
         let f = NumberFormat::parse("General").unwrap();
-        assert_eq!(
-            f.format_number(3.5),
-            Rendered::General {
-                value: 3.5,
-                prefix: "",
-                suffix: ""
-            }
-        );
+        assert_eq!(f.format_number(3.5), Rendered::General { value: 3.5, prefix: "", suffix: "" });
         // The positional negative section receives the magnitude.
         let f = NumberFormat::parse("General;General").unwrap();
-        assert_eq!(
-            f.format_number(-3.5),
-            Rendered::General {
-                value: 3.5,
-                prefix: "",
-                suffix: ""
-            }
-        );
+        assert_eq!(f.format_number(-3.5), Rendered::General { value: 3.5, prefix: "", suffix: "" });
     }
 
     #[test]
@@ -1423,14 +1256,7 @@ mod tests {
         assert_eq!(f.format_text("hi"), Some("* hi *".to_string()));
         let f = NumberFormat::parse("@").unwrap();
         assert_eq!(f.format_text("hi"), Some("hi".to_string()));
-        assert_eq!(
-            f.format_number(3.5),
-            Rendered::General {
-                value: 3.5,
-                prefix: "",
-                suffix: ""
-            }
-        );
+        assert_eq!(f.format_number(3.5), Rendered::General { value: 3.5, prefix: "", suffix: "" });
         let f = NumberFormat::parse("0.00").unwrap();
         assert_eq!(f.format_text("hi"), None);
     }
@@ -1488,10 +1314,7 @@ mod tests {
                 let (bn, bd) = brute(x, max_den);
                 let got = (x - n as f64 / d as f64).abs();
                 let want = (x - bn as f64 / bd as f64).abs();
-                assert!(
-                    got <= want + 1e-12,
-                    "x={x} max_den={max_den}: {n}/{d} vs {bn}/{bd}"
-                );
+                assert!(got <= want + 1e-12, "x={x} max_den={max_den}: {n}/{d} vs {bn}/{bd}");
             }
         }
     }
@@ -1500,9 +1323,6 @@ mod tests {
     fn the_walk_stays_exact_past_float_precision() {
         // 1/3 as a float is the dyadic 6004799503160661/2^54, which a large
         // bound represents exactly; a float walk stops at 1/3 instead.
-        assert_eq!(
-            closest_rational(1.0 / 3.0, u64::MAX),
-            (6004799503160661, 18014398509481984)
-        );
+        assert_eq!(closest_rational(1.0 / 3.0, u64::MAX), (6004799503160661, 18014398509481984));
     }
 }

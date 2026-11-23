@@ -41,10 +41,7 @@ pub(crate) fn from_bytes(bytes: &[u8]) -> Option<Format> {
     if bytes.starts_with(b"PK\x03\x04") {
         return detect_zip(bytes);
     }
-    if bytes[..bytes.len().min(1024)]
-        .windows(5)
-        .any(|w| w == b"%PDF-")
-    {
+    if bytes[..bytes.len().min(1024)].windows(5).any(|w| w == b"%PDF-") {
         return Some(Format::Pdf);
     }
     None
@@ -157,10 +154,7 @@ fn content_type_of(types: &Element, part: &str) -> Option<String> {
     let part_name = format!("/{part}");
     if let Some(ct) = types
         .descendants(CT_NS, "Override")
-        .find(|e| {
-            e.attr_any("PartName")
-                .is_some_and(|p| p.eq_ignore_ascii_case(&part_name))
-        })
+        .find(|e| e.attr_any("PartName").is_some_and(|p| p.eq_ignore_ascii_case(&part_name)))
         .and_then(|e| e.attr_any("ContentType"))
     {
         return Some(ct.to_string());
@@ -168,10 +162,7 @@ fn content_type_of(types: &Element, part: &str) -> Option<String> {
     let ext = part.rsplit_once('.').map(|(_, e)| e)?;
     types
         .descendants(CT_NS, "Default")
-        .find(|e| {
-            e.attr_any("Extension")
-                .is_some_and(|x| x.eq_ignore_ascii_case(ext))
-        })
+        .find(|e| e.attr_any("Extension").is_some_and(|x| x.eq_ignore_ascii_case(ext)))
         .and_then(|e| e.attr_any("ContentType"))
         .map(str::to_string)
 }
@@ -223,8 +214,7 @@ mod tests {
     fn zip_of(parts: &[(&str, &[u8])]) -> Vec<u8> {
         let mut w = zip::ZipWriter::new(Cursor::new(Vec::new()));
         for (name, bytes) in parts {
-            w.start_file(*name, zip::write::SimpleFileOptions::default())
-                .unwrap();
+            w.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
             w.write_all(bytes).unwrap();
         }
         w.finish().unwrap().into_inner()
@@ -252,56 +242,32 @@ mod tests {
 
     #[test]
     fn container_signature_wins_over_an_early_embedded_pdf() {
-        let pkg = zip_of(&[
-            ("embedded.pdf", b"%PDF-1.7\n"),
-            ("word/document.xml", b"<document/>"),
-        ]);
+        let pkg = zip_of(&[("embedded.pdf", b"%PDF-1.7\n"), ("word/document.xml", b"<document/>")]);
         assert_eq!(from_bytes(&pkg), Some(Format::Docx));
     }
 
     #[test]
     fn ole_streams_designate_the_binary_format() {
         assert_eq!(from_bytes(&ole_of(&["WordDocument"])), Some(Format::Doc));
-        assert_eq!(
-            from_bytes(&ole_of(&["PowerPoint Document"])),
-            Some(Format::Ppt)
-        );
+        assert_eq!(from_bytes(&ole_of(&["PowerPoint Document"])), Some(Format::Ppt));
         assert_eq!(from_bytes(&ole_of(&["Workbook"])), Some(Format::Excel));
         assert_eq!(from_bytes(&ole_of(&["BOOK"])), Some(Format::Excel));
         // Encrypted OOXML: inner format unknowable, extension decides.
-        assert_eq!(
-            from_bytes(&ole_of(&["EncryptedPackage", "EncryptionInfo"])),
-            None
-        );
+        assert_eq!(from_bytes(&ole_of(&["EncryptedPackage", "EncryptionInfo"])), None);
     }
 
     #[test]
     fn mimetype_identifies_odf_and_epub() {
         for (mime, format) in [
             ("application/vnd.oasis.opendocument.text", Format::Odt),
-            (
-                "application/vnd.oasis.opendocument.text-template",
-                Format::Odt,
-            ),
-            (
-                "application/vnd.oasis.opendocument.spreadsheet",
-                Format::Ods,
-            ),
-            (
-                "application/vnd.oasis.opendocument.presentation",
-                Format::Odp,
-            ),
+            ("application/vnd.oasis.opendocument.text-template", Format::Odt),
+            ("application/vnd.oasis.opendocument.spreadsheet", Format::Ods),
+            ("application/vnd.oasis.opendocument.presentation", Format::Odp),
             ("application/epub+zip", Format::Epub),
         ] {
-            assert_eq!(
-                from_bytes(&zip_of(&[("mimetype", mime.as_bytes())])),
-                Some(format)
-            );
+            assert_eq!(from_bytes(&zip_of(&[("mimetype", mime.as_bytes())])), Some(format));
         }
-        assert_eq!(
-            from_bytes(&zip_of(&[("mimetype", b"application/zip")])),
-            None
-        );
+        assert_eq!(from_bytes(&zip_of(&[("mimetype", b"application/zip")])), None);
     }
 
     #[test]
@@ -361,10 +327,7 @@ mod tests {
         let manifest = br#"<manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0">
             <manifest:file-entry manifest:full-path="/" manifest:media-type="application/vnd.oasis.opendocument.spreadsheet"/>
         </manifest:manifest>"#;
-        let pkg = zip_of(&[
-            ("META-INF/manifest.xml", manifest),
-            ("content.xml", b"<c/>"),
-        ]);
+        let pkg = zip_of(&[("META-INF/manifest.xml", manifest), ("content.xml", b"<c/>")]);
         assert_eq!(from_bytes(&pkg), Some(Format::Ods));
 
         let pkg = zip_of(&[("META-INF/container.xml", b"<container/>")]);

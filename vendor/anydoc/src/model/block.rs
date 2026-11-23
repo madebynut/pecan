@@ -41,10 +41,6 @@ impl Block {
     /// A heading with no anchor, for the common case where nothing in the
     /// document links to it.
     pub fn heading(level: u8, content: Vec<Inline>) -> Block {
-        Block::Heading {
-            level,
-            anchor: None,
-            content,
-        }
+        Block::Heading { level, anchor: None, content }
     }
 }

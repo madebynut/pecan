@@ -65,28 +65,15 @@ mod tests {
 
     #[test]
     fn explicit_off_beats_inherited_on() {
-        let base = StyleDelta {
-            bold: Some(true),
-            ..Default::default()
-        };
-        let child = StyleDelta {
-            bold: Some(false),
-            ..Default::default()
-        };
+        let base = StyleDelta { bold: Some(true), ..Default::default() };
+        let child = StyleDelta { bold: Some(false), ..Default::default() };
         assert_eq!(base.merge(child).resolve(), Style::PLAIN);
     }
 
     #[test]
     fn unset_inherits() {
-        let base = StyleDelta {
-            bold: Some(true),
-            italic: Some(true),
-            ..Default::default()
-        };
-        let child = StyleDelta {
-            italic: Some(false),
-            ..Default::default()
-        };
+        let base = StyleDelta { bold: Some(true), italic: Some(true), ..Default::default() };
+        let child = StyleDelta { italic: Some(false), ..Default::default() };
         let resolved = base.merge(child).resolve();
         assert!(resolved.bold && !resolved.italic);
     }

@@ -67,11 +67,7 @@ pub fn build_edge_table(rows: Vec<GridRow>) -> Result<Option<Block>, ConvertErro
                 .collect()
         })
         .collect();
-    let mut edges: Vec<i64> = rows_edged
-        .iter()
-        .flatten()
-        .map(|(_, prop)| prop.right)
-        .collect();
+    let mut edges: Vec<i64> = rows_edged.iter().flatten().map(|(_, prop)| prop.right).collect();
     edges.sort_unstable();
     let mut clusters: Vec<i64> = Vec::new();
     for e in edges {

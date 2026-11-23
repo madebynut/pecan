@@ -133,10 +133,7 @@ impl TableState {
     /// already-closed cells awaiting their `\row`).
     pub fn has_partial_row(&mut self, depth: usize) -> bool {
         self.has_pending_cell(depth)
-            || self
-                .tables
-                .get(depth - 1)
-                .is_some_and(|t| !t.row.cells.is_empty())
+            || self.tables.get(depth - 1).is_some_and(|t| !t.row.cells.is_empty())
     }
 
     /// `\cell` / `\nestcell`: close the cell, folding in any completed
@@ -177,14 +174,8 @@ impl TableState {
             return Ok(None);
         }
         let t = std::mem::take(&mut self.tables[depth - 1]);
-        let rows = t
-            .rows
-            .into_iter()
-            .map(|r| GridRow {
-                cells: r.cells,
-                header: r.header,
-            })
-            .collect();
+        let rows =
+            t.rows.into_iter().map(|r| GridRow { cells: r.cells, header: r.header }).collect();
         build_edge_table(rows)
     }
 
@@ -216,9 +207,7 @@ mod tests {
         state.begin_row(1);
         state.declare_cell(1, 1000);
         state.push_cell_paragraph(1, Some(BlockStyle::Code), vec![Inline::plain("first")]);
-        state
-            .end_cell(1, Some(BlockStyle::Code), vec![Inline::plain("second")])
-            .unwrap();
+        state.end_cell(1, Some(BlockStyle::Code), vec![Inline::plain("second")]).unwrap();
         state.end_row(1);
 
         let Block::Table(table) = state.take_table(1).unwrap().unwrap() else {

@@ -30,10 +30,7 @@ impl AnchorMap {
 
     /// The HTML id to emit for an `Inline::Anchor` node, when one is needed.
     pub(crate) fn html_id(&self, id: &str) -> Option<&str> {
-        self.resolved
-            .get(id)
-            .filter(|r| r.emit_html)
-            .map(|r| r.fragment.as_str())
+        self.resolved.get(id).filter(|r| r.emit_html).map(|r| r.fragment.as_str())
     }
 }
 
@@ -43,31 +40,23 @@ pub(crate) fn resolve_anchors(doc: &Document) -> AnchorMap {
 
     // Anchor ids some link in the document targets, notes included.
     let mut linked: HashSet<&str> = HashSet::new();
-    walk_blocks(&doc.blocks, &mut |block| {
-        collect_link_targets(block, &mut linked)
-    });
+    walk_blocks(&doc.blocks, &mut |block| collect_link_targets(block, &mut linked));
     for note in &doc.notes {
-        walk_blocks(&note.blocks, &mut |block| {
-            collect_link_targets(block, &mut linked)
-        });
+        walk_blocks(&note.blocks, &mut |block| collect_link_targets(block, &mut linked));
     }
 
     // Pass 1: headings claim their GFM slugs in render order, binding any
     // heading-coincident anchor ids (the `anchor` field and anchor nodes
     // inside the heading content) to those slugs.
     walk_blocks(&doc.blocks, &mut |block| {
-        if let Block::Heading {
-            anchor, content, ..
-        } = block
-        {
+        if let Block::Heading { anchor, content, .. } = block {
             let Some(slug) = ids.claim(gfm_slug(&inlines_to_plain_text(content))) else {
                 return;
             };
             let mut bind = |id: &str| {
-                resolved.entry(id.to_string()).or_insert(Resolved {
-                    fragment: slug.clone(),
-                    emit_html: false,
-                });
+                resolved
+                    .entry(id.to_string())
+                    .or_insert(Resolved { fragment: slug.clone(), emit_html: false });
             };
             if let Some(id) = anchor {
                 bind(id);
@@ -82,22 +71,12 @@ pub(crate) fn resolve_anchors(doc: &Document) -> AnchorMap {
             && !resolved.contains_key(id)
             && let Some(html) = ids.claim(sanitize_id(id))
         {
-            resolved.insert(
-                id.to_string(),
-                Resolved {
-                    fragment: html,
-                    emit_html: true,
-                },
-            );
+            resolved.insert(id.to_string(), Resolved { fragment: html, emit_html: true });
         }
     };
-    walk_blocks(&doc.blocks, &mut |block| {
-        bind_block_anchors(block, &mut assign)
-    });
+    walk_blocks(&doc.blocks, &mut |block| bind_block_anchors(block, &mut assign));
     for note in &doc.notes {
-        walk_blocks(&note.blocks, &mut |block| {
-            bind_block_anchors(block, &mut assign)
-        });
+        walk_blocks(&note.blocks, &mut |block| bind_block_anchors(block, &mut assign));
     }
 
     AnchorMap { resolved }
@@ -212,11 +191,7 @@ fn gfm_slug(text: &str) -> String {
             _ => None,
         })
         .collect();
-    if slug.is_empty() {
-        "section".to_string()
-    } else {
-        slug
-    }
+    if slug.is_empty() { "section".to_string() } else { slug }
 }
 
 /// Combining-mark blocks `is_alphanumeric` misses (marks outside
@@ -261,11 +236,7 @@ fn sanitize_id(id: &str) -> String {
         out.push(mapped);
     }
     let trimmed = out.trim_matches('-');
-    if trimmed.is_empty() {
-        "anchor".to_string()
-    } else {
-        trimmed.to_string()
-    }
+    if trimmed.is_empty() { "anchor".to_string() } else { trimmed.to_string() }
 }
 
 #[cfg(test)]
@@ -276,16 +247,10 @@ mod tests {
     fn slugs_keep_word_forming_characters() {
         assert_eq!(gfm_slug("Hello World!"), "hello-world");
         assert_eq!(gfm_slug("  leading and trailing  "), "leading-and-trailing");
-        assert_eq!(
-            gfm_slug("under_score and hy-phen"),
-            "under_score-and-hy-phen"
-        );
+        assert_eq!(gfm_slug("under_score and hy-phen"), "under_score-and-hy-phen");
         assert_eq!(gfm_slug("C++ & Rust"), "c--rust");
         assert_eq!(gfm_slug("étude précomposée"), "étude-précomposée");
-        assert_eq!(
-            gfm_slug("combining n\u{0303} tilde"),
-            "combining-n\u{0303}-tilde"
-        );
+        assert_eq!(gfm_slug("combining n\u{0303} tilde"), "combining-n\u{0303}-tilde");
         assert_eq!(gfm_slug("देवनागरी क्षि"), "देवनागरी-क्षि");
         assert_eq!(gfm_slug("日本語の見出し"), "日本語の見出し");
     }
@@ -300,10 +265,7 @@ mod tests {
 
     #[test]
     fn punctuation_and_symbols_drop() {
-        assert_eq!(
-            gfm_slug("quotes 'single' \"double\""),
-            "quotes-single-double"
-        );
+        assert_eq!(gfm_slug("quotes 'single' \"double\""), "quotes-single-double");
         assert_eq!(gfm_slug("copyright © and € and ∑"), "copyright--and--and-");
         assert_eq!(gfm_slug("parens (and) [brackets]"), "parens-and-brackets");
     }
@@ -326,11 +288,7 @@ mod tests {
     fn duplicate_slug_suffixes_advance_without_reprobing() {
         let mut ids = UniqueIds::default();
         for n in 0..10_000 {
-            let expected = if n == 0 {
-                "same".to_string()
-            } else {
-                format!("same-{n}")
-            };
+            let expected = if n == 0 { "same".to_string() } else { format!("same-{n}") };
             assert_eq!(ids.claim("same".to_string()), Some(expected));
         }
         assert_eq!(ids.next_suffix.get("same"), Some(&10_000));

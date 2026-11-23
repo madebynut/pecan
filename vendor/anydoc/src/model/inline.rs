@@ -41,10 +41,7 @@ pub enum Inline {
 impl Inline {
     /// Unstyled text.
     pub fn plain(text: impl Into<String>) -> Self {
-        Inline::Text {
-            text: text.into(),
-            style: Style::PLAIN,
-        }
+        Inline::Text { text: text.into(), style: Style::PLAIN }
     }
 }
 

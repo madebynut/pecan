@@ -29,11 +29,7 @@ impl<'a> Package<'a> {
                 detail: format!("archive contains {} entries", zip.len()),
             });
         }
-        Ok(Package {
-            zip,
-            total_read: 0,
-            cache: HashMap::new(),
-        })
+        Ok(Package { zip, total_read: 0, cache: HashMap::new() })
     }
 
     /// Read a part's bytes. `Ok(None)` means the part is absent (a valid
@@ -68,13 +64,12 @@ impl<'a> Package<'a> {
         let remaining_total = limits::MAX_TOTAL_BYTES.saturating_sub(self.total_read);
         let cap = limits::MAX_ENTRY_BYTES.min(remaining_total);
         let mut bytes = Vec::new();
-        let read = (&mut file)
-            .take(cap + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|e| ConvertError::Malformed {
+        let read = (&mut file).take(cap + 1).read_to_end(&mut bytes).map_err(|e| {
+            ConvertError::Malformed {
                 part: Some(name.to_string()),
                 detail: format!("corrupt archive entry: {e}"),
-            })? as u64;
+            }
+        })? as u64;
         if read > cap {
             return Err(if remaining_total < limits::MAX_ENTRY_BYTES {
                 ConvertError::ResourceLimit {
@@ -97,15 +92,11 @@ impl<'a> Package<'a> {
     /// Read a part that must exist for any meaningful output.
     /// True when a part exists, without reading (or budget-charging) it.
     pub fn has_part(&self, name: &str) -> bool {
-        self.zip
-            .index_for_name(name.trim_start_matches('/'))
-            .is_some()
+        self.zip.index_for_name(name.trim_start_matches('/')).is_some()
     }
 
     pub fn required_part(&mut self, name: &str) -> Result<Rc<[u8]>, ConvertError> {
-        self.part(name)?.ok_or_else(|| ConvertError::MissingPart {
-            part: name.to_string(),
-        })
+        self.part(name)?.ok_or_else(|| ConvertError::MissingPart { part: name.to_string() })
     }
 
     /// Read an optional part under the unified recovery policy: absent is a
@@ -173,8 +164,7 @@ mod tests {
 
     fn one_part_zip(name: &str, bytes: &[u8]) -> Vec<u8> {
         let mut w = zip::ZipWriter::new(Cursor::new(Vec::new()));
-        w.start_file(name, zip::write::SimpleFileOptions::default())
-            .unwrap();
+        w.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
         w.write_all(bytes).unwrap();
         w.finish().unwrap().into_inner()
     }
@@ -186,18 +176,14 @@ mod tests {
         for _ in 0..5 {
             assert_eq!(pkg.part("media/a.bin").unwrap().unwrap().len(), 4096);
         }
-        assert_eq!(
-            pkg.total_read, 4096,
-            "repeated reads must not re-charge the budget"
-        );
+        assert_eq!(pkg.total_read, 4096, "repeated reads must not re-charge the budget");
     }
 
     #[test]
     fn total_budget_exhaustion_reports_max_total_bytes() {
         let mut w = zip::ZipWriter::new(Cursor::new(Vec::new()));
         for name in ["a.bin", "b.bin"] {
-            w.start_file(name, zip::write::SimpleFileOptions::default())
-                .unwrap();
+            w.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
             w.write_all(&[7u8; 4096]).unwrap();
         }
         let data = w.finish().unwrap().into_inner();
@@ -208,13 +194,7 @@ mod tests {
         pkg.total_read = limits::MAX_TOTAL_BYTES - 100;
         let err = pkg.part("b.bin").unwrap_err();
         assert!(
-            matches!(
-                err,
-                ConvertError::ResourceLimit {
-                    limit: "max_total_bytes",
-                    ..
-                }
-            ),
+            matches!(err, ConvertError::ResourceLimit { limit: "max_total_bytes", .. }),
             "expected max_total_bytes, got: {err}"
         );
     }

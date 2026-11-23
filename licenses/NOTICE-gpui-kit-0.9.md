@@ -1,6 +1,6 @@
 # GPUI Kit 0.9 dependency license additions
 
-GPUI Kit 0.9.0 uses the matching GPUI 0.3.11 snapshot. The following production dependencies are new to Pecan. Original license files are bundled where the tarball provides them; the objc2 binding uses its declared Apache-2.0 option. Benchmark-only packages in Cargo.lock are not enabled in the production dependency tree.
+GPUI Kit 0.9.0 uses the matching GPUI 0.3.11 snapshot. The following production dependencies are new to Pecan. Original license files are bundled where the tarball provides them; the objc2 binding uses its declared Apache-2.0 option. Benchmark-only packages in Cargo.lock are not enabled in the production dependency tree. GPUI Kit 0.10.0 with the GPUI 0.3.12 snapshot adds no package to Cargo.lock.
 
 - `icu_locale_fallback-2.4.0-LICENSE.txt`
   Source: registry release icu_locale_fallback-2.4.0/LICENSE

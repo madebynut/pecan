@@ -1,264 +1,28 @@
---- a/Cargo.toml
-+++ b/Cargo.toml
-@@ -95,185 +95,50 @@
- name = "gpui"
- path = "src/gpui.rs"
- 
--[[example]]
--name = "a11y"
--path = "examples/a11y.rs"
--
--[[example]]
--name = "active_state_bug"
--path = "examples/active_state_bug.rs"
--
--[[example]]
--name = "anchor"
--path = "examples/anchor.rs"
--
--[[example]]
--name = "animation"
--path = "examples/animation.rs"
--
--[[example]]
--name = "data_table"
--path = "examples/data_table.rs"
--
--[[example]]
--name = "drag_drop"
--path = "examples/drag_drop.rs"
--
--[[example]]
--name = "focus_visible"
--path = "examples/focus_visible.rs"
--
--[[example]]
--name = "gif_viewer"
--path = "examples/gif_viewer.rs"
--
--[[example]]
--name = "gradient"
--path = "examples/gradient.rs"
--
--[[example]]
--name = "grid_layout"
--path = "examples/grid_layout.rs"
--
--[[example]]
--name = "hello_world"
--path = "examples/hello_world.rs"
--
--[[example]]
--name = "image"
--path = "examples/image/image.rs"
--
--[[example]]
--name = "image_gallery"
--path = "examples/image_gallery.rs"
--
--[[example]]
--name = "image_loading"
--path = "examples/image_loading.rs"
--
--[[example]]
--name = "input"
--path = "examples/input.rs"
--
--[[example]]
--name = "layer_shell"
--path = "examples/layer_shell.rs"
--
--[[example]]
--name = "list_example"
--path = "examples/list_example.rs"
--
--[[example]]
--name = "mouse_pressure"
--path = "examples/mouse_pressure.rs"
--
--[[example]]
--name = "move_entity_between_windows"
--path = "examples/move_entity_between_windows.rs"
--
--[[example]]
--name = "on_window_close_quit"
--path = "examples/on_window_close_quit.rs"
--
--[[example]]
--name = "opacity"
--path = "examples/opacity.rs"
--
--[[example]]
--name = "ownership_post"
--path = "examples/ownership_post.rs"
--
--[[example]]
--name = "painting"
--path = "examples/painting.rs"
--
--[[example]]
--name = "paths_bench"
--path = "examples/paths_bench.rs"
--
--[[example]]
--name = "pattern"
--path = "examples/pattern.rs"
--
--[[example]]
--name = "popover"
--path = "examples/popover.rs"
--
--[[example]]
--name = "scrollable"
--path = "examples/scrollable.rs"
--
--[[example]]
--name = "set_menus"
--path = "examples/set_menus.rs"
--
--[[example]]
--name = "shadow"
--path = "examples/shadow.rs"
--
--[[example]]
--name = "svg"
--path = "examples/svg/svg.rs"
--
--[[example]]
--name = "system_notifications"
--path = "examples/system_notifications.rs"
--
--[[example]]
--name = "tab_stop"
--path = "examples/tab_stop.rs"
--
--[[example]]
--name = "testing"
--path = "examples/testing.rs"
--
--[[example]]
--name = "text"
--path = "examples/text.rs"
--
--[[example]]
--name = "text_layout"
--path = "examples/text_layout.rs"
--
--[[example]]
--name = "text_wrapper"
--path = "examples/text_wrapper.rs"
--
--[[example]]
--name = "toggle_headless"
--path = "examples/toggle_headless.rs"
--
--[[example]]
--name = "tree"
--path = "examples/tree.rs"
--
--[[example]]
--name = "uniform_list"
--path = "examples/uniform_list.rs"
--
--[[example]]
--name = "view_example"
--path = "examples/view_example/view_example_main.rs"
--
--[[example]]
--name = "window"
--path = "examples/window.rs"
--
--[[example]]
--name = "window_movable"
--path = "examples/window_movable.rs"
--
--[[example]]
--name = "window_positioning"
--path = "examples/window_positioning.rs"
--
--[[example]]
--name = "window_shadow"
--path = "examples/window_shadow.rs"
--
--[[test]]
--name = "action_macros"
--path = "tests/action_macros.rs"
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
-+
- 
- [dependencies.accesskit]
- version = "0.24.0"
 --- a/src/elements/img.rs
 +++ b/src/elements/img.rs
-@@ -2,22 +2,16 @@
+@@ -2,18 +2,16 @@
      AnyElement, AnyImageCache, App, Asset, AssetLogger, Bounds, DefiniteLength, Element, ElementId,
      Entity, GlobalElementId, Hitbox, Image, ImageCache, InspectorElementId, InteractiveElement,
      Interactivity, IntoElement, LayoutId, Length, ObjectFit, Pixels, RenderImage, Resource,
--    SharedString, SharedUri, StyleRefinement, Styled, Task, Window, decode_static_image,
--    decode_static_image_from_decoder, px,
+-    SharedString, SharedUri, StyleRefinement, Styled, Task, Window, decode_gif_image,
+-    decode_static_image, decode_webp_image, px,
 +    SharedString, SharedUri, StyleRefinement, Styled, Task, Window, px,
  };
  use anyhow::Result;
  
  use futures::Future;
  use gpui_util::ResultExt;
--use image::{
--    AnimationDecoder, ImageError, ImageFormat, Rgba,
--    codecs::{gif::GifDecoder, webp::WebPDecoder},
--};
+-use image::{ImageError, ImageFormat};
 +use image::ImageError;
  use scheduler::Instant;
--use smallvec::SmallVec;
  use std::{
 -    fs,
--    io::{self, Cursor},
+-    io::{self},
 +    io,
      ops::{Deref, DerefMut},
      path::{Path, PathBuf},
      str::FromStr,
-@@ -631,7 +625,7 @@
+@@ -627,7 +625,7 @@
          let asset_source = cx.asset_source().clone();
          async move {
              let bytes = match source.clone() {
@@ -267,7 +31,7 @@
                  Resource::Uri(uri) => {
                      use anyhow::Context as _;
                      use futures::AsyncReadExt as _;
-@@ -641,7 +635,12 @@
+@@ -637,7 +635,12 @@
                          .await
                          .with_context(|| format!("loading image asset from {uri:?}"))?;
                      let mut body = Vec::new();
@@ -281,7 +45,7 @@
                      if !response.status().is_success() {
                          let mut body = String::from_utf8_lossy(&body).into_owned();
                          let first_line = body.lines().next().unwrap_or("").trim_end();
-@@ -657,6 +656,7 @@
+@@ -653,6 +656,7 @@
                  Resource::Embedded(path) => {
                      let data = asset_source.load(&path).ok().flatten();
                      if let Some(data) = data {
@@ -289,89 +53,19 @@
                          data.to_vec()
                      } else {
                          return Err(ImageCacheError::Asset(
-@@ -667,73 +667,7 @@
+@@ -663,11 +667,7 @@
              };
  
              if let Ok(format) = image::guess_format(&bytes) {
 -                let data = match format {
--                    ImageFormat::Gif => {
--                        let decoder = GifDecoder::new(Cursor::new(&bytes))?;
--                        let mut frames = SmallVec::new();
--
--                        for frame in decoder.into_frames() {
--                            match frame {
--                                Ok(mut frame) => {
--                                    // Convert from RGBA to BGRA.
--                                    for pixel in frame.buffer_mut().chunks_exact_mut(4) {
--                                        pixel.swap(0, 2);
--                                    }
--                                    frames.push(frame);
--                                }
--                                Err(err) => {
--                                    log::debug!(
--                                        "Skipping GIF frame in {source:?} due to decode error: {err}"
--                                    );
--                                }
--                            }
--                        }
--
--                        if frames.is_empty() {
--                            return Err(ImageCacheError::Other(Arc::new(anyhow::anyhow!(
--                                "GIF could not be decoded: all frames failed ({source:?})"
--                            ))));
--                        }
--
--                        frames
--                    }
--                    ImageFormat::WebP => {
--                        let mut decoder = WebPDecoder::new(Cursor::new(&bytes))?;
--
--                        if decoder.has_animation() {
--                            let _ = decoder.set_background_color(Rgba([0, 0, 0, 0]));
--                            let mut frames = SmallVec::new();
--
--                            for frame in decoder.into_frames() {
--                                match frame {
--                                    Ok(mut frame) => {
--                                        // Convert from RGBA to BGRA.
--                                        for pixel in frame.buffer_mut().chunks_exact_mut(4) {
--                                            pixel.swap(0, 2);
--                                        }
--                                        frames.push(frame);
--                                    }
--                                    Err(err) => {
--                                        log::debug!(
--                                            "Skipping WebP frame in {source:?} due to decode error: {err}"
--                                        );
--                                    }
--                                }
--                            }
--
--                            if frames.is_empty() {
--                                return Err(ImageCacheError::Other(Arc::new(anyhow::anyhow!(
--                                    "WebP could not be decoded: all frames failed ({source:?})"
--                                ))));
--                            }
--
--                            frames
--                        } else {
--                            decode_static_image_from_decoder(decoder)?
--                        }
--                    }
+-                    ImageFormat::Gif => decode_gif_image(&bytes)?,
+-                    ImageFormat::WebP => decode_webp_image(&bytes)?,
 -                    _ => decode_static_image(&bytes, format)?,
 -                };
 +                let data = crate::image_decode::decode(&bytes, format)?;
  
                  Ok(Arc::new(RenderImage::new(data)))
              } else {
-@@ -804,6 +738,7 @@
-     use super::*;
-     use crate::{ParentElement as _, TestAppContext, canvas, div, point, px, size};
-     use image::{Frame, ImageBuffer, Rgba};
-+    use smallvec::SmallVec;
- 
-     const TEST_IMG_ID: &str = "test-img";
- 
 --- a/src/elements/text.rs
 +++ b/src/elements/text.rs
 @@ -3,7 +3,7 @@
@@ -641,7 +335,7 @@
  mod input;
  mod inspector;
  mod interactive;
---- a/src/image_decode.rs
+--- /dev/null
 +++ b/src/image_decode.rs
 @@ -0,0 +1,134 @@
 +//! Shared limits for resource images, clipboard images and generated raster bytes.
@@ -793,8 +487,8 @@
  use futures::channel::oneshot;
  #[cfg(any(test, feature = "test-support", feature = "bench-support"))]
  use image::RgbaImage;
--use image::codecs::gif::GifDecoder;
--use image::{AnimationDecoder as _, DynamicImage, Frame};
+-use image::codecs::{gif::GifDecoder, webp::WebPDecoder};
+-use image::{DynamicImage, Frame, Rgba};
  use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
  use scheduler::Instant;
  pub use scheduler::RunnableMeta;
@@ -806,10 +500,12 @@
  use std::ops;
  use std::time::Duration;
  use std::{
-@@ -3360,33 +3357,6 @@
+@@ -3358,79 +3355,8 @@
+     pub bytes: Vec<u8>,
+     /// The unique ID for the image
      pub id: u64,
- }
- 
+-}
+-
 -pub(crate) fn decode_static_image(
 -    bytes: &[u8],
 -    format: image::ImageFormat,
@@ -837,10 +533,54 @@
 -    Ok(SmallVec::from_elem(Frame::new(data), 1))
 -}
 -
+-fn decode_animated_frames<'a>(
+-    decoder: impl image::AnimationDecoder<'a>,
+-    format_name: &str,
+-) -> Result<SmallVec<[Frame; 1]>> {
+-    let mut frames = SmallVec::new();
+-
+-    for frame in decoder.into_frames() {
+-        match frame {
+-            Ok(mut frame) => {
+-                // Convert from RGBA to BGRA.
+-                for pixel in frame.buffer_mut().chunks_exact_mut(4) {
+-                    pixel.swap(0, 2);
+-                }
+-                frames.push(frame);
+-            }
+-            Err(err) => {
+-                log::debug!("Skipping {format_name} frame due to decode error: {err}");
+-            }
+-        }
+-    }
+-
+-    if frames.is_empty() {
+-        anyhow::bail!("{format_name} could not be decoded: all frames failed");
+-    }
+-
+-    Ok(frames)
+ }
+ 
+-pub(crate) fn decode_gif_image(bytes: &[u8]) -> Result<SmallVec<[Frame; 1]>> {
+-    let decoder = GifDecoder::new(Cursor::new(bytes))?;
+-    decode_animated_frames(decoder, "GIF")
+-}
+-
+-pub(crate) fn decode_webp_image(bytes: &[u8]) -> Result<SmallVec<[Frame; 1]>> {
+-    let mut decoder = WebPDecoder::new(Cursor::new(bytes))?;
+-
+-    if decoder.has_animation() {
+-        let _ = decoder.set_background_color(Rgba([0, 0, 0, 0]));
+-        decode_animated_frames(decoder, "WebP")
+-    } else {
+-        decode_static_image_from_decoder(decoder)
+-    }
+-}
+-
  impl Hash for Image {
      fn hash<H: Hasher>(&self, state: &mut H) {
          state.write_u64(self.id);
-@@ -3424,6 +3394,15 @@
+@@ -3468,6 +3394,15 @@
              .and_then(|result| result.ok())
      }
  
@@ -856,47 +596,24 @@
      /// Use the GPUI `get_asset` API to make this image renderable
      pub fn get_render_image(
          self: Arc<Self>,
-@@ -3449,44 +3428,27 @@
+@@ -3493,20 +3428,27 @@
  
      /// Convert the clipboard image to an `ImageData` object.
      pub fn to_image_data(&self, svg_renderer: SvgRenderer) -> Result<Arc<RenderImage>> {
 +        crate::image_decode::check_source(&self.bytes)?;
          let frames = match self.format {
--            ImageFormat::Gif => {
--                let decoder = GifDecoder::new(Cursor::new(&self.bytes))?;
--                let mut frames = SmallVec::new();
--
--                for frame in decoder.into_frames() {
--                    match frame {
--                        Ok(mut frame) => {
--                            // Convert from RGBA to BGRA.
--                            for pixel in frame.buffer_mut().chunks_exact_mut(4) {
--                                pixel.swap(0, 2);
--                            }
--                            frames.push(frame);
--                        }
--                        Err(err) => {
--                            log::debug!("Skipping GIF frame due to decode error: {err}");
--                        }
--                    }
--                }
--
--                if frames.is_empty() {
--                    anyhow::bail!("GIF could not be decoded: all frames failed");
--                }
--
--                frames
+-            ImageFormat::Gif => decode_gif_image(&self.bytes)?,
+-            ImageFormat::Png => decode_static_image(&self.bytes, image::ImageFormat::Png)?,
+-            ImageFormat::Jpeg => decode_static_image(&self.bytes, image::ImageFormat::Jpeg)?,
+-            ImageFormat::Webp => decode_webp_image(&self.bytes)?,
+-            ImageFormat::Bmp => decode_static_image(&self.bytes, image::ImageFormat::Bmp)?,
+-            ImageFormat::Tiff => decode_static_image(&self.bytes, image::ImageFormat::Tiff)?,
+-            ImageFormat::Ico => decode_static_image(&self.bytes, image::ImageFormat::Ico)?,
 +            ImageFormat::Gif => crate::image_decode::decode(&self.bytes, image::ImageFormat::Gif)?,
 +            ImageFormat::Png => crate::image_decode::decode(&self.bytes, image::ImageFormat::Png)?,
 +            ImageFormat::Jpeg => {
 +                crate::image_decode::decode(&self.bytes, image::ImageFormat::Jpeg)?
-             }
--            ImageFormat::Png => decode_static_image(&self.bytes, image::ImageFormat::Png)?,
--            ImageFormat::Jpeg => decode_static_image(&self.bytes, image::ImageFormat::Jpeg)?,
--            ImageFormat::Webp => decode_static_image(&self.bytes, image::ImageFormat::WebP)?,
--            ImageFormat::Bmp => decode_static_image(&self.bytes, image::ImageFormat::Bmp)?,
--            ImageFormat::Tiff => decode_static_image(&self.bytes, image::ImageFormat::Tiff)?,
--            ImageFormat::Ico => decode_static_image(&self.bytes, image::ImageFormat::Ico)?,
++            }
 +            ImageFormat::Webp => {
 +                crate::image_decode::decode(&self.bytes, image::ImageFormat::WebP)?
 +            }
@@ -946,7 +663,7 @@
          self.style().grid_rows = Some(GridTemplate {
 --- a/src/svg_renderer.rs
 +++ b/src/svg_renderer.rs
-@@ -188,7 +188,68 @@
+@@ -188,7 +188,72 @@
  
      /// Parses SVG data into a [`ParsedSvg`] that can be rasterized at any scale.
      pub fn parse_svg(&self, bytes: &[u8]) -> Result<ParsedSvg, usvg::Error> {
@@ -980,6 +697,10 @@
 +                }),
 +                resolve_string: Box::new(|href, options| {
 +                    let path = options.get_abs_path(std::path::Path::new(href));
++                    // Opening a UNC path would make Windows authenticate to that host.
++                    if is_network_path(&path) {
++                        return None;
++                    }
 +                    // Missing/unsupported references keep the upstream omission behavior.
 +                    if !path.is_file() {
 +                        return None;
@@ -1016,7 +737,7 @@
      }
  
      /// Rasterizes a previously parsed SVG into an image buffer.
-@@ -262,8 +323,8 @@
+@@ -262,11 +327,35 @@
      }
  
      fn render_pixmap(&self, bytes: &[u8], size: SvgSize) -> Result<Pixmap, usvg::Error> {
@@ -1027,7 +748,34 @@
      }
  }
  
-@@ -293,6 +354,13 @@
++/// UNC, device and non-volume verbatim roots on Windows can reach other machines.
++fn is_network_path(path: &std::path::Path) -> bool {
++    #[cfg(windows)]
++    {
++        use std::path::{Component, Prefix};
++        match path.components().next() {
++            Some(Component::Prefix(prefix)) => match prefix.kind() {
++                Prefix::UNC(..) | Prefix::VerbatimUNC(..) | Prefix::DeviceNS(..) => true,
++                Prefix::Verbatim(root) => !root
++                    .to_string_lossy()
++                    .get(..7)
++                    .is_some_and(|start| start.eq_ignore_ascii_case("Volume{")),
++                Prefix::Disk(_) | Prefix::VerbatimDisk(_) => false,
++            },
++            _ => false,
++        }
++    }
++    #[cfg(not(windows))]
++    {
++        let _ = path;
++        false
++    }
++}
++
+ fn rasterize_tree(tree: &usvg::Tree, size: SvgSize) -> Result<Pixmap, usvg::Error> {
+     // Cap the size of the rendered pixmap to avoid texture allocation panics
+     // Related issue: #56466
+@@ -293,6 +382,13 @@
      height *= scale;
  
      // Render the SVG to a pixmap with the specified width and height.
@@ -1041,7 +789,21 @@
      let mut pixmap = resvg::tiny_skia::Pixmap::new(width as u32, height as u32)
          .ok_or(usvg::Error::InvalidSize)?;
  
-@@ -523,3 +591,33 @@
+@@ -312,10 +408,11 @@
+         "fonts/lilex/Lilex-Regular.ttf",
+     ];
+     for path in font_paths {
++        // These fonts are optional: applications that ship none use system fonts instead.
+         match asset_source.load(path) {
+             Ok(Some(data)) => db.load_font_data(data.into_owned()),
+-            Ok(None) => log::warn!("Bundled font not found: {path}"),
+-            Err(error) => log::warn!("Failed to load bundled font {path}: {error}"),
++            Ok(None) => log::debug!("Bundled font not found: {path}"),
++            Err(error) => log::debug!("Bundled font unavailable {path}: {error}"),
+         }
+     }
+ }
+@@ -523,3 +620,33 @@
          );
      }
  }
@@ -1112,11 +874,10 @@
          );
  
          let bounds = (snapped_bounds / scale_factor).map(Pixels);
-@@ -478,6 +481,19 @@
-                             template.repeat,
+@@ -479,6 +482,19 @@
                              vec![minmax(min_content(), fr(1.0_f32))],
                          )]
-+                    }
+                     }
 +                    crate::GridTemplateMinSize::MaxContentStretchLast => {
 +                        let mut tracks = Vec::new();
 +                        if template.repeat > 1 {
@@ -1129,9 +890,10 @@
 +                            tracks.push(repeat(1, vec![minmax(max_content(), fr(1.0_f32))]));
 +                        }
 +                        tracks
-                     }
++                    }
                      // grid-template-*: repeat(<number>, minmax(0, max-content))
                      crate::GridTemplateMinSize::MaxContent => {
+                         vec![repeat(
 --- a/src/text_system.rs
 +++ b/src/text_system.rs
 @@ -391,6 +391,20 @@
@@ -1168,25 +930,29 @@
      #[deref_mut]
 --- a/src/util.rs
 +++ b/src/util.rs
-@@ -141,6 +141,14 @@
+@@ -141,7 +141,15 @@
      round_half_toward_zero(logical * scale_factor)
  }
  
 +/// Rounds a coordinate (not a length) to a device pixel with 0.5 ties toward
 +/// positive infinity. Unlike half-toward-zero, this commutes with integer
 +/// translation, so an edge shared by boxes on opposite sides of zero snaps once.
-+#[inline]
+ #[inline]
 +pub(crate) fn round_position_to_device_pixel(logical: f32, scale_factor: f32) -> f32 {
 +    (logical * scale_factor + 0.5).floor()
 +}
 +
- #[inline]
++#[inline]
  pub(crate) fn round_stroke_to_device_pixel(logical: f32, scale_factor: f32) -> f32 {
      if logical == 0.0 {
-@@ -217,6 +225,26 @@
-     }
- 
-     #[test]
+         0.0
+@@ -214,6 +222,26 @@
+         assert_eq!(round_to_device_pixel(2.0, 2.0), 4.0);
+         assert_eq!(floor_to_device_pixel(2.0, 2.0), 4.0);
+         assert_eq!(ceil_to_device_pixel(2.0, 2.0), 4.0);
++    }
++
++    #[test]
 +    fn test_position_rounding_commutes_with_translation() {
 +        for scale in [1.0, 1.5, 2.0] {
 +            for origin in [-600.5, -599.5, -0.5, -0.25, 0.25, 0.5, 10.5] {
@@ -1204,12 +970,9 @@
 +        }
 +        assert_eq!(round_position_to_device_pixel(-599.5, 1.0), -599.0);
 +        assert_eq!(round_position_to_device_pixel(470.5, 1.0), 471.0);
-+    }
-+
-+    #[test]
-     fn test_round_half_toward_zero_f64() {
-         assert_eq!(round_half_toward_zero_f64(0.5), 0.0);
-         assert_eq!(round_half_toward_zero_f64(-0.5), 0.0);
+     }
+ 
+     #[test]
 --- a/src/window.rs
 +++ b/src/window.rs
 @@ -77,7 +77,8 @@
@@ -1222,7 +985,19 @@
  };
  pub use prompts::*;
  
-@@ -3434,7 +3435,7 @@
+@@ -2181,6 +2182,11 @@
+         platform_window.on_active_status_change(Box::new({
+             let mut cx = cx.to_async();
+             move |active| {
++                // AppKit delivers a closing window's resign-key after GPUI has removed it,
++                // because the notification is forwarded through the foreground executor.
++                if !cx.update(|cx| cx.windows().contains(&handle)) {
++                    return;
++                }
+                 handle
+                     .update(&mut cx, |_, window, cx| {
+                         window.active.set(active);
+@@ -3444,7 +3450,7 @@
              thickness
          };
          Bounds {
@@ -1231,7 +1006,7 @@
              size: size(self.snap_stroke(width), height),
          }
      }
-@@ -3514,10 +3515,10 @@
+@@ -3524,10 +3530,10 @@
      #[inline]
      fn snap_bounds(&self, bounds: Bounds<Pixels>) -> Bounds<ScaledPixels> {
          let scale_factor = self.scale_factor();
@@ -1246,7 +1021,7 @@
          Bounds::from_corners(
              point(ScaledPixels(left), ScaledPixels(top)),
              point(ScaledPixels(right), ScaledPixels(bottom)),
-@@ -5021,7 +5022,7 @@
+@@ -5044,7 +5050,7 @@
          let scale_factor = self.scale_factor();
          let height = style.thickness;
          let bounds = Bounds {
@@ -1255,7 +1030,7 @@
              size: size(self.snap_stroke(width), self.snap_stroke(height)),
          };
          let opacity = self.element_opacity();
-@@ -5509,7 +5510,9 @@
+@@ -5532,7 +5538,9 @@
              .unwrap()
              .layout_bounds(layout_id, scale_factor)
              .map(Into::into);

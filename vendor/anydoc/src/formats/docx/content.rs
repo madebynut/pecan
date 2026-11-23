@@ -180,21 +180,10 @@ fn collect_blocks(
 
 fn emit_paragraph(kind: ParaKind, pieces: Vec<Piece>, blocks: &mut Vec<Block>, runs: &mut Runs) {
     match kind {
-        ParaKind::ListItem {
-            ilvl,
-            key,
-            number,
-            label,
-        } => {
+        ParaKind::ListItem { ilvl, key, number, label } => {
             runs.styled.flush(blocks);
             let item = pieces_into_blocks(pieces);
-            runs.list.push(ListEntry {
-                level: ilvl,
-                key,
-                number,
-                label,
-                blocks: item,
-            });
+            runs.list.push(ListEntry { level: ilvl, key, number, label, blocks: item });
         }
         ParaKind::Styled(style) => {
             flush_list(blocks, &mut runs.list);
@@ -218,19 +207,10 @@ fn emit_paragraph(kind: ParaKind, pieces: Vec<Piece>, blocks: &mut Vec<Block>, r
                         rebase_emphasis(&mut content, base);
                         if !emitted_heading {
                             if let Some(label) = label.take() {
-                                content.insert(
-                                    0,
-                                    Inline::Text {
-                                        text: label,
-                                        style: Style::PLAIN,
-                                    },
-                                );
+                                content
+                                    .insert(0, Inline::Text { text: label, style: Style::PLAIN });
                             }
-                            blocks.push(Block::Heading {
-                                level,
-                                anchor: None,
-                                content,
-                            });
+                            blocks.push(Block::Heading { level, anchor: None, content });
                             emitted_heading = true;
                         } else {
                             // Attachments cannot be nested in a heading, so
@@ -252,9 +232,7 @@ fn emit_paragraph(kind: ParaKind, pieces: Vec<Piece>, blocks: &mut Vec<Block>, r
 
 fn parse_paragraph(p: &Element, ctx: &Ctx) -> Result<(ParaKind, Vec<Piece>), ConvertError> {
     let ppr = p.find(ns::W, "pPr");
-    let pstyle_id = ppr
-        .and_then(|pr| pr.find(ns::W, "pStyle"))
-        .and_then(|e| e.attr(ns::W, "val"));
+    let pstyle_id = ppr.and_then(|pr| pr.find(ns::W, "pStyle")).and_then(|e| e.attr(ns::W, "val"));
 
     // Direct paragraph properties overlay the style chain: an explicit
     // outlineLvl of 9 ("no outline level") turns a style heading off.
@@ -288,25 +266,15 @@ fn parse_paragraph(p: &Element, ctx: &Ctx) -> Result<(ParaKind, Vec<Piece>), Con
     let kind = match heading {
         Some(level) => {
             let label = match &numbering {
-                Some((_, key, number, label)) if key.marker.ordered() => Some(format!(
-                    "{} ",
-                    label.clone().unwrap_or_else(|| key.marker.label(*number))
-                )),
+                Some((_, key, number, label)) if key.marker.ordered() => {
+                    Some(format!("{} ", label.clone().unwrap_or_else(|| key.marker.label(*number))))
+                }
                 _ => None,
             };
-            ParaKind::Heading {
-                level,
-                label,
-                base: paragraph_level,
-            }
+            ParaKind::Heading { level, label, base: paragraph_level }
         }
         None => match numbering {
-            Some((ilvl, key, number, label)) => ParaKind::ListItem {
-                ilvl,
-                key,
-                number,
-                label,
-            },
+            Some((ilvl, key, number, label)) => ParaKind::ListItem { ilvl, key, number, label },
             None => match style_block {
                 Some(style) => ParaKind::Styled(style),
                 None => ParaKind::Plain,
@@ -375,15 +343,7 @@ fn resolve_numbering(
     } else {
         (0, None)
     };
-    Ok(Some((
-        ilvl,
-        ListKey {
-            instance: num_id,
-            marker,
-        },
-        number,
-        label,
-    )))
+    Ok(Some((ilvl, ListKey { instance: num_id, marker }, number, label)))
 }
 
 struct InlineWalker<'a, 'b, 'e> {
@@ -396,13 +356,7 @@ struct InlineWalker<'a, 'b, 'e> {
 
 impl<'a, 'b, 'e> InlineWalker<'a, 'b, 'e> {
     fn new(ctx: &'e Ctx<'a, 'b>, base: Style) -> Self {
-        InlineWalker {
-            ctx,
-            base,
-            pieces: Vec::new(),
-            current: Vec::new(),
-            fields: Vec::new(),
-        }
+        InlineWalker { ctx, base, pieces: Vec::new(), current: Vec::new(), fields: Vec::new() }
     }
 
     fn push(&mut self, inline: Inline) {
@@ -419,8 +373,7 @@ impl<'a, 'b, 'e> InlineWalker<'a, 'b, 'e> {
             return;
         }
         if !self.current.is_empty() {
-            self.pieces
-                .push(Piece::Inlines(std::mem::take(&mut self.current)));
+            self.pieces.push(Piece::Inlines(std::mem::take(&mut self.current)));
         }
         self.pieces.push(Piece::Blocks(blocks));
     }
@@ -435,12 +388,7 @@ impl<'a, 'b, 'e> InlineWalker<'a, 'b, 'e> {
             }
             if child.is(ns::M, "oMathPara") {
                 // A math paragraph is displayed on its own line.
-                self.push_blocks(
-                    omath_para_to_tex(child)
-                        .into_iter()
-                        .map(Block::Math)
-                        .collect(),
-                );
+                self.push_blocks(omath_para_to_tex(child).into_iter().map(Block::Math).collect());
                 continue;
             }
             if child.is(ns::M, "oMath") {
@@ -510,8 +458,7 @@ impl<'a, 'b, 'e> InlineWalker<'a, 'b, 'e> {
                 &rel.target,
             ));
         }
-        link.attr(ns::W, "anchor")
-            .map(|a| LinkTarget::Anchor(a.to_string()))
+        link.attr(ns::W, "anchor").map(|a| LinkTarget::Anchor(a.to_string()))
     }
 
     fn walk_run(&mut self, run: &Element) -> Result<(), ConvertError> {
@@ -554,10 +501,7 @@ impl<'a, 'b, 'e> InlineWalker<'a, 'b, 'e> {
                         self.push(Inline::Text { text, style });
                     }
                 }
-                "tab" | "ptab" => self.push(Inline::Text {
-                    text: " ".into(),
-                    style: Style::PLAIN,
-                }),
+                "tab" | "ptab" => self.push(Inline::Text { text: " ".into(), style: Style::PLAIN }),
                 // Markdown has no pages or columns, but every w:br still
                 // separates the runs around it: dropping a page break
                 // outright would join the words on either side. One left at
@@ -640,10 +584,7 @@ impl<'a, 'b, 'e> InlineWalker<'a, 'b, 'e> {
         // carries a VML preview image next to the o:OLEObject, and the
         // object's identity and payload must win over its preview.
         if let Some(ole) = elem.first_descendant(ns::O_VML, "OLEObject") {
-            let prog_id = ole
-                .attr(ns::O_VML, "ProgID")
-                .unwrap_or("object")
-                .to_string();
+            let prog_id = ole.attr(ns::O_VML, "ProgID").unwrap_or("object").to_string();
             let alt = if descr.trim().is_empty() {
                 format!("Embedded object: {prog_id}")
             } else {
@@ -660,10 +601,7 @@ impl<'a, 'b, 'e> InlineWalker<'a, 'b, 'e> {
                 },
                 None => None,
             };
-            self.push(Inline::Image {
-                alt,
-                source: source.unwrap_or(ImageSource::Unavailable),
-            });
+            self.push(Inline::Image { alt, source: source.unwrap_or(ImageSource::Unavailable) });
             return Ok(());
         }
 
@@ -671,8 +609,7 @@ impl<'a, 'b, 'e> InlineWalker<'a, 'b, 'e> {
         let image_rel = elem
             .first_descendant(ns::A, "blip")
             .and_then(|b| {
-                b.attr_qualified(ns::R, "embed")
-                    .or_else(|| b.attr_qualified(ns::R, "link"))
+                b.attr_qualified(ns::R, "embed").or_else(|| b.attr_qualified(ns::R, "link"))
             })
             .or_else(|| {
                 elem.first_descendant(ns::VML, "imagedata")
@@ -692,10 +629,7 @@ impl<'a, 'b, 'e> InlineWalker<'a, 'b, 'e> {
                 Some(source) => self.push(Inline::Image { alt: descr, source }),
                 None => {
                     if !descr.trim().is_empty() {
-                        self.push(Inline::Image {
-                            alt: descr,
-                            source: ImageSource::Unavailable,
-                        });
+                        self.push(Inline::Image { alt: descr, source: ImageSource::Unavailable });
                     }
                 }
             }
@@ -703,10 +637,7 @@ impl<'a, 'b, 'e> InlineWalker<'a, 'b, 'e> {
         }
 
         if !descr.trim().is_empty() {
-            self.push(Inline::Image {
-                alt: descr,
-                source: ImageSource::Unavailable,
-            });
+            self.push(Inline::Image { alt: descr, source: ImageSource::Unavailable });
         }
         Ok(())
     }
@@ -816,13 +747,7 @@ struct TcInfo<'e> {
 impl TcInfo<'_> {
     /// Empty single-column filler for `gridBefore`/`gridAfter` positions.
     fn filler() -> Self {
-        TcInfo {
-            elem: None,
-            merged: Vec::new(),
-            col_span: 1,
-            row_span: 1,
-            covered: false,
-        }
+        TcInfo { elem: None, merged: Vec::new(), col_span: 1, row_span: 1, covered: false }
     }
 }
 
@@ -897,11 +822,7 @@ pub(super) fn parse_table(tbl: &Element, ctx: &Ctx) -> Result<Vec<Block>, Conver
                 for merged in &tc.merged {
                     blocks.extend(parse_blocks(merged, ctx)?);
                 }
-                builder.place(Cell::spanning(
-                    blocks,
-                    tc.col_span as u32,
-                    tc.row_span as u32,
-                ))?;
+                builder.place(Cell::spanning(blocks, tc.col_span as u32, tc.row_span as u32))?;
             }
         }
     }
@@ -972,9 +893,7 @@ mod tests {
     }
 
     fn assert_text(block: &Block, expected: &str) {
-        let Block::Paragraph(inlines) = block else {
-            panic!("expected paragraph: {block:?}")
-        };
+        let Block::Paragraph(inlines) = block else { panic!("expected paragraph: {block:?}") };
         assert_eq!(crate::model::inlines_to_plain_text(inlines), expected);
     }
 
@@ -982,16 +901,8 @@ mod tests {
     fn heading_attachments_keep_source_order() {
         let mut blocks = Vec::new();
         emit_paragraph(
-            ParaKind::Heading {
-                level: 2,
-                label: None,
-                base: Style::PLAIN,
-            },
-            vec![
-                text("before"),
-                Piece::Blocks(vec![Block::Rule]),
-                text("after"),
-            ],
+            ParaKind::Heading { level: 2, label: None, base: Style::PLAIN },
+            vec![text("before"), Piece::Blocks(vec![Block::Rule]), text("after")],
             &mut blocks,
             &mut Runs::default(),
         );
@@ -1009,25 +920,16 @@ mod tests {
         emit_paragraph(
             ParaKind::ListItem {
                 ilvl: 0,
-                key: ListKey {
-                    instance: 1,
-                    marker: MarkerKind::Bullet,
-                },
+                key: ListKey { instance: 1, marker: MarkerKind::Bullet },
                 number: 0,
                 label: None,
             },
-            vec![
-                text("before"),
-                Piece::Blocks(vec![Block::Rule]),
-                text("after"),
-            ],
+            vec![text("before"), Piece::Blocks(vec![Block::Rule]), text("after")],
             &mut blocks,
             &mut runs,
         );
         runs.flush(&mut blocks);
-        let [Block::List(list)] = &blocks[..] else {
-            panic!("unexpected blocks: {blocks:?}")
-        };
+        let [Block::List(list)] = &blocks[..] else { panic!("unexpected blocks: {blocks:?}") };
         let [before, Block::Rule, after] = &list.items[0].blocks[..] else {
             panic!("unexpected item: {:?}", list.items[0].blocks)
         };
@@ -1046,9 +948,7 @@ mod tests {
             &mut blocks,
             &mut Runs::default(),
         );
-        let [Block::Paragraph(inlines)] = &blocks[..] else {
-            panic!("{blocks:?}")
-        };
+        let [Block::Paragraph(inlines)] = &blocks[..] else { panic!("{blocks:?}") };
         assert!(matches!(inlines[..], [Inline::Anchor(_)]), "{inlines:?}");
     }
 
@@ -1059,10 +959,7 @@ mod tests {
         emit_paragraph(
             ParaKind::ListItem {
                 ilvl: 0,
-                key: ListKey {
-                    instance: 1,
-                    marker: MarkerKind::Bullet,
-                },
+                key: ListKey { instance: 1, marker: MarkerKind::Bullet },
                 number: 0,
                 label: None,
             },
@@ -1071,14 +968,8 @@ mod tests {
             &mut runs,
         );
         runs.flush(&mut blocks);
-        let [Block::List(list)] = &blocks[..] else {
-            panic!("{blocks:?}")
-        };
-        assert!(
-            list.items[0].blocks.is_empty(),
-            "{:?}",
-            list.items[0].blocks
-        );
+        let [Block::List(list)] = &blocks[..] else { panic!("{blocks:?}") };
+        assert!(list.items[0].blocks.is_empty(), "{:?}", list.items[0].blocks);
     }
 
     #[test]
@@ -1087,11 +978,7 @@ mod tests {
         let mut runs = Runs::default();
         emit_paragraph(
             ParaKind::Styled(BlockStyle::Code),
-            vec![
-                text("before"),
-                Piece::Blocks(vec![Block::Rule]),
-                text("after"),
-            ],
+            vec![text("before"), Piece::Blocks(vec![Block::Rule]), text("after")],
             &mut blocks,
             &mut runs,
         );

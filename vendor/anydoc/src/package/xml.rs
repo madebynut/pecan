@@ -86,8 +86,7 @@ impl Element {
     /// *different* vocabulary than the element's (`r:id`, `xml:id`) must use
     /// [`Element::attr_qualified`], where that fallback would misattribute.
     pub fn attr(&self, ns: &str, local: &str) -> Option<&str> {
-        self.attr_qualified(ns, local)
-            .or_else(|| self.attr_unqualified(local))
+        self.attr_qualified(ns, local).or_else(|| self.attr_unqualified(local))
     }
 
     /// Strictly namespace-qualified attribute lookup, no fallback.
@@ -100,19 +99,13 @@ impl Element {
 
     /// Explicitly unqualified attribute lookup (no namespace), no fallback.
     pub fn attr_unqualified(&self, local: &str) -> Option<&str> {
-        self.attrs
-            .iter()
-            .find(|a| a.local == local && a.ns.is_none())
-            .map(|a| a.value.as_str())
+        self.attrs.iter().find(|a| a.local == local && a.ns.is_none()).map(|a| a.value.as_str())
     }
 
     /// Attribute by local name regardless of namespace. For elements whose
     /// vocabulary is unambiguous in context (relationships, container files).
     pub fn attr_any(&self, local: &str) -> Option<&str> {
-        self.attrs
-            .iter()
-            .find(|a| a.local == local)
-            .map(|a| a.value.as_str())
+        self.attrs.iter().find(|a| a.local == local).map(|a| a.value.as_str())
     }
 
     pub fn child_elems(&self) -> impl Iterator<Item = &Element> {
@@ -213,12 +206,8 @@ pub fn parse_xml(bytes: &[u8]) -> Result<Element, ConvertError> {
     reader.config_mut().check_end_names = false;
 
     let mut interner: HashMap<Vec<u8>, Rc<str>> = HashMap::new();
-    let mut root = Element {
-        ns: None,
-        local: String::new(),
-        attrs: Vec::new(),
-        children: Vec::new(),
-    };
+    let mut root =
+        Element { ns: None, local: String::new(), attrs: Vec::new(), children: Vec::new() };
     let mut stack: Vec<Element> = Vec::new();
     let mut nodes: usize = 0;
     let mut recovered = false;
@@ -353,9 +342,7 @@ fn attach(stack: &mut [Element], root: &mut Element, node: Node) {
 pub fn normalize_ooxml_uri(uri: &str) -> Option<String> {
     let rest = uri.strip_prefix("http://purl.oclc.org/ooxml/")?;
     let (family, tail) = rest.split_once('/')?;
-    Some(format!(
-        "http://schemas.openxmlformats.org/{family}/2006/{tail}"
-    ))
+    Some(format!("http://schemas.openxmlformats.org/{family}/2006/{tail}"))
 }
 
 fn intern(interner: &mut HashMap<Vec<u8>, Rc<str>>, uri: &[u8]) -> Rc<str> {
@@ -391,12 +378,7 @@ fn start_to_element(
         };
         // Namespace declarations are consumed by the reader's resolver; the
         // DOM stores only resolved names.
-        if attr
-            .key
-            .as_ref()
-            .strip_prefix(b"xmlns")
-            .is_some_and(|r| matches!(r, [] | [b':', ..]))
-        {
+        if attr.key.as_ref().strip_prefix(b"xmlns").is_some_and(|r| matches!(r, [] | [b':', ..])) {
             continue;
         }
         let (res, alocal) = reader.resolver().resolve_attribute(attr.key);
@@ -439,12 +421,7 @@ fn start_to_element(
             .collect::<Vec<_>>()
             .join(" ");
     }
-    Element {
-        ns,
-        local,
-        attrs,
-        children: Vec::new(),
-    }
+    Element { ns, local, attrs, children: Vec::new() }
 }
 
 fn push_text(stack: &mut [Element], root: &mut Element, text: String) {
@@ -600,10 +577,7 @@ mod tests {
         let alt = root.find(ns::MC, "AlternateContent").unwrap();
         let choices: Vec<&Element> = alt.find_all(ns::MC, "Choice").collect();
         assert_eq!(choices[0].attr_any("Requires"), Some("urn:one"));
-        assert_eq!(
-            choices[1].attr_any("Requires"),
-            Some("urn:two unknownprefix")
-        );
+        assert_eq!(choices[1].attr_any("Requires"), Some("urn:two unknownprefix"));
     }
 
     #[test]
@@ -634,13 +608,7 @@ mod tests {
             xml.extend_from_slice(b"<d>");
         }
         let err = parse_xml(&xml).unwrap_err();
-        assert!(matches!(
-            err,
-            ConvertError::ResourceLimit {
-                limit: "max_xml_depth",
-                ..
-            }
-        ));
+        assert!(matches!(err, ConvertError::ResourceLimit { limit: "max_xml_depth", .. }));
     }
 
     #[test]

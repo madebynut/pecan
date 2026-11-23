@@ -25,10 +25,7 @@ pub(crate) fn resolve(base_part: &str, reference: &str) -> Result<Target, Conver
     let reference = reference.split_once('?').map_or(reference, |(r, _)| r);
     if reference.is_empty() {
         // Fragment-only reference: the target is the base part itself.
-        return Ok(Target {
-            path: base_part.to_string(),
-            fragment,
-        });
+        return Ok(Target { path: base_part.to_string(), fragment });
     }
 
     let mut segments: Vec<String> = Vec::new();
@@ -63,10 +60,7 @@ pub(crate) fn resolve(base_part: &str, reference: &str) -> Result<Target, Conver
             }
         }
     }
-    Ok(Target {
-        path: segments.join("/"),
-        fragment,
-    })
+    Ok(Target { path: segments.join("/"), fragment })
 }
 
 /// Percent-decode one URI component. Infallible by design: a `%` not
@@ -110,28 +104,19 @@ mod tests {
 
     #[test]
     fn relative_against_base_directory() {
-        assert_eq!(
-            path("word/document.xml", "media/image1.png"),
-            "word/media/image1.png"
-        );
+        assert_eq!(path("word/document.xml", "media/image1.png"), "word/media/image1.png");
         assert_eq!(path("word/document.xml", "styles.xml"), "word/styles.xml");
         assert_eq!(path("content.opf", "ch1.xhtml"), "ch1.xhtml");
     }
 
     #[test]
     fn absolute_targets_resolve_from_root() {
-        assert_eq!(
-            path("word/document.xml", "/docProps/core.xml"),
-            "docProps/core.xml"
-        );
+        assert_eq!(path("word/document.xml", "/docProps/core.xml"), "docProps/core.xml");
     }
 
     #[test]
     fn dot_segments_resolve_and_clamp_at_root() {
-        assert_eq!(
-            path("OEBPS/text/ch1.xhtml", "../images/i.png"),
-            "OEBPS/images/i.png"
-        );
+        assert_eq!(path("OEBPS/text/ch1.xhtml", "../images/i.png"), "OEBPS/images/i.png");
         assert_eq!(path("a/b.xml", "./c.xml"), "a/c.xml");
         assert_eq!(path("a/b.xml", "../../../x.xml"), "x.xml");
     }
@@ -155,10 +140,7 @@ mod tests {
 
     #[test]
     fn percent_decoding_within_segments() {
-        assert_eq!(
-            path("OEBPS/x.opf", "my%20file.xhtml"),
-            "OEBPS/my file.xhtml"
-        );
+        assert_eq!(path("OEBPS/x.opf", "my%20file.xhtml"), "OEBPS/my file.xhtml");
     }
 
     #[test]

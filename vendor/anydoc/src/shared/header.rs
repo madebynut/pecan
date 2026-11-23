@@ -60,22 +60,13 @@ pub fn resolve_header_rows(table: &Table, declared: usize) -> usize {
     }
 
     let head: Vec<String> = grid[0].iter().map(slot_text).collect();
-    let body: Vec<Vec<String>> = sample
-        .iter()
-        .map(|row| row.iter().map(slot_text).collect())
-        .collect();
+    let body: Vec<Vec<String>> =
+        sample.iter().map(|row| row.iter().map(slot_text).collect()).collect();
     // Columns past the last one holding content never render, so they take no
     // part in the checks below.
-    let content_width = |row: &Vec<String>| {
-        row.iter()
-            .rposition(|v| !v.trim().is_empty())
-            .map_or(0, |i| i + 1)
-    };
-    let width = std::iter::once(&head)
-        .chain(body.iter())
-        .map(content_width)
-        .max()
-        .unwrap_or(0);
+    let content_width =
+        |row: &Vec<String>| row.iter().rposition(|v| !v.trim().is_empty()).map_or(0, |i| i + 1);
+    let width = std::iter::once(&head).chain(body.iter()).map(content_width).max().unwrap_or(0);
     // Content past the last label is an unlabelled column, same as a blank
     // label between two filled ones.
     if width == 0 || width > head.len() {
@@ -150,10 +141,7 @@ pub fn resolve_header_rows(table: &Table, declared: usize) -> usize {
     // Text above text, with no value repeated: only the shape of the row is
     // left to go on. Short single-line entries read as labels, and the
     // alternative is the empty header row every such table renders today.
-    let labelled = head
-        .iter()
-        .take(width)
-        .all(|v| v.chars().count() <= MAX_LABEL);
+    let labelled = head.iter().take(width).all(|v| v.chars().count() <= MAX_LABEL);
     usize::from(labelled)
 }
 
@@ -165,23 +153,16 @@ fn modal_width(rows: &[Vec<CellSlot>]) -> usize {
     for row in rows {
         *tally.entry(row.len()).or_default() += 1;
     }
-    tally
-        .into_iter()
-        .max_by_key(|&(width, n)| (n, width))
-        .map_or(0, |(width, _)| width)
+    tally.into_iter().max_by_key(|&(width, n)| (n, width)).map_or(0, |(width, _)| width)
 }
 
 /// A slot's text. Covered positions and cells holding anything but paragraphs
 /// yield nothing: neither is a plain value, and both then read as empty.
 fn slot_text(slot: &CellSlot) -> String {
-    let CellSlot::Origin(cell) = slot else {
-        return String::new();
-    };
+    let CellSlot::Origin(cell) = slot else { return String::new() };
     let mut out = String::new();
     for block in &cell.blocks {
-        let Block::Paragraph(inlines) = block else {
-            return String::new();
-        };
+        let Block::Paragraph(inlines) = block else { return String::new() };
         if !out.is_empty() {
             out.push('\n');
         }
@@ -199,12 +180,10 @@ fn fold(value: &str) -> String {
 /// The kind at least [`DOMINANCE_NUM`]/[`DOMINANCE_DEN`] of the values share,
 /// if any. Values are non-empty, so they all classify.
 fn dominant_kind(values: &[&str]) -> Option<Kind> {
-    [Kind::Number, Kind::Bool, Kind::Date, Kind::Text]
-        .into_iter()
-        .find(|&kind| {
-            let n = values.iter().filter(|v| classify(v) == Some(kind)).count();
-            n * DOMINANCE_DEN >= values.len() * DOMINANCE_NUM
-        })
+    [Kind::Number, Kind::Bool, Kind::Date, Kind::Text].into_iter().find(|&kind| {
+        let n = values.iter().filter(|v| classify(v) == Some(kind)).count();
+        n * DOMINANCE_DEN >= values.len() * DOMINANCE_NUM
+    })
 }
 
 /// Classify one value; `None` when it is blank and carries no type at all.
@@ -230,10 +209,8 @@ fn classify(value: &str) -> Option<Kind> {
 /// value uses does not matter here, only that it is a number.
 fn is_number(value: &str) -> bool {
     let value = value.strip_suffix('%').unwrap_or(value);
-    let cleaned: String = value
-        .chars()
-        .filter(|c| !matches!(c, ',' | ' ' | '_' | '\u{a0}'))
-        .collect();
+    let cleaned: String =
+        value.chars().filter(|c| !matches!(c, ',' | ' ' | '_' | '\u{a0}')).collect();
     // `f64` also parses `inf` and `NaN`; a number here has digits in it.
     cleaned.chars().any(|c| c.is_ascii_digit()) && cleaned.parse::<f64>().is_ok()
 }
@@ -244,11 +221,7 @@ fn is_number(value: &str) -> bool {
 fn is_temporal(value: &str) -> bool {
     let (date, time) = value.split_once(['T', ' ']).unwrap_or((value, ""));
     // Fractional seconds and a trailing zone marker are not part of the shape.
-    let time = time
-        .trim_end_matches('Z')
-        .split('.')
-        .next()
-        .unwrap_or_default();
+    let time = time.trim_end_matches('Z').split('.').next().unwrap_or_default();
     let is_clock = |t: &str| matches!(digit_groups(t, &[':']), 2 | 3);
     if digit_groups(date, &['-', '/', '.']) == 3 {
         return time.is_empty() || is_clock(time);
@@ -259,17 +232,11 @@ fn is_temporal(value: &str) -> bool {
 /// How many components `value` has when split on the first of `seps` it
 /// contains, or 0 unless every component is a short digit run.
 fn digit_groups(value: &str, seps: &[char]) -> usize {
-    let Some(sep) = seps.iter().copied().find(|&s| value.contains(s)) else {
-        return 0;
-    };
+    let Some(sep) = seps.iter().copied().find(|&s| value.contains(s)) else { return 0 };
     let parts: Vec<&str> = value.split(sep).collect();
     let short_digits =
         |p: &&str| (1..=4).contains(&p.len()) && p.chars().all(|c| c.is_ascii_digit());
-    if parts.iter().all(short_digits) {
-        parts.len()
-    } else {
-        0
-    }
+    if parts.iter().all(short_digits) { parts.len() } else { 0 }
 }
 
 #[cfg(test)]
@@ -280,11 +247,7 @@ mod tests {
     fn detect(rows: &[&[&str]]) -> usize {
         let rows: Vec<Vec<Cell>> = rows
             .iter()
-            .map(|r| {
-                r.iter()
-                    .map(|t| Cell::from_inlines(vec![Inline::plain(*t)]))
-                    .collect()
-            })
+            .map(|r| r.iter().map(|t| Cell::from_inlines(vec![Inline::plain(*t)])).collect())
             .collect();
         resolve_header_rows(&Table::from_rows(rows, 0, TableKind::Data), 0)
     }
@@ -293,11 +256,7 @@ mod tests {
     fn labels_over_typed_columns_are_a_header() {
         assert_eq!(detect(&[&["name", "qty"], &["a", "1"], &["b", "2"]]), 1);
         assert_eq!(
-            detect(&[
-                &["when", "ok"],
-                &["2026-03-15", "TRUE"],
-                &["2026-03-16", "FALSE"]
-            ]),
+            detect(&[&["when", "ok"], &["2026-03-15", "TRUE"], &["2026-03-16", "FALSE"]]),
             1
         );
     }
@@ -306,11 +265,7 @@ mod tests {
     fn a_first_data_row_is_not_a_header() {
         // Numeric columns with a numeric first row: sanctions-list shape.
         assert_eq!(
-            detect(&[
-                &["36", "12", "aka"],
-                &["173", "57", "aka"],
-                &["306", "220", "aka"]
-            ]),
+            detect(&[&["36", "12", "aka"], &["173", "57", "aka"], &["306", "220", "aka"]]),
             0
         );
     }
@@ -322,10 +277,7 @@ mod tests {
 
     #[test]
     fn all_text_falls_back_to_row_shape() {
-        assert_eq!(
-            detect(&[&["col1", "col2"], &["naïve", "café"], &["Αθήνα", "数据"]]),
-            1
-        );
+        assert_eq!(detect(&[&["col1", "col2"], &["naïve", "café"], &["Αθήνα", "数据"]]), 1);
         let long = "l".repeat(MAX_LABEL + 1);
         assert_eq!(detect(&[&[&long, "col2"], &["a", "b"], &["c", "d"]]), 0);
     }
@@ -352,11 +304,7 @@ mod tests {
         // The first row is text over a column of mixed literals; the type
         // signal is absent, so the row shape decides.
         assert_eq!(
-            detect(&[
-                &["kind", "value"],
-                &["percent", "15.5%"],
-                &["date", "2026-03-15"]
-            ]),
+            detect(&[&["kind", "value"], &["percent", "15.5%"], &["date", "2026-03-15"]]),
             1
         );
     }

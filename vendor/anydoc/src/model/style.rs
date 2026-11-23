@@ -15,10 +15,5 @@ pub struct Style {
 
 impl Style {
     /// No toggle set.
-    pub const PLAIN: Style = Style {
-        bold: false,
-        italic: false,
-        strike: false,
-        code: false,
-    };
+    pub const PLAIN: Style = Style { bold: false, italic: false, strike: false, code: false };
 }

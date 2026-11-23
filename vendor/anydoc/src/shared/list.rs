@@ -61,10 +61,7 @@ fn build_lists(entries: Vec<ListEntry>) -> Vec<Block> {
     };
 
     let mut iter = entries.into_iter().peekable();
-    while let Some(&ListEntry {
-        level, key, number, ..
-    }) = iter.peek()
-    {
+    while let Some(&ListEntry { level, key, number, .. }) = iter.peek() {
         if level <= min_lvl {
             let entry = iter.next().unwrap();
             let split = match &current {
@@ -84,10 +81,7 @@ fn build_lists(entries: Vec<ListEntry>) -> Vec<Block> {
                 current = Some((list, key, number));
             }
             let (list, _, last) = current.as_mut().unwrap();
-            list.items.push(ListItem {
-                blocks: entry.blocks,
-                marker_label: entry.label,
-            });
+            list.items.push(ListItem { blocks: entry.blocks, marker_label: entry.label });
             *last = number;
         } else {
             let mut sub = Vec::new();
@@ -101,16 +95,9 @@ fn build_lists(entries: Vec<ListEntry>) -> Vec<Block> {
             if current.is_none() {
                 // Sub-level content with no parent item yet: host it in an
                 // anonymous item so nesting is preserved.
-                let key = ListKey {
-                    instance: u64::MAX,
-                    marker: MarkerKind::Bullet,
-                };
+                let key = ListKey { instance: u64::MAX, marker: MarkerKind::Bullet };
                 current = Some((
-                    List {
-                        marker: MarkerKind::Bullet,
-                        start: 1,
-                        items: Vec::new(),
-                    },
+                    List { marker: MarkerKind::Bullet, start: 1, items: Vec::new() },
                     key,
                     0,
                 ));

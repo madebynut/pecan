@@ -239,6 +239,19 @@ mod tests {
             Some([0x05, 0x50, 0xae]),
             "SQL numeric literals must not look like strings"
         );
+        // The SQL query is Pecan's adaptation of the grammar's own; these follow the grammar release.
+        for (code, token, expected, what) in [
+            ("SELECT 1.5;", "1.5", [0x05, 0x50, 0xae], "decimal literal"),
+            ("SELECT 'a.b';", "a.b", [0x0a, 0x64, 0x40], "quoted literal"),
+            (
+                "SELECT a FROM t QUALIFY a > 1;",
+                "QUALIFY",
+                [0x82, 0x50, 0xdf],
+                "keyword added by the grammar",
+            ),
+        ] {
+            assert_eq!(ink_at(code, "sql", token).rgb, Some(expected), "SQL {what}");
+        }
     }
 
     #[test]

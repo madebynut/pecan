@@ -117,9 +117,11 @@ fn script(language: Format, source: &str, indent: usize) -> Result<String> {
     let text = dprint_plugin_typescript::format_text(FormatTextOptions {
         path: Path::new("code"),
         extension: Some(extension),
-        text: source.to_owned(),
+        text: source.into(),
         config,
         external_formatter: None,
+        // Blocks are formatted one at a time on demand; nothing is gained by keeping an arena.
+        arena_pool: None,
     })
     .context("JavaScript or TypeScript syntax is invalid")?;
     Ok(text.unwrap_or_else(|| source.to_owned()))

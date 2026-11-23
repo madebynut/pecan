@@ -35,18 +35,12 @@ mod tests {
     fn schemes_follow_rfc_3986() {
         assert!(has_scheme("https://e.com"));
         assert!(has_scheme("mailto:x@y"));
-        assert!(
-            has_scheme("a:relative-scheme-uri"),
-            "one-character schemes are valid"
-        );
+        assert!(has_scheme("a:relative-scheme-uri"), "one-character schemes are valid");
         assert!(has_scheme("view-source:x"));
         assert!(!has_scheme("1http:x"), "schemes must start with a letter");
         assert!(!has_scheme("no scheme here"));
         assert!(!has_scheme(":empty"));
-        assert!(
-            !has_scheme("path/with:colon"),
-            "slash before the colon is not a scheme"
-        );
+        assert!(!has_scheme("path/with:colon"), "slash before the colon is not a scheme");
     }
 
     #[test]

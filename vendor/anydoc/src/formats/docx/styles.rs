@@ -50,10 +50,7 @@ impl<'a> Styles<'a> {
     pub fn parse_opt(root: Option<&'a Element>) -> Styles<'a> {
         match root {
             Some(root) => Styles::parse(root),
-            None => Styles {
-                chains: StyleChains::default(),
-                doc_defaults: Style::PLAIN,
-            },
+            None => Styles { chains: StyleChains::default(), doc_defaults: Style::PLAIN },
         }
     }
 
@@ -61,9 +58,7 @@ impl<'a> Styles<'a> {
         let mut chains = StyleChains::default();
         for style in root.find_all(ns::W, "style") {
             if let Some(id) = style.attr(ns::W, "styleId") {
-                let parent = style
-                    .find(ns::W, "basedOn")
-                    .and_then(|e| e.attr(ns::W, "val"));
+                let parent = style.find(ns::W, "basedOn").and_then(|e| e.attr(ns::W, "val"));
                 chains.insert(id, style, parent);
             }
         }
@@ -73,10 +68,7 @@ impl<'a> Styles<'a> {
             .and_then(|d| d.find(ns::W, "rPr"))
             .map(|rpr| rpr_delta(rpr).resolve())
             .unwrap_or(Style::PLAIN);
-        Styles {
-            chains,
-            doc_defaults,
-        }
+        Styles { chains, doc_defaults }
     }
 
     /// The parity of `true` toggle specifications along a style's `basedOn`
@@ -199,10 +191,7 @@ pub fn rpr_delta(rpr: &Element) -> StyleDelta {
 /// false; an absent element is unspecified.
 pub fn on_off(parent: &Element, name: &str) -> Option<bool> {
     let elem = parent.find(ns::W, name)?;
-    Some(!matches!(
-        elem.attr(ns::W, "val"),
-        Some("0" | "false" | "off" | "none")
-    ))
+    Some(!matches!(elem.attr(ns::W, "val"), Some("0" | "false" | "off" | "none")))
 }
 
 #[cfg(test)]
@@ -237,14 +226,8 @@ mod tests {
 
     #[test]
     fn toggles_flip_the_base_and_double_flips_cancel() {
-        let base = Style {
-            bold: true,
-            ..Style::PLAIN
-        };
-        let flip = Toggles {
-            bold: true,
-            ..Default::default()
-        };
+        let base = Style { bold: true, ..Style::PLAIN };
+        let flip = Toggles { bold: true, ..Default::default() };
         assert!(!flip.apply_over(base).bold);
         assert!(flip.xor(flip).apply_over(base).bold);
     }

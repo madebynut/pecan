@@ -15,18 +15,11 @@ pub fn omath_to_tex(omath: &Element) -> String {
 
 /// The equations of an `m:oMathPara`, one per `m:oMath` line.
 pub fn omath_para_to_tex(para: &Element) -> Vec<String> {
-    let lines: Vec<String> = para
-        .find_all(ns::M, "oMath")
-        .map(omath_to_tex)
-        .filter(|t| !t.is_empty())
-        .collect();
+    let lines: Vec<String> =
+        para.find_all(ns::M, "oMath").map(omath_to_tex).filter(|t| !t.is_empty()).collect();
     if lines.is_empty() {
         let whole = omath_to_tex(para);
-        return if whole.is_empty() {
-            Vec::new()
-        } else {
-            vec![whole]
-        };
+        return if whole.is_empty() { Vec::new() } else { vec![whole] };
     }
     lines
 }
@@ -102,9 +95,7 @@ fn walk_elem(e: &Element, tex: &mut Tex, mode: Mode) {
             tex.push_group(&arg(e, "e", Mode::Math));
         }
         "acc" => {
-            let chr = prop(e, "accPr", "chr")
-                .and_then(|v| v.chars().next())
-                .unwrap_or('\u{302}');
+            let chr = prop(e, "accPr", "chr").and_then(|v| v.chars().next()).unwrap_or('\u{302}');
             tex.push_command(accent(chr).unwrap_or("\\hat"), &arg(e, "e", Mode::Math));
         }
         "bar" => {
@@ -174,11 +165,7 @@ fn run_text(r: &Element) -> String {
         return from_t;
     }
     let direct = direct_text(r);
-    if direct.trim().is_empty() {
-        String::new()
-    } else {
-        direct
-    }
+    if direct.trim().is_empty() { String::new() } else { direct }
 }
 
 fn run(r: &Element, tex: &mut Tex, mode: Mode) {
@@ -189,10 +176,7 @@ fn run(r: &Element, tex: &mut Tex, mode: Mode) {
     // Run properties sit under `m:rPr`; rtf writes them on the run itself,
     // with `sty` and `scr` as numbers in their enumeration order.
     let value = |name: &str| -> Option<String> {
-        let elem = r
-            .find(ns::M, "rPr")
-            .and_then(|p| p.find(ns::M, name))
-            .or(r.find(ns::M, name))?;
+        let elem = r.find(ns::M, "rPr").and_then(|p| p.find(ns::M, name)).or(r.find(ns::M, name))?;
         Some(match elem.attr(ns::M, "val") {
             Some(v) => v.to_string(),
             None => direct_text(elem).trim().to_string(),
@@ -300,9 +284,7 @@ fn delimited(e: &Element, tex: &mut Tex) {
 }
 
 fn nary(e: &Element, tex: &mut Tex) {
-    let chr = prop(e, "naryPr", "chr")
-        .and_then(|v| v.chars().next())
-        .unwrap_or('∫');
+    let chr = prop(e, "naryPr", "chr").and_then(|v| v.chars().next()).unwrap_or('∫');
     match symbol(chr) {
         Some(op) if op.starts_with('\\') => tex.push_macro(op),
         _ => {
@@ -336,9 +318,7 @@ fn nary(e: &Element, tex: &mut Tex) {
 }
 
 fn group_char(e: &Element, tex: &mut Tex) {
-    let chr = prop(e, "groupChrPr", "chr")
-        .and_then(|v| v.chars().next())
-        .unwrap_or('\u{23df}');
+    let chr = prop(e, "groupChrPr", "chr").and_then(|v| v.chars().next()).unwrap_or('\u{23df}');
     let top = prop(e, "groupChrPr", "pos").is_some_and(|p| p == "top");
     let body = arg(e, "e", Mode::Math);
     match accent(chr) {
@@ -394,11 +374,7 @@ fn equation_array(e: &Element, tex: &mut Tex) {
             inner
         })
         .collect();
-    let env = if rows.iter().any(|r| r.contains('&')) {
-        "aligned"
-    } else {
-        "gathered"
-    };
+    let env = if rows.iter().any(|r| r.contains('&')) { "aligned" } else { "gathered" };
     tex.push_str(&format!("\\begin{{{env}}}"));
     for (i, row) in rows.iter().enumerate() {
         if i > 0 {

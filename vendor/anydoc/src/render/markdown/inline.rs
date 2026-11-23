@@ -10,18 +10,9 @@ use std::borrow::Cow;
 use std::fmt::Write as _;
 
 pub(crate) enum Norm<'a> {
-    Text {
-        text: Cow<'a, str>,
-        style: Style,
-    },
-    Link {
-        content: &'a [Inline],
-        target: &'a LinkTarget,
-    },
-    Image {
-        alt: &'a str,
-        source: &'a ImageSource,
-    },
+    Text { text: Cow<'a, str>, style: Style },
+    Link { content: &'a [Inline], target: &'a LinkTarget },
+    Image { alt: &'a str, source: &'a ImageSource },
     Anchor(&'a str),
     NoteRef(&'a str),
     LineBreak,
@@ -43,15 +34,8 @@ pub(crate) fn normalize<'a>(inlines: &'a [Inline], rc: &Ctx) -> Vec<Norm<'a>> {
                 if text.is_empty() {
                     continue;
                 }
-                let style = if text.trim().is_empty() {
-                    Style::PLAIN
-                } else {
-                    *style
-                };
-                if let Some(Norm::Text {
-                    text: prev,
-                    style: prev_style,
-                }) = out.last_mut()
+                let style = if text.trim().is_empty() { Style::PLAIN } else { *style };
+                if let Some(Norm::Text { text: prev, style: prev_style }) = out.last_mut()
                     && *prev_style == style
                 {
                     prev.to_mut().push_str(text);
@@ -66,9 +50,7 @@ pub(crate) fn normalize<'a>(inlines: &'a [Inline], rc: &Ctx) -> Vec<Norm<'a>> {
                     && matches!(&out[out.len() - 2],
                         Norm::Text { style: s, .. } if *s == style)
                 {
-                    let Some(Norm::Text { text: ws, .. }) = out.pop() else {
-                        unreachable!()
-                    };
+                    let Some(Norm::Text { text: ws, .. }) = out.pop() else { unreachable!() };
                     let Some(Norm::Text { text: prev, .. }) = out.last_mut() else {
                         unreachable!()
                     };
@@ -77,10 +59,7 @@ pub(crate) fn normalize<'a>(inlines: &'a [Inline], rc: &Ctx) -> Vec<Norm<'a>> {
                     prev.push_str(text);
                     continue;
                 }
-                out.push(Norm::Text {
-                    text: Cow::Borrowed(text.as_str()),
-                    style,
-                });
+                out.push(Norm::Text { text: Cow::Borrowed(text.as_str()), style });
             }
             Inline::Link { content, target } => {
                 if target.is_empty() {
@@ -194,12 +173,7 @@ fn render_link(
         if matches!(target, LinkTarget::Anchor(_)) {
             return;
         }
-        let _ = write!(
-            out,
-            "[{}]({})",
-            escape_url_as_text(&url, ctx),
-            format_url(&url)
-        );
+        let _ = write!(out, "[{}]({})", escape_url_as_text(&url, ctx), format_url(&url));
     } else {
         let _ = write!(out, "[{}]({})", label, format_url(&url));
     }
@@ -214,14 +188,8 @@ fn render_image(
 ) {
     match source {
         ImageSource::External(url) => {
-            let alt = escape_text(
-                alt.trim(),
-                ctx,
-                EscapeOpts {
-                    in_label: true,
-                    ..Default::default()
-                },
-            );
+            let alt =
+                escape_text(alt.trim(), ctx, EscapeOpts { in_label: true, ..Default::default() });
             let _ = write!(out, "![{}]({})", alt, format_url(url));
         }
         // Embedded assets render as their alt text: Markdown cannot embed
@@ -232,10 +200,7 @@ fn render_image(
                 out.push_str(&escape_text(
                     alt.trim(),
                     ctx,
-                    EscapeOpts {
-                        in_label,
-                        ..Default::default()
-                    },
+                    EscapeOpts { in_label, ..Default::default() },
                 ));
             }
         }
@@ -357,23 +322,12 @@ fn render_text_run(
 ) {
     if style == Style::PLAIN {
         let at_line_start = out.is_empty() || out.ends_with('\n');
-        out.push_str(&escape_text(
-            text,
-            ctx,
-            EscapeOpts {
-                at_line_start,
-                ..opts
-            },
-        ));
+        out.push_str(&escape_text(text, ctx, EscapeOpts { at_line_start, ..opts }));
         return;
     }
     let core_start = text.len() - text.trim_start().len();
     let core_end = text.trim_end().len();
-    let (lead, core, trail) = (
-        &text[..core_start],
-        &text[core_start..core_end],
-        &text[core_end..],
-    );
+    let (lead, core, trail) = (&text[..core_start], &text[core_start..core_end], &text[core_end..]);
     if !lead.is_empty() {
         out.push_str(lead);
     }
@@ -396,11 +350,7 @@ fn render_text_run(
             out.push_str(&escape_text(
                 core,
                 ctx,
-                EscapeOpts {
-                    styled: true,
-                    in_label: opts.in_label,
-                    ..Default::default()
-                },
+                EscapeOpts { styled: true, in_label: opts.in_label, ..Default::default() },
             ));
             out.push_str(&close);
         }
@@ -448,11 +398,7 @@ pub(crate) fn push_math_span(tex: &str, ctx: InlineContext, out: &mut String) {
 pub(crate) fn push_code_span(text: &str, ctx: InlineContext, out: &mut String) {
     let text = text.replace('\n', " ");
     let fence = backtick_fence(&text, 1);
-    let pad = if text.starts_with('`') || text.ends_with('`') {
-        " "
-    } else {
-        ""
-    };
+    let pad = if text.starts_with('`') || text.ends_with('`') { " " } else { "" };
     // A row is split into cells before any code span is parsed, so a pipe is
     // syntax here even though everything else between the fences is literal.
     let text = match ctx {

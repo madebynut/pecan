@@ -43,16 +43,9 @@ pub(crate) fn decode_blip(
             let doubled = matches!(instance, 0x46B | 0x6E3 | 0x6E1);
             let start = if doubled { 32 } else { 16 } + 1;
             let bytes = body.get(start..)?;
-            let (media_type, extension) = if rec_type == 0xF01D {
-                ("image/jpeg", "jpg")
-            } else {
-                ("image/png", "png")
-            };
-            Some(Blip {
-                media_type,
-                extension,
-                bytes: Cow::Borrowed(bytes),
-            })
+            let (media_type, extension) =
+                if rec_type == 0xF01D { ("image/jpeg", "jpg") } else { ("image/png", "png") };
+            Some(Blip { media_type, extension, bytes: Cow::Borrowed(bytes) })
         }
         // Metafile blips: rgbUid (16/32), then a 34-byte metafile header
         // (cbSize, bounds, ptSize, cbSave, compression, filter).
@@ -63,11 +56,8 @@ pub(crate) fn decode_blip(
             let cb_size = u32::from_le_bytes(header_and_data.get(..4)?.try_into().ok()?);
             let compression = *header_and_data.get(32)?;
             let data = header_and_data.get(34..)?;
-            let (media_type, extension) = if rec_type == 0xF01A {
-                ("image/emf", "emf")
-            } else {
-                ("image/wmf", "wmf")
-            };
+            let (media_type, extension) =
+                if rec_type == 0xF01A { ("image/emf", "emf") } else { ("image/wmf", "wmf") };
             let bytes = match compression {
                 // 0x00 = deflate-compressed; 0xFE = uncompressed.
                 0x00 => {
@@ -79,11 +69,7 @@ pub(crate) fn decode_blip(
                 }
                 _ => Cow::Borrowed(data),
             };
-            Some(Blip {
-                media_type,
-                extension,
-                bytes,
-            })
+            Some(Blip { media_type, extension, bytes })
         }
         _ => None,
     }

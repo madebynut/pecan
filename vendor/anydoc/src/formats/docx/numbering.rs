@@ -52,9 +52,7 @@ impl Instance {
     /// The level bound to a paragraph style through the abstract levels'
     /// `w:pStyle` references.
     pub fn style_level(&self, style_id: &str) -> Option<usize> {
-        self.pstyles
-            .iter()
-            .position(|p| p.as_deref() == Some(style_id))
+        self.pstyles.iter().position(|p| p.as_deref() == Some(style_id))
     }
 }
 
@@ -83,27 +81,15 @@ pub fn parse(
         let mut levels: [LevelDef; LEVELS] = std::array::from_fn(|_| LevelDef::default());
         let mut pstyles: [Option<String>; LEVELS] = Default::default();
         for lvl in abs.find_all(ns::W, "lvl") {
-            let ilvl: usize = lvl
-                .attr(ns::W, "ilvl")
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(0);
+            let ilvl: usize = lvl.attr(ns::W, "ilvl").and_then(|v| v.parse().ok()).unwrap_or(0);
             if ilvl < LEVELS {
                 levels[ilvl] = parse_level(lvl);
                 pstyles[ilvl] = level_pstyle(lvl);
             }
         }
-        let num_style_link = abs
-            .find(ns::W, "numStyleLink")
-            .and_then(|e| e.attr(ns::W, "val"))
-            .map(str::to_string);
-        abstracts.insert(
-            id,
-            AbstractNum {
-                levels,
-                pstyles,
-                num_style_link,
-            },
-        );
+        let num_style_link =
+            abs.find(ns::W, "numStyleLink").and_then(|e| e.attr(ns::W, "val")).map(str::to_string);
+        abstracts.insert(id, AbstractNum { levels, pstyles, num_style_link });
     }
 
     // First pass: direct abstract references per numId.
@@ -111,8 +97,7 @@ pub fn parse(
     for num in root.find_all(ns::W, "num") {
         let (Some(num_id), Some(abs_id)) = (
             num.attr(ns::W, "numId").and_then(|v| v.parse::<u64>().ok()),
-            num.find(ns::W, "abstractNumId")
-                .and_then(|e| e.attr(ns::W, "val")),
+            num.find(ns::W, "abstractNumId").and_then(|e| e.attr(ns::W, "val")),
         ) else {
             continue;
         };
@@ -128,10 +113,7 @@ pub fn parse(
         let mut levels = abs.levels.clone();
         let mut pstyles = abs.pstyles.clone();
         for over in num_elem.find_all(ns::W, "lvlOverride") {
-            let ilvl: usize = over
-                .attr(ns::W, "ilvl")
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(0);
+            let ilvl: usize = over.attr(ns::W, "ilvl").and_then(|v| v.parse().ok()).unwrap_or(0);
             if ilvl >= LEVELS {
                 continue;
             }
@@ -149,9 +131,7 @@ pub fn parse(
                 levels[ilvl].start = start;
             }
         }
-        numbering
-            .instances
-            .insert(num_id, Instance { levels, pstyles });
+        numbering.instances.insert(num_id, Instance { levels, pstyles });
     }
     Ok(numbering)
 }
@@ -191,24 +171,17 @@ fn resolve_abstract<'n>(
 
 /// The paragraph style a `w:lvl` binds to (`w:pStyle`).
 fn level_pstyle(lvl: &Element) -> Option<String> {
-    lvl.find(ns::W, "pStyle")
-        .and_then(|e| e.attr(ns::W, "val"))
-        .map(str::to_string)
+    lvl.find(ns::W, "pStyle").and_then(|e| e.attr(ns::W, "val")).map(str::to_string)
 }
 
 /// `ST_DecimalNumber` is `xsd:int`; values are clamped to the non-negative
 /// range so untrusted starting values can never overflow counters.
 fn parse_start(v: &str) -> Option<u64> {
-    v.parse::<i64>()
-        .ok()
-        .map(|n| n.clamp(0, i32::MAX as i64) as u64)
+    v.parse::<i64>().ok().map(|n| n.clamp(0, i32::MAX as i64) as u64)
 }
 
 fn parse_level(lvl: &Element) -> LevelDef {
-    let fmt = lvl
-        .find(ns::W, "numFmt")
-        .and_then(|e| e.attr(ns::W, "val"))
-        .unwrap_or("bullet");
+    let fmt = lvl.find(ns::W, "numFmt").and_then(|e| e.attr(ns::W, "val")).unwrap_or("bullet");
     let marker = match fmt {
         "none" => None,
         "bullet" => Some(MarkerKind::Bullet),
@@ -238,12 +211,7 @@ fn parse_level(lvl: &Element) -> LevelDef {
         _ => Vec::new(),
     };
     let legal = crate::formats::docx::styles::on_off(lvl, "isLgl") == Some(true);
-    LevelDef {
-        marker,
-        start,
-        restart,
-        pattern: NumberPattern { text, legal },
-    }
+    LevelDef { marker, start, restart, pattern: NumberPattern { text, legal } }
 }
 
 /// Document-order numbering state: one counter array per instance, shared
@@ -293,11 +261,7 @@ impl Counters {
                 &def.pattern,
                 marker,
                 value,
-                |l| {
-                    instance.levels[l.min(LEVELS - 1)]
-                        .marker
-                        .unwrap_or(MarkerKind::Decimal)
-                },
+                |l| instance.levels[l.min(LEVELS - 1)].marker.unwrap_or(MarkerKind::Decimal),
                 |l| {
                     let l = l.min(LEVELS - 1);
                     if state.initialized[l] && !state.restart_pending[l] {

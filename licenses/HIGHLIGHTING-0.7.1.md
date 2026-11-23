@@ -1,18 +1,18 @@
 # 0.7.1 Tree-sitter 依赖许可证
 
-开启 GPUI Kit 的现成 Tree-sitter grammars。SQL grammar 的构建依赖要求 cc 1.2.x，Cargo.lock 固定兼容版本 cc 1.2.67。
+开启 GPUI Kit 的现成 Tree-sitter grammars。SQL grammar 自 tree-sitter-sequel 0.3.13 起不再把构建依赖限制在 cc 1.2.x，Cargo.lock 使用 cc 1.11.3。
 
 tree-sitter-diff 的上游已迁至 tree-sitter-grammars/tree-sitter-diff；记录实际来源。tree-sitter-graphql 的 Cargo 元数据未声明 license，官方 LICENSE 为 MIT，随分发保留全文。
 
-## cc 1.2.67
+## cc 1.11.3
 
 许可元数据：MIT OR Apache-2.0
 
-- cc-1.2.67-LICENSE-APACHE.txt
-  来源：crates.io release: cc 1.2.67/LICENSE-APACHE
+- cc-1.11.3-LICENSE-APACHE.txt
+  来源：crates.io release: cc 1.11.3/LICENSE-APACHE
   SHA-256：a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2
-- cc-1.2.67-LICENSE-MIT.txt
-  来源：crates.io release: cc 1.2.67/LICENSE-MIT
+- cc-1.11.3-LICENSE-MIT.txt
+  来源：crates.io release: cc 1.11.3/LICENSE-MIT
   SHA-256：378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397
 
 ## tree-sitter-astro-next 0.1.1
@@ -176,12 +176,12 @@ tree-sitter-diff 的上游已迁至 tree-sitter-grammars/tree-sitter-diff；记�
   来源：https://raw.githubusercontent.com/tree-sitter/tree-sitter-scala/d3b9553b47d7ab413a146c4b6498e527265b966e/LICENSE
   SHA-256：1f95ed26e1f4074074c9c7083e61c0a9e4c3b9f435745044995f3beb4ed28575
 
-## tree-sitter-sequel 0.3.11
+## tree-sitter-sequel 0.3.13
 
 许可元数据：MIT
 
-- tree-sitter-sequel-0.3.11-LICENSE.txt
-  来源：https://raw.githubusercontent.com/derekstride/tree-sitter-sql/7b51ecda191d36b92f5a90a8d1bc3faef1c7b8b8/LICENSE
+- tree-sitter-sequel-0.3.13-LICENSE.txt
+  来源：crates.io release: tree-sitter-sequel 0.3.13/LICENSE
   SHA-256：3b3e4e4252d5d7d1c18e1257005f23242bf0580ad619204fd093c99b8c56748d
 
 ## tree-sitter-svelte-next 0.1.1

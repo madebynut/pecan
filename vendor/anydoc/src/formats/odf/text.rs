@@ -85,28 +85,17 @@ fn parse_block_elem(
                     // it as the heading's anchor id (without the number).
                     let anchor = Some(crate::model::inlines_to_plain_text(&content));
                     if let Some(label) = heading_label(elem, level, ctx) {
-                        content.insert(
-                            0,
-                            Inline::Text {
-                                text: label,
-                                style: Style::PLAIN,
-                            },
-                        );
+                        content.insert(0, Inline::Text { text: label, style: Style::PLAIN });
                     }
-                    blocks.push(Block::Heading {
-                        level,
-                        anchor,
-                        content,
-                    });
+                    blocks.push(Block::Heading { level, anchor, content });
                 }
                 blocks.extend(boxes);
                 return Ok(());
             }
             "p" => {
                 let (inlines, boxes) = parse_inline_content(elem, ctx)?;
-                let style = elem
-                    .attr(ns::TEXT, "style-name")
-                    .and_then(|n| ctx.styles.block_style(n));
+                let style =
+                    elem.attr(ns::TEXT, "style-name").and_then(|n| ctx.styles.block_style(n));
                 match style {
                     Some(style) => run.push(style, inlines, blocks),
                     None => {
@@ -178,22 +167,12 @@ fn parse_list(
     }
 
     let mut out: Vec<Block> = Vec::new();
-    let mut current = List {
-        marker: level.marker,
-        start,
-        items: Vec::new(),
-    };
+    let mut current = List { marker: level.marker, start, items: Vec::new() };
     let mut next = start;
     let mut first_item = true;
     let flush = |current: &mut List, out: &mut Vec<Block>, start: u64| {
-        let done = std::mem::replace(
-            current,
-            List {
-                marker: current.marker,
-                start,
-                items: Vec::new(),
-            },
-        );
+        let done =
+            std::mem::replace(current, List { marker: current.marker, start, items: Vec::new() });
         if !done.items.is_empty() {
             out.push(Block::List(done));
         }
@@ -238,10 +217,7 @@ fn parse_list(
         }
         first_item = false;
         let label = item_label(ctx, style_name, depth, &chain);
-        current.items.push(ListItem {
-            blocks: item_blocks,
-            marker_label: label,
-        });
+        current.items.push(ListItem { blocks: item_blocks, marker_label: label });
         next = current.start.saturating_add(current.items.len() as u64);
     }
     flush(&mut current, &mut out, next);
@@ -268,12 +244,7 @@ fn item_label(ctx: &Ctx, style_name: Option<&str>, depth: usize, chain: &[u64]) 
         lvl.marker,
         *chain.last().unwrap_or(&1),
         |l| levels[l.min(LIST_LEVELS - 1)].marker,
-        |l| {
-            chain
-                .get(l)
-                .copied()
-                .unwrap_or_else(|| levels[l.min(LIST_LEVELS - 1)].start)
-        },
+        |l| chain.get(l).copied().unwrap_or_else(|| levels[l.min(LIST_LEVELS - 1)].start),
     )
 }
 
@@ -311,19 +282,12 @@ fn heading_label(elem: &Element, level: u8, ctx: &Ctx) -> Option<String> {
         |l| levels[l.min(LIST_LEVELS - 1)].marker,
         |l| {
             let l = l.min(LIST_LEVELS - 1);
-            if started[l] {
-                values[l]
-            } else {
-                levels[l].start
-            }
+            if started[l] { values[l] } else { levels[l].start }
         },
     );
     // Headings have no native numbering in the output, so the default label
     // is rendered too.
-    Some(format!(
-        "{} ",
-        label.unwrap_or_else(|| lvl.marker.label(value))
-    ))
+    Some(format!("{} ", label.unwrap_or_else(|| lvl.marker.label(value))))
 }
 
 /// Inline content of a paragraph plus block attachments (text boxes) that
@@ -342,8 +306,7 @@ fn parse_inline_content(
 /// The style a paragraph's runs cascade from. An unstyled paragraph still sits
 /// on the family's default style.
 fn paragraph_base(elem: &Element, ctx: &Ctx) -> Result<StyleDelta, ConvertError> {
-    ctx.styles
-        .delta("paragraph", elem.attr(ns::TEXT, "style-name").unwrap_or(""))
+    ctx.styles.delta("paragraph", elem.attr(ns::TEXT, "style-name").unwrap_or(""))
 }
 
 fn walk_inlines(
@@ -398,10 +361,7 @@ fn walk_inlines(
                             continue;
                         }
                         "tab" => {
-                            out.push(Inline::Text {
-                                text: " ".into(),
-                                style: Style::PLAIN,
-                            });
+                            out.push(Inline::Text { text: " ".into(), style: Style::PLAIN });
                             continue;
                         }
                         "line-break" => {
@@ -472,29 +432,19 @@ pub(super) fn walk_frame(
     let alt = frame
         .first_descendant(ns::SVG_COMPAT, "title")
         .map(|t| t.text())
-        .or_else(|| {
-            frame
-                .first_descendant(ns::SVG_COMPAT, "desc")
-                .map(|d| d.text())
-        })
+        .or_else(|| frame.first_descendant(ns::SVG_COMPAT, "desc").map(|d| d.text()))
         .unwrap_or_default();
     let alt = clean_text(alt.trim());
     if let Some(image) = frame.first_descendant(ns::DRAW, "image") {
         let href = image.attr(ns::XLINK, "href").unwrap_or("");
         let source = load_image(ctx, href)?;
         if source.is_some() || !alt.is_empty() {
-            out.push(Inline::Image {
-                alt,
-                source: source.unwrap_or(ImageSource::Unavailable),
-            });
+            out.push(Inline::Image { alt, source: source.unwrap_or(ImageSource::Unavailable) });
         }
         return Ok(());
     }
     if !alt.is_empty() {
-        out.push(Inline::Image {
-            alt,
-            source: ImageSource::Unavailable,
-        });
+        out.push(Inline::Image { alt, source: ImageSource::Unavailable });
     }
     Ok(())
 }
@@ -567,9 +517,7 @@ fn classify_href(href: &str) -> Option<LinkTarget> {
         if target.is_empty() {
             return None;
         }
-        return Some(LinkTarget::Anchor(crate::package::path::decode_fragment(
-            target,
-        )));
+        return Some(LinkTarget::Anchor(crate::package::path::decode_fragment(target)));
     }
     if crate::shared::uri::is_absolute_uri(href) {
         Some(LinkTarget::External(href.to_string()))

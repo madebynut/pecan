@@ -26,37 +26,26 @@ pub(crate) fn render_table(table: &Table, rc: &Ctx) -> Option<String> {
             let mut cells: Vec<RenderedCell> = row
                 .iter()
                 .map(|slot| match slot {
-                    CellSlot::Origin(cell) => RenderedCell {
-                        text: render_cell(cell, rc),
-                        covered_span: false,
-                    },
-                    CellSlot::Covered { .. } => RenderedCell {
-                        text: String::new(),
-                        covered_span: true,
-                    },
+                    CellSlot::Origin(cell) => {
+                        RenderedCell { text: render_cell(cell, rc), covered_span: false }
+                    }
+                    CellSlot::Covered { .. } => {
+                        RenderedCell { text: String::new(), covered_span: true }
+                    }
                 })
                 .collect();
-            cells.resize_with(width, || RenderedCell {
-                text: String::new(),
-                covered_span: false,
-            });
+            cells.resize_with(width, || RenderedCell { text: String::new(), covered_span: false });
             cells
         })
         .collect();
     while rendered.len() > 1
-        && rendered
-            .last()
-            .is_some_and(|r| r.iter().all(|c| c.text.is_empty() && !c.covered_span))
+        && rendered.last().is_some_and(|r| r.iter().all(|c| c.text.is_empty() && !c.covered_span))
     {
         rendered.pop();
     }
     let width = rendered
         .iter()
-        .map(|r| {
-            r.iter()
-                .rposition(|c| !c.text.is_empty() || c.covered_span)
-                .map_or(0, |i| i + 1)
-        })
+        .map(|r| r.iter().rposition(|c| !c.text.is_empty() || c.covered_span).map_or(0, |i| i + 1))
         .max()
         .unwrap_or(0);
     if width == 0 {

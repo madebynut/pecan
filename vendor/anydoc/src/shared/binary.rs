@@ -18,11 +18,7 @@ pub(crate) fn get_u32(b: &[u8], off: usize) -> Option<u32> {
 
 /// The UTF-16LE code units of `bytes`; a trailing odd byte is dropped.
 pub(crate) fn utf16le_units(bytes: &[u8]) -> impl Iterator<Item = u16> + '_ {
-    bytes
-        .as_chunks::<2>()
-        .0
-        .iter()
-        .map(|pair| u16::from_le_bytes(*pair))
+    bytes.as_chunks::<2>().0.iter().map(|pair| u16::from_le_bytes(*pair))
 }
 
 /// Read a named stream from an OLE2 compound file. A missing stream is
@@ -32,19 +28,15 @@ pub(crate) fn read_ole_stream<R: Read + std::io::Seek>(
     ole: &mut cfb::CompoundFile<R>,
     name: &str,
 ) -> Result<Vec<u8>, ConvertError> {
-    let stream = ole
-        .open_stream(name)
-        .map_err(|_| ConvertError::MissingPart {
-            part: name.to_string(),
-        })?;
+    let stream =
+        ole.open_stream(name).map_err(|_| ConvertError::MissingPart { part: name.to_string() })?;
     let mut bytes = Vec::new();
-    let read = stream
-        .take(limits::MAX_ENTRY_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|e| ConvertError::Malformed {
+    let read = stream.take(limits::MAX_ENTRY_BYTES + 1).read_to_end(&mut bytes).map_err(|e| {
+        ConvertError::Malformed {
             part: Some(name.to_string()),
             detail: format!("unreadable stream: {e}"),
-        })? as u64;
+        }
+    })? as u64;
     if read > limits::MAX_ENTRY_BYTES {
         return Err(ConvertError::ResourceLimit {
             limit: "max_entry_bytes",

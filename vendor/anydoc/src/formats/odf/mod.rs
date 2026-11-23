@@ -53,11 +53,7 @@ pub fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
 
     let notes = ctx.notes.into_inner();
     let assets = std::mem::take(&mut assets.borrow_mut().assets);
-    Ok(Document {
-        blocks,
-        notes,
-        assets,
-    })
+    Ok(Document { blocks, notes, assets })
 }
 
 /// Encrypted ODF packages carry `manifest:encryption-data` elements on file
@@ -66,15 +62,10 @@ pub fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
 /// unreadable manifest proves nothing (content parsing decides), but fatal
 /// resource-limit errors propagate.
 fn is_encrypted(pkg: &RefCell<Package>) -> Result<bool, ConvertError> {
-    let Some(tree) = pkg
-        .borrow_mut()
-        .optional_xml_part("META-INF/manifest.xml")?
-    else {
+    let Some(tree) = pkg.borrow_mut().optional_xml_part("META-INF/manifest.xml")? else {
         return Ok(false);
     };
-    Ok(tree
-        .first_descendant(ns::MANIFEST, "encryption-data")
-        .is_some())
+    Ok(tree.first_descendant(ns::MANIFEST, "encryption-data").is_some())
 }
 
 fn parse_presentation(pres: &Element, ctx: &Ctx) -> Result<Vec<Block>, ConvertError> {
@@ -168,9 +159,7 @@ fn walk_shapes(
 fn push_title_heading(inner: Vec<Block>, blocks: &mut Vec<Block>) {
     let mut inlines: Vec<Inline> = Vec::new();
     for block in inner {
-        let Block::Paragraph(para) = block else {
-            continue;
-        };
+        let Block::Paragraph(para) = block else { continue };
         if inlines_are_empty(&para) {
             continue;
         }
@@ -181,11 +170,7 @@ fn push_title_heading(inner: Vec<Block>, blocks: &mut Vec<Block>) {
     }
     if !inlines_are_empty(&inlines) {
         let anchor = Some(crate::model::inlines_to_plain_text(&inlines));
-        blocks.push(Block::Heading {
-            level: 2,
-            anchor,
-            content: inlines,
-        });
+        blocks.push(Block::Heading { level: 2, anchor, content: inlines });
     }
 }
 
@@ -218,8 +203,7 @@ mod tests {
 
     fn odt_with_content(content: &str) -> Vec<u8> {
         let mut w = zip::ZipWriter::new(Cursor::new(Vec::new()));
-        w.start_file("content.xml", zip::write::SimpleFileOptions::default())
-            .unwrap();
+        w.start_file("content.xml", zip::write::SimpleFileOptions::default()).unwrap();
         w.write_all(content.as_bytes()).unwrap();
         w.finish().unwrap().into_inner()
     }
@@ -247,13 +231,7 @@ mod tests {
         );
         let err = parse(&odt_with_content(&table_doc(&rows))).unwrap_err();
         assert!(
-            matches!(
-                err,
-                ConvertError::ResourceLimit {
-                    limit: "max_expansion_text_bytes",
-                    ..
-                }
-            ),
+            matches!(err, ConvertError::ResourceLimit { limit: "max_expansion_text_bytes", .. }),
             "expected the text-byte budget, got: {err}"
         );
     }
@@ -289,11 +267,8 @@ mod tests {
             </office:text></office:body>
             </office:document-content>"#;
         let doc = parse(&odt_with_content(content)).unwrap();
-        let [
-            Block::CodeBlock { text: before, .. },
-            Block::Table(table),
-            Block::Paragraph(after),
-        ] = &doc.blocks[..]
+        let [Block::CodeBlock { text: before, .. }, Block::Table(table), Block::Paragraph(after)] =
+            &doc.blocks[..]
         else {
             panic!("unexpected block order: {:?}", doc.blocks);
         };
@@ -316,13 +291,7 @@ mod tests {
         }
         let err = parse(&odt(&manifest)).unwrap_err();
         assert!(
-            matches!(
-                err,
-                ConvertError::ResourceLimit {
-                    limit: "max_xml_depth",
-                    ..
-                }
-            ),
+            matches!(err, ConvertError::ResourceLimit { limit: "max_xml_depth", .. }),
             "encryption probing must not swallow fatal errors, got: {err}"
         );
     }
@@ -351,9 +320,6 @@ mod tests {
             </office:document-content>"#;
         let doc = parse(&odt_with_content(content)).unwrap();
         let md = crate::render::markdown::document_to_markdown(&doc);
-        assert_eq!(
-            md,
-            "|  |  |  |\n| --- | --- | --- |\n| 14 | L/R [x] Roof | [ ] Wall |\n"
-        );
+        assert_eq!(md, "|  |  |  |\n| --- | --- | --- |\n| 14 | L/R [x] Roof | [ ] Wall |\n");
     }
 }

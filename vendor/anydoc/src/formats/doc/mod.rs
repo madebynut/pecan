@@ -35,20 +35,14 @@ pub fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
 
     let word_doc = read_ole_stream(&mut ole, "WordDocument")?;
     if get_u16(&word_doc, 0) != Some(0xA5EC) {
-        return Err(ConvertError::malformed_part(
-            "WordDocument",
-            "invalid FIB magic".to_string(),
-        ));
+        return Err(ConvertError::malformed_part("WordDocument", "invalid FIB magic".to_string()));
     }
     let flags = get_u16(&word_doc, 0x0A).unwrap_or(0);
     if flags & 0x0100 != 0 {
         return Err(ConvertError::Encrypted);
     }
-    let (table_name, other_table) = if flags & 0x0200 != 0 {
-        ("1Table", "0Table")
-    } else {
-        ("0Table", "1Table")
-    };
+    let (table_name, other_table) =
+        if flags & 0x0200 != 0 { ("1Table", "0Table") } else { ("0Table", "1Table") };
     let table = read_ole_stream(&mut ole, table_name)
         .or_else(|_| read_ole_stream(&mut ole, other_table))
         .unwrap_or_default();
@@ -71,9 +65,7 @@ pub fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
     // Compressed (8-bit) piece text decodes in the document's ANSI code
     // page: FibBase.lid, or FibRgW97.lidFE when fFarEast is set.
     let lid = if flags & 0x4000 != 0 {
-        get_u16(&word_doc, 0x3C)
-            .filter(|&l| l != 0)
-            .or_else(|| get_u16(&word_doc, 0x06))
+        get_u16(&word_doc, 0x3C).filter(|&l| l != 0).or_else(|| get_u16(&word_doc, 0x06))
     } else {
         get_u16(&word_doc, 0x06)
     };
@@ -98,10 +90,7 @@ pub fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
         let (ref_cps, n_refs) = parse_plc(&word_doc, &table, ref_off, 2);
         let (txt_cps, _) = parse_plc(&word_doc, &table, txt_off, 0);
         for i in 0..n_refs {
-            note_refs.insert(
-                text.index_of_cp(ref_cps[i] as usize),
-                format!("{prefix}{i}"),
-            );
+            note_refs.insert(text.index_of_cp(ref_cps[i] as usize), format!("{prefix}{i}"));
             if i + 1 < txt_cps.len() {
                 let lo = text.index_of_cp(base + txt_cps[i] as usize);
                 let hi = text.index_of_cp(base + txt_cps[i + 1] as usize);
@@ -133,18 +122,10 @@ pub fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
         if lo >= hi {
             continue;
         }
-        notes.push(Note {
-            id,
-            kind,
-            blocks: assembler.build_blocks(lo, hi)?,
-        });
+        notes.push(Note { id, kind, blocks: assembler.build_blocks(lo, hi)? });
     }
     let assets = std::mem::take(&mut assembler.assets.borrow_mut().assets);
-    Ok(Document {
-        blocks,
-        notes,
-        assets,
-    })
+    Ok(Document { blocks, notes, assets })
 }
 
 /// Read a PLC's CP array; n is the number of data elements.
@@ -157,11 +138,7 @@ fn parse_plc(word_doc: &[u8], table: &[u8], fib_off: usize, data_size: usize) ->
     if lcb < 8 {
         return (Vec::new(), 0);
     }
-    let n = if data_size == 0 {
-        lcb / 4 - 1
-    } else {
-        (lcb - 4) / (4 + data_size)
-    };
+    let n = if data_size == 0 { lcb / 4 - 1 } else { (lcb - 4) / (4 + data_size) };
     let mut cps = Vec::with_capacity(n + 1);
     for i in 0..=n {
         cps.push(get_u32(plc, i * 4).unwrap_or(0));
@@ -193,9 +170,7 @@ fn parse_clx(
     let mut prcs: Vec<Vec<u8>> = Vec::new();
     let mut pos = 0;
     loop {
-        let rest = clx
-            .get(pos..)
-            .ok_or_else(|| ConvertError::malformed("malformed Clx"))?;
+        let rest = clx.get(pos..).ok_or_else(|| ConvertError::malformed("malformed Clx"))?;
         match rest.first() {
             Some(1) => {
                 let cb =
@@ -257,13 +232,7 @@ fn parse_plc_pcd(plc: &[u8], prcs: &mut Vec<Vec<u8>>) -> Result<Vec<Piece>, Conv
         } else {
             None
         };
-        pieces.push(Piece {
-            cp_start,
-            cp_end,
-            fc,
-            compressed,
-            prm_prc,
-        });
+        pieces.push(Piece { cp_start, cp_end, fc, compressed, prm_prc });
     }
     Ok(pieces)
 }
@@ -365,21 +334,14 @@ fn extract_text(
     total_cp: usize,
     encoding: &'static encoding_rs::Encoding,
 ) -> TextStream {
-    let mut text = TextStream {
-        chars: Vec::new(),
-        fcs: Vec::new(),
-        cps: Vec::new(),
-        piece_of: Vec::new(),
-    };
+    let mut text =
+        TextStream { chars: Vec::new(), fcs: Vec::new(), cps: Vec::new(), piece_of: Vec::new() };
     let mut cp = 0usize;
     for (piece_idx, piece) in pieces.iter().enumerate() {
         if cp >= total_cp {
             break;
         }
-        let len = piece
-            .cp_end
-            .saturating_sub(piece.cp_start)
-            .min(total_cp - cp);
+        let len = piece.cp_end.saturating_sub(piece.cp_start).min(total_cp - cp);
         if piece.compressed {
             let Some(bytes) = word_doc.get(piece.fc..).and_then(|rest| rest.get(..len)) else {
                 continue;
@@ -389,11 +351,8 @@ fn extract_text(
             // the lead byte's.
             let mut i = 0usize;
             while i < bytes.len() {
-                let seq = if is_lead_byte(encoding, bytes[i]) && i + 1 < bytes.len() {
-                    2
-                } else {
-                    1
-                };
+                let seq =
+                    if is_lead_byte(encoding, bytes[i]) && i + 1 < bytes.len() { 2 } else { 1 };
                 let (s, _) = encoding.decode_without_bom_handling(&bytes[i..i + seq]);
                 for c in s.chars() {
                     text.chars.push(c);
@@ -408,10 +367,7 @@ fn extract_text(
             let Some(byte_len) = len.checked_mul(2) else {
                 continue;
             };
-            let Some(bytes) = word_doc
-                .get(piece.fc..)
-                .and_then(|rest| rest.get(..byte_len))
-            else {
+            let Some(bytes) = word_doc.get(piece.fc..).and_then(|rest| rest.get(..byte_len)) else {
                 continue;
             };
             let units: Vec<u16> = utf16le_units(bytes).collect();
@@ -555,11 +511,7 @@ fn parse_fkp_page(page: &[u8], kind: FkpKind, data: &[u8], runs: &mut Vec<Run>) 
                 }
             }
         }
-        runs.push(Run {
-            fc_start,
-            fc_end,
-            props,
-        });
+        runs.push(Run { fc_start, fc_end, props });
     }
 }
 
@@ -623,18 +575,10 @@ fn composite_label(
         &def.pattern,
         marker,
         values[level],
-        |l| {
-            list.levels[l.min(LEVELS - 1)]
-                .marker
-                .unwrap_or(MarkerKind::Decimal)
-        },
+        |l| list.levels[l.min(LEVELS - 1)].marker.unwrap_or(MarkerKind::Decimal),
         |l| {
             let l = l.min(LEVELS - 1);
-            if started[l] {
-                values[l]
-            } else {
-                list.levels[l].start
-            }
+            if started[l] { values[l] } else { list.levels[l].start }
         },
     )
 }
@@ -686,10 +630,7 @@ impl ParaBuilder {
             return;
         }
         let text = std::mem::take(&mut self.text);
-        let inline = Inline::Text {
-            text,
-            style: self.style,
-        };
+        let inline = Inline::Text { text, style: self.style };
         match self.fields.last_mut() {
             Some(f) if !f.in_result => f.instr.push_str(&inlines_to_plain_text(&[inline])),
             Some(f) => f.inlines.push(inline),
@@ -874,11 +815,7 @@ impl Assembler {
     /// style chain -> CHPX (toggles vs the style base) -> piece Prm.
     fn char_style(&self, fc: u32, char_index: usize) -> Style {
         let para_istd = self.papx.lookup(fc).map(|p| p.istd).unwrap_or(0);
-        let chpx = self
-            .chpx
-            .lookup(fc)
-            .map(|p| p.chpx.as_slice())
-            .unwrap_or(&[]);
+        let chpx = self.chpx.lookup(fc).map(|p| p.chpx.as_slice()).unwrap_or(&[]);
         let istd = chpx_istd(chpx).unwrap_or(para_istd);
         let base = self.stylesheet.get(istd).chp;
         let mut style = apply_chpx(chpx, base, base);
@@ -944,19 +881,9 @@ impl Assembler {
             // A numbered heading advances its sequence and keeps its number
             // visible - headings have no native numbering in the output.
             if let Some(label) = self.heading_label(pap) {
-                content.insert(
-                    0,
-                    Inline::Text {
-                        text: label,
-                        style: Style::PLAIN,
-                    },
-                );
+                content.insert(0, Inline::Text { text: label, style: Style::PLAIN });
             }
-            blocks.push(Block::Heading {
-                level,
-                anchor: None,
-                content,
-            });
+            blocks.push(Block::Heading { level, anchor: None, content });
             return;
         }
         // ilfo 0xF801 marks a paragraph whose list numbering is suppressed.
@@ -981,10 +908,7 @@ impl Assembler {
                 styled.flush(blocks);
                 list_run.push(ListEntry {
                     level: ilvl,
-                    key: ListKey {
-                        instance: list.lsid as u64,
-                        marker,
-                    },
+                    key: ListKey { instance: list.lsid as u64, marker },
                     number,
                     label,
                     blocks: vec![Block::Paragraph(inlines)],
@@ -1021,10 +945,7 @@ impl Assembler {
     /// CHPX points at (`sprmCPicLocation`), retaining it as an asset.
     /// Unsupported or unreachable payloads degrade with a log.
     fn picture_at(&self, fc: u32) -> Result<Option<Inline>, ConvertError> {
-        let Some(offset) = self
-            .chpx
-            .lookup(fc)
-            .and_then(|p| sprm::chpx_pic_location(&p.chpx))
+        let Some(offset) = self.chpx.lookup(fc).and_then(|p| sprm::chpx_pic_location(&p.chpx))
         else {
             return Ok(None);
         };
@@ -1047,14 +968,8 @@ impl Assembler {
             return Ok(None);
         };
         let part = format!("data/pic{offset}.{}", blip.extension);
-        let id = self
-            .assets
-            .borrow_mut()
-            .add(blip.media_type.to_string(), part, &blip.bytes)?;
-        Ok(Some(Inline::Image {
-            alt: String::new(),
-            source: ImageSource::Asset(id),
-        }))
+        let id = self.assets.borrow_mut().add(blip.media_type.to_string(), part, &blip.bytes)?;
+        Ok(Some(Inline::Image { alt: String::new(), source: ImageSource::Asset(id) }))
     }
 
     /// The visible number label of a numbered heading paragraph, with its
@@ -1072,10 +987,7 @@ impl Assembler {
             return None;
         }
         let (number, label) = self.counters.borrow_mut().next(ilfo, list, ilvl);
-        Some(format!(
-            "{} ",
-            label.unwrap_or_else(|| marker.label(number))
-        ))
+        Some(format!("{} ", label.unwrap_or_else(|| marker.label(number))))
     }
 
     fn flush_table(
@@ -1089,18 +1001,12 @@ impl Assembler {
             row.push(std::mem::take(cell_blocks));
         }
         if !row.is_empty() {
-            table_rows.push(DocRow {
-                cells: std::mem::take(row),
-                tap: None,
-            });
+            table_rows.push(DocRow { cells: std::mem::take(row), tap: None });
         }
         if table_rows.is_empty() {
             return Ok(());
         }
-        let rows = std::mem::take(table_rows)
-            .into_iter()
-            .map(DocRow::into_grid_row)
-            .collect();
+        let rows = std::mem::take(table_rows).into_iter().map(DocRow::into_grid_row).collect();
         if let Some(block) = build_edge_table(rows)? {
             blocks.push(block);
         }
@@ -1127,11 +1033,8 @@ impl DocRow {
                 let tc = tap.cells.get(k).copied().unwrap_or_default();
                 // Without a TAP boundary, a synthetic index-based edge keeps
                 // the flat column behavior.
-                let right = tap
-                    .boundaries
-                    .get(k + 1)
-                    .map(|&b| b as i64)
-                    .unwrap_or((k as i64 + 1) * 1000);
+                let right =
+                    tap.boundaries.get(k + 1).map(|&b| b as i64).unwrap_or((k as i64 + 1) * 1000);
                 let prop = CellProp {
                     merge_first: tc.horz_first,
                     merge_cont: tc.horz_cont,
@@ -1156,11 +1059,7 @@ mod tests {
         let mut levels: [LevelDef; LEVELS] = std::array::from_fn(|_| LevelDef::default());
         levels[0].marker = Some(MarkerKind::Decimal);
         levels[1].marker = Some(MarkerKind::LowerAlpha);
-        ListDef {
-            lsid,
-            levels,
-            start_override: [None; LEVELS],
-        }
+        ListDef { lsid, levels, start_override: [None; LEVELS] }
     }
 
     #[test]

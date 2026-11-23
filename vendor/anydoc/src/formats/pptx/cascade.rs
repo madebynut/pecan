@@ -19,11 +19,7 @@ pub enum Bullet {
     /// Character bullet (`a:buChar`).
     Char,
     /// Auto-numbered (`a:buAutoNum`).
-    AutoNum {
-        marker: MarkerKind,
-        start: u64,
-        wrap: NumWrap,
-    },
+    AutoNum { marker: MarkerKind, start: u64, wrap: NumWrap },
 }
 
 /// The punctuation an `ST_TextAutoNumberScheme` wraps around the ordinal.
@@ -64,11 +60,7 @@ impl TextProps {
     pub fn merge(self, over: TextProps) -> TextProps {
         TextProps {
             delta: self.delta.merge(over.delta),
-            bullet: if over.bullet == Bullet::Inherit {
-                self.bullet
-            } else {
-                over.bullet
-            },
+            bullet: if over.bullet == Bullet::Inherit { self.bullet } else { over.bullet },
         }
     }
 }
@@ -127,11 +119,7 @@ pub fn paragraph_props(ppr: &Element) -> TextProps {
             .and_then(|v| v.parse::<i64>().ok())
             .map(|v| v.clamp(1, 32767) as u64)
             .unwrap_or(1);
-        Bullet::AutoNum {
-            marker,
-            start,
-            wrap,
-        }
+        Bullet::AutoNum { marker, start, wrap }
     } else if ppr.find(ns::A, "buChar").is_some() {
         Bullet::Char
     } else {
@@ -143,16 +131,11 @@ pub fn paragraph_props(ppr: &Element) -> TextProps {
 
 /// Delta from an `a:rPr`/`a:defRPr` element's attributes.
 pub fn rpr_delta(rpr: &Element) -> StyleDelta {
-    let on_off = |name: &str| {
-        rpr.attr(ns::A, name)
-            .map(|v| matches!(v, "1" | "true" | "on"))
-    };
+    let on_off = |name: &str| rpr.attr(ns::A, name).map(|v| matches!(v, "1" | "true" | "on"));
     StyleDelta {
         bold: on_off("b"),
         italic: on_off("i"),
-        strike: rpr
-            .attr(ns::A, "strike")
-            .map(|v| matches!(v, "sngStrike" | "dblStrike")),
+        strike: rpr.attr(ns::A, "strike").map(|v| matches!(v, "sngStrike" | "dblStrike")),
         code: None,
     }
 }
@@ -171,10 +154,8 @@ pub fn collect_placeholders(sp_tree: &Element) -> Vec<Placeholder> {
         let Some(ph) = sp.first_descendant(ns::P, "ph") else {
             continue;
         };
-        let styles = parse_level_styles(
-            sp.find(ns::P, "txBody")
-                .and_then(|tx| tx.find(ns::A, "lstStyle")),
-        );
+        let styles =
+            parse_level_styles(sp.find(ns::P, "txBody").and_then(|tx| tx.find(ns::A, "lstStyle")));
         out.push(Placeholder {
             ph_type: ph.attr(ns::P, "type").unwrap_or("body").to_string(),
             idx: ph.attr(ns::P, "idx").map(str::to_string),
@@ -202,11 +183,7 @@ pub fn match_placeholder<'p>(
         .find(|p| {
             title_class(&p.ph_type) == class && (class == TitleClass::Title || p.ph_type == ph_type)
         })
-        .or_else(|| {
-            placeholders
-                .iter()
-                .find(|p| title_class(&p.ph_type) == class)
-        })
+        .or_else(|| placeholders.iter().find(|p| title_class(&p.ph_type) == class))
 }
 
 #[derive(PartialEq, Clone, Copy)]

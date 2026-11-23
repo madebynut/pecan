@@ -106,10 +106,7 @@ fn walk_elem(e: &Element, tex: &mut Tex) {
                 tex.push_group(&num);
                 tex.push_char('/');
                 tex.push_group(&den);
-            } else if e
-                .attr_any("linethickness")
-                .is_some_and(|t| matches!(t.trim(), "0" | "0px"))
-            {
+            } else if e.attr_any("linethickness").is_some_and(|t| matches!(t.trim(), "0" | "0px")) {
                 tex.push_char('{');
                 tex.push_tex(&num);
                 tex.push_macro("\\atop");
@@ -327,13 +324,8 @@ fn decorate(mark: &Element, body: Tex, over: bool, plain: bool) -> Tex {
 
 fn multiscripts(e: &Element, tex: &mut Tex) {
     let parts = args(e);
-    let Some((base, rest)) = parts.split_first() else {
-        return;
-    };
-    let split = rest
-        .iter()
-        .position(|p| p.local == "mprescripts")
-        .unwrap_or(rest.len());
+    let Some((base, rest)) = parts.split_first() else { return };
+    let split = rest.iter().position(|p| p.local == "mprescripts").unwrap_or(rest.len());
     let (post, pre) = rest.split_at(split);
     let pre = pre.get(1..).unwrap_or(&[]);
     for pair in pre.chunks(2) {
@@ -359,9 +351,7 @@ fn script_pair(tex: &mut Tex, pair: &[&Element]) {
 
 fn table(e: &Element, tex: &mut Tex) {
     tex.push_str("\\begin{matrix}");
-    let rows = e
-        .child_elems()
-        .filter(|r| matches!(r.local.as_str(), "mtr" | "mlabeledtr"));
+    let rows = e.child_elems().filter(|r| matches!(r.local.as_str(), "mtr" | "mlabeledtr"));
     for (i, row) in rows.enumerate() {
         if i > 0 {
             tex.push_str(" \\\\");

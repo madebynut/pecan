@@ -51,10 +51,7 @@ mod tests {
     #[test]
     fn join_controls_preserved() {
         assert_eq!(clean_text("می\u{200c}خواهم"), "می\u{200c}خواهم");
-        assert_eq!(
-            clean_text("👨\u{200d}👩\u{200d}👧"),
-            "👨\u{200d}👩\u{200d}👧"
-        );
+        assert_eq!(clean_text("👨\u{200d}👩\u{200d}👧"), "👨\u{200d}👩\u{200d}👧");
     }
 
     #[test]

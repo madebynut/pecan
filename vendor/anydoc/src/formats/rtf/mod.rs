@@ -41,11 +41,7 @@ fn scan_codepage(bytes: &[u8]) -> &'static encoding_rs::Encoding {
     // stops at the first match.
     let mut lexer = Lexer::new(bytes);
     while let Some(token) = lexer.next_token() {
-        if let Token::Word {
-            name: "ansicpg",
-            param: Some(cp),
-        } = token
-        {
+        if let Token::Word { name: "ansicpg", param: Some(cp) } = token {
             return codepage_encoding(cp.max(0) as u32);
         }
     }
@@ -128,11 +124,7 @@ impl Counters {
     fn next(&mut self, ls: i32, level: usize, start: u64) -> u64 {
         let level = level.min(LIST_LEVELS - 1);
         let (values, started) = self.state.entry(ls).or_default();
-        let value = if started[level] {
-            values[level].saturating_add(1)
-        } else {
-            start
-        };
+        let value = if started[level] { values[level].saturating_add(1) } else { start };
         values[level] = value;
         started[level] = true;
         for s in started.iter_mut().skip(level + 1) {
@@ -158,18 +150,10 @@ impl Counters {
                 &def.pattern,
                 marker,
                 value,
-                |l| {
-                    levels[l.min(LIST_LEVELS - 1)]
-                        .marker
-                        .unwrap_or(MarkerKind::Decimal)
-                },
+                |l| levels[l.min(LIST_LEVELS - 1)].marker.unwrap_or(MarkerKind::Decimal),
                 |l| {
                     let l = l.min(LIST_LEVELS - 1);
-                    if started[l] {
-                        values[l]
-                    } else {
-                        levels[l].start
-                    }
+                    if started[l] { values[l] } else { levels[l].start }
                 },
             )
         });
@@ -199,12 +183,7 @@ struct TextDecoder {
 
 impl TextDecoder {
     fn new(default_encoding: &'static encoding_rs::Encoding) -> Self {
-        TextDecoder {
-            default_encoding,
-            pending: Vec::new(),
-            skip: 0,
-            surrogate: None,
-        }
+        TextDecoder { default_encoding, pending: Vec::new(), skip: 0, surrogate: None }
     }
 
     /// Buffer one text byte, honoring an active `\uN` fallback skip.
@@ -310,10 +289,7 @@ struct MathState {
 
 impl MathState {
     fn new(depth: usize) -> Self {
-        MathState {
-            depth,
-            open: vec![(depth, math_elem("zone"))],
-        }
+        MathState { depth, open: vec![(depth, math_elem("zone"))] }
     }
 
     fn open_group(&mut self, depth: usize) {
@@ -337,9 +313,7 @@ impl MathState {
     /// A math control word inside a group: the first names the group, a
     /// later one is a property of it, its parameter the value.
     fn word(&mut self, name: &str, param: Option<i32>) {
-        let Some((_, elem)) = self.open.last_mut() else {
-            return;
-        };
+        let Some((_, elem)) = self.open.last_mut() else { return };
         if elem.local.is_empty() {
             elem.local = name.to_string();
             return;
@@ -698,12 +672,7 @@ impl<'a> Parser<'a> {
                         .close_bookmark(self.state.capture == Capture::Bookmark, &mut self.inlines);
                     // The pict destination finishes when the stack unwinds
                     // past its own group (inner property groups close first).
-                    if self
-                        .dest
-                        .pict
-                        .as_ref()
-                        .is_some_and(|p| self.stack.len() < p.depth)
-                    {
+                    if self.dest.pict.as_ref().is_some_and(|p| self.stack.len() < p.depth) {
                         self.finish_pict()?;
                     }
                     if let Some(math) = &mut self.dest.math {
@@ -1024,10 +993,8 @@ impl<'a> Parser<'a> {
                 if !self.state.suppress {
                     self.flush_pending();
                     self.state.capture = Capture::Pict;
-                    self.dest.pict = Some(PictState {
-                        depth: self.stack.len(),
-                        ..PictState::default()
-                    });
+                    self.dest.pict =
+                        Some(PictState { depth: self.stack.len(), ..PictState::default() });
                 }
             }
             "pngblip" => self.set_pict_format(Some(("image/png", "png"))),
@@ -1153,10 +1120,7 @@ impl<'a> Parser<'a> {
     }
 
     fn flush_pending(&mut self) {
-        let encoding = self
-            .state
-            .font
-            .and_then(|f| self.prelude.fonts.get(&f).copied());
+        let encoding = self.state.font.and_then(|f| self.prelude.fonts.get(&f).copied());
         if let Some(text) = self.decoder.take_pending(encoding) {
             self.push_text(text);
         }
@@ -1188,10 +1152,7 @@ impl<'a> Parser<'a> {
             }
             Capture::None => {
                 if !self.state.suppress {
-                    self.inlines.push(Inline::Text {
-                        text,
-                        style: self.state.style,
-                    });
+                    self.inlines.push(Inline::Text { text, style: self.state.style });
                 }
             }
         }
@@ -1213,8 +1174,7 @@ impl<'a> Parser<'a> {
 
         if self.state.in_table {
             let depth = self.state.itap.max(1);
-            self.table
-                .push_cell_paragraph(depth, self.state.block, inlines);
+            self.table.push_cell_paragraph(depth, self.state.block, inlines);
             return Ok(());
         }
         self.flush_top_table()?;
@@ -1241,23 +1201,11 @@ impl<'a> Parser<'a> {
             if let Some((key, _, number, label)) = &entry
                 && key.marker.ordered()
             {
-                let text = format!(
-                    "{} ",
-                    label.clone().unwrap_or_else(|| key.marker.label(*number))
-                );
-                content.insert(
-                    0,
-                    Inline::Text {
-                        text,
-                        style: Style::PLAIN,
-                    },
-                );
+                let text =
+                    format!("{} ", label.clone().unwrap_or_else(|| key.marker.label(*number)));
+                content.insert(0, Inline::Text { text, style: Style::PLAIN });
             }
-            self.blocks.push(Block::Heading {
-                level,
-                anchor: None,
-                content,
-            });
+            self.blocks.push(Block::Heading { level, anchor: None, content });
             return Ok(());
         }
         if let Some((key, level, number, label)) = entry {
@@ -1280,10 +1228,7 @@ impl<'a> Parser<'a> {
 
     /// A captured `\listtext` as a literal marker label: trimmed, non-empty.
     fn trimmed_label(listtext: Option<&str>) -> Option<String> {
-        listtext
-            .map(str::trim)
-            .filter(|t| !t.is_empty())
-            .map(str::to_string)
+        listtext.map(str::trim).filter(|t| !t.is_empty()).map(str::to_string)
     }
 
     #[allow(clippy::type_complexity)]
@@ -1301,24 +1246,13 @@ impl<'a> Parser<'a> {
                 } else {
                     (0, None)
                 };
-                return Some((
-                    ListKey {
-                        instance: ls as u64,
-                        marker,
-                    },
-                    level,
-                    number,
-                    label,
-                ));
+                return Some((ListKey { instance: ls as u64, marker }, level, number, label));
             }
             // No table definition behind the \ls: the captured \listtext is
             // the only surviving evidence of the real marker; carry it as
             // the item's literal label over a bullet base.
             return Some((
-                ListKey {
-                    instance: ls as u64,
-                    marker: MarkerKind::Bullet,
-                },
+                ListKey { instance: ls as u64, marker: MarkerKind::Bullet },
                 level,
                 0,
                 Self::trimmed_label(listtext),
@@ -1342,24 +1276,13 @@ impl<'a> Parser<'a> {
             } else {
                 0
             };
-            return Some((
-                ListKey {
-                    instance: u64::MAX,
-                    marker,
-                },
-                self.state.ilvl,
-                number,
-                None,
-            ));
+            return Some((ListKey { instance: u64::MAX, marker }, self.state.ilvl, number, None));
         }
         // A bare \listtext with no list state still marks a list paragraph
         // (some producers omit \ls); its text is the literal marker.
         if listtext.is_some_and(|t| !t.trim().is_empty()) {
             return Some((
-                ListKey {
-                    instance: u64::MAX - 1,
-                    marker: MarkerKind::Bullet,
-                },
+                ListKey { instance: u64::MAX - 1, marker: MarkerKind::Bullet },
                 self.state.ilvl,
                 0,
                 Self::trimmed_label(listtext),
@@ -1398,11 +1321,7 @@ impl<'a> Parser<'a> {
         self.table.collapse_nested()?;
         self.flush_top_table()?;
         self.flush_runs();
-        Ok(Document {
-            blocks: self.blocks,
-            notes: self.dest.notes,
-            assets: self.assets.assets,
-        })
+        Ok(Document { blocks: self.blocks, notes: self.dest.notes, assets: self.assets.assets })
     }
 }
 
@@ -1418,9 +1337,7 @@ mod tests {
             br"{\rtf1 \pard{\listtext 1.\tab}\ls5 one\par \pard{\listtext 2.\tab}\ls5 two\par}",
         )
         .unwrap();
-        let Block::List(list) = &doc.blocks[0] else {
-            panic!("{:?}", doc.blocks)
-        };
+        let Block::List(list) = &doc.blocks[0] else { panic!("{:?}", doc.blocks) };
         assert_eq!(list.items[0].marker_label.as_deref(), Some("1."));
         assert_eq!(list.items[1].marker_label.as_deref(), Some("2."));
     }
@@ -1429,10 +1346,7 @@ mod tests {
     fn mid_paragraph_page_and_column_breaks_keep_the_word_boundary() {
         // \page and \column carry no paragraph mark: without a break of
         // their own the text on either side would run together.
-        for src in [
-            r"{\rtf1 Alfa\page Beta\par}",
-            r"{\rtf1 Alfa\column Beta\par}",
-        ] {
+        for src in [r"{\rtf1 Alfa\page Beta\par}", r"{\rtf1 Alfa\column Beta\par}"] {
             let markdown = crate::to_markdown_bytes(src.as_bytes(), crate::Format::Rtf).unwrap();
             assert_eq!(markdown, "Alfa\\\nBeta\n", "source: {src}");
         }
@@ -1441,10 +1355,9 @@ mod tests {
     #[test]
     fn backslash_before_a_line_break_breaks_the_paragraph() {
         // The paragraph mark Cocoa's RTF writer emits instead of `\par`.
-        for src in [
-            "{\\rtf1 Alpha\\\nBeta\\\nGamma\\\n}",
-            "{\\rtf1 Alpha\\\r\nBeta\\\rGamma\\\r\n}",
-        ] {
+        for src in
+            ["{\\rtf1 Alpha\\\nBeta\\\nGamma\\\n}", "{\\rtf1 Alpha\\\r\nBeta\\\rGamma\\\r\n}"]
+        {
             let markdown = crate::to_markdown_bytes(src.as_bytes(), crate::Format::Rtf).unwrap();
             assert_eq!(markdown, "Alpha\n\nBeta\n\nGamma\n", "source: {src:?}");
         }
@@ -1498,12 +1411,7 @@ mod tests {
             br"{\rtf1 {\*\shppict{\pict\pngblip 89504e47}}{\nonshppict{\pict\wmetafile8 0102}}}",
         )
         .unwrap();
-        assert_eq!(
-            doc.assets.len(),
-            1,
-            "only the preferred picture: {:?}",
-            doc.assets
-        );
+        assert_eq!(doc.assets.len(), 1, "only the preferred picture: {:?}", doc.assets);
         assert_eq!(doc.assets[0].media_type, "image/png");
     }
 }

@@ -13,14 +13,14 @@ yanked = "deny"
 # pulled in by GPUI, the PDF and SVG stack, or the code formatter. Revisit when upstream moves.
 ignore = [
     { id = "RUSTSEC-2024-0384", reason = "instant: timing shim used by the vendored gpui-base and gpui-component" },
-    { id = "RUSTSEC-2024-0436", reason = "paste: compile-time macro used by gpui-component and pulp; no runtime code" },
+    { id = "RUSTSEC-2024-0436", reason = "paste: compile-time macro used by gpui-component; no runtime code" },
     { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile: PEM parsing in the pinned reqwest fork; Pecan loads no PEM files" },
     { id = "RUSTSEC-2026-0206", reason = "rustybuzz: text shaping in usvg, krilla and PDF export; successor harfrust needs an upstream migration" },
     { id = "RUSTSEC-2026-0192", reason = "ttf-parser: font parsing in fontdb, usvg, GPUI and mathra; successor skrifa needs an upstream migration" },
-    { id = "RUSTSEC-2026-0249", reason = "smartstring: string storage inside the swc TypeScript formatter" },
     { id = "RUSTSEC-2026-0370", reason = "zvariant: D-Bus encoding for Linux accessibility and portals through zbus" },
     { id = "RUSTSEC-2026-0371", reason = "zbus_names: D-Bus names for Linux accessibility and portals through zbus" },
     { id = "RUSTSEC-2026-0372", reason = "zvariant_derive: derive macros of zvariant; no runtime code" },
+    { id = "RUSTSEC-2026-0543", reason = "chrono: date handling in the vendored GPUI crates and in lopdf for PDF import; successors jiff and time need an upstream migration" },
 ]
 
 [licenses]

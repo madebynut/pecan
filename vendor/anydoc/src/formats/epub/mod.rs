@@ -14,9 +14,7 @@ use std::collections::{HashMap, HashSet};
 pub fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
     let pkg = RefCell::new(Package::open(bytes)?);
 
-    let container = pkg
-        .borrow_mut()
-        .required_xml_part("META-INF/container.xml")?;
+    let container = pkg.borrow_mut().required_xml_part("META-INF/container.xml")?;
     let opf_path = container
         .descendants_any("rootfile")
         .next()
@@ -30,8 +28,7 @@ pub fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
     if let Some(title) = opf.descendants_any("title").next().map(|t| t.text()) {
         let title = title.trim().to_string();
         if !title.is_empty() {
-            doc.blocks
-                .push(Block::heading(1, vec![Inline::plain(title)]));
+            doc.blocks.push(Block::heading(1, vec![Inline::plain(title)]));
         }
     }
 
@@ -95,16 +92,12 @@ pub fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
             spine_parts: &spine_parts,
         };
         // Chapter-start anchor: renders only when a link targets this chapter.
-        doc.blocks
-            .push(Block::Paragraph(vec![Inline::Anchor(chapter_path.clone())]));
-        doc.blocks
-            .extend(crate::shared::html::to_blocks(body, &css, &ctx)?);
+        doc.blocks.push(Block::Paragraph(vec![Inline::Anchor(chapter_path.clone())]));
+        doc.blocks.extend(crate::shared::html::to_blocks(body, &css, &ctx)?);
         converted += 1;
     }
     if spine_entries > 0 && converted == 0 {
-        return Err(ConvertError::malformed(
-            "no chapter in the book could be read",
-        ));
+        return Err(ConvertError::malformed("no chapter in the book could be read"));
     }
 
     doc.assets = std::mem::take(&mut assets.borrow_mut().assets);
@@ -126,9 +119,7 @@ fn chapter_stylesheet(
         match elem.local.as_str() {
             "link" => {
                 let rel = elem.attr_any("rel").unwrap_or("");
-                let is_sheet = rel
-                    .split_whitespace()
-                    .any(|r| r.eq_ignore_ascii_case("stylesheet"));
+                let is_sheet = rel.split_whitespace().any(|r| r.eq_ignore_ascii_case("stylesheet"));
                 if is_sheet && let Some(href) = elem.attr_any("href") {
                     let Ok(target) = path::resolve(chapter_path, href) else {
                         continue;
@@ -170,10 +161,7 @@ impl HtmlCtx for ChapterCtx<'_, '_> {
         }
         if let Some(fragment) = href.strip_prefix('#') {
             let fragment = path::decode_fragment(fragment);
-            return Some(LinkTarget::Anchor(scoped(
-                &self.chapter_path,
-                Some(&fragment),
-            )));
+            return Some(LinkTarget::Anchor(scoped(&self.chapter_path, Some(&fragment))));
         }
         if is_absolute_uri(href) {
             return Some(LinkTarget::External(href.to_string()));
@@ -182,9 +170,9 @@ impl HtmlCtx for ChapterCtx<'_, '_> {
         // package resource (images, downloads, non-linear content) keep
         // their relative form.
         match path::resolve(&self.chapter_path, href) {
-            Ok(target) if self.spine_parts.contains(&target.path) => Some(LinkTarget::Anchor(
-                scoped(&target.path, target.fragment.as_deref()),
-            )),
+            Ok(target) if self.spine_parts.contains(&target.path) => {
+                Some(LinkTarget::Anchor(scoped(&target.path, target.fragment.as_deref())))
+            }
             _ => Some(LinkTarget::Relative(href.to_string())),
         }
     }
@@ -235,9 +223,7 @@ mod tests {
                 format!(r#"<item id="i{i}" href="ch.xhtml" media-type="application/xhtml+xml"/>"#)
             })
             .collect();
-        let refs: String = (0..64)
-            .map(|i| format!(r#"<itemref idref="i{i}"/>"#))
-            .collect();
+        let refs: String = (0..64).map(|i| format!(r#"<itemref idref="i{i}"/>"#)).collect();
         let parts = [
             (
                 "META-INF/container.xml",
@@ -264,8 +250,7 @@ mod tests {
         ];
         let mut w = zip::ZipWriter::new(Cursor::new(Vec::new()));
         for (name, body) in &parts {
-            w.start_file(*name, zip::write::SimpleFileOptions::default())
-                .unwrap();
+            w.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
             w.write_all(body.as_bytes()).unwrap();
         }
 

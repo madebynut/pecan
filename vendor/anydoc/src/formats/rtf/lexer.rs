@@ -51,10 +51,7 @@ impl<'a> Lexer<'a> {
             // A reader treats `\` before CR or LF as a paragraph mark; the
             // trailing LF of a CRLF pair is skipped as plain-text whitespace.
             if b == b'\r' || b == b'\n' {
-                return Some(Token::Word {
-                    name: "par",
-                    param: None,
-                });
+                return Some(Token::Word { name: "par", param: None });
             }
             if b == b'\'' {
                 let pair = self.bytes.get(self.pos..)?.get(..2)?;
@@ -72,11 +69,7 @@ impl<'a> Lexer<'a> {
             return Some(Token::Symbol(b));
         }
         let start = self.pos;
-        while self
-            .bytes
-            .get(self.pos)
-            .is_some_and(u8::is_ascii_alphabetic)
-        {
+        while self.bytes.get(self.pos).is_some_and(u8::is_ascii_alphabetic) {
             self.pos += 1;
         }
         let name = std::str::from_utf8(&self.bytes[start..self.pos]).unwrap_or("");
@@ -91,9 +84,8 @@ impl<'a> Lexer<'a> {
             self.pos += 1;
         }
         if self.pos > num_start {
-            if let Ok(n) = std::str::from_utf8(&self.bytes[num_start..self.pos])
-                .unwrap_or("0")
-                .parse::<i64>()
+            if let Ok(n) =
+                std::str::from_utf8(&self.bytes[num_start..self.pos]).unwrap_or("0").parse::<i64>()
             {
                 let n = if negative { -n } else { n };
                 param = Some(n.clamp(i32::MIN as i64, i32::MAX as i64) as i32);
@@ -129,9 +121,7 @@ pub fn destination_groups<'a>(bytes: &'a [u8], name: &str) -> Vec<&'a [u8]> {
     let mut capture: Option<(usize, usize)> = None; // (depth, start_pos)
     loop {
         let before = lexer.pos;
-        let Some(token) = lexer.next_token() else {
-            break;
-        };
+        let Some(token) = lexer.next_token() else { break };
         match token {
             Token::Open => {
                 depth += 1;
@@ -186,30 +176,18 @@ mod tests {
 
     #[test]
     fn backslash_before_a_line_break_is_one_paragraph_mark() {
-        for src in [
-            b"{\\rtf1 a\\\nb}".as_slice(),
-            b"{\\rtf1 a\\\r\nb}",
-            b"{\\rtf1 a\\\rb}",
-        ] {
+        for src in [b"{\\rtf1 a\\\nb}".as_slice(), b"{\\rtf1 a\\\r\nb}", b"{\\rtf1 a\\\rb}"] {
             let mut lexer = Lexer::new(src);
             let mut pars = 0;
             let mut symbols = 0;
             while let Some(t) = lexer.next_token() {
                 match t {
-                    Token::Word {
-                        name: "par",
-                        param: None,
-                    } => pars += 1,
+                    Token::Word { name: "par", param: None } => pars += 1,
                     Token::Symbol(_) => symbols += 1,
                     _ => {}
                 }
             }
-            assert_eq!(
-                (pars, symbols),
-                (1, 0),
-                "source: {:?}",
-                String::from_utf8_lossy(src)
-            );
+            assert_eq!((pars, symbols), (1, 0), "source: {:?}", String::from_utf8_lossy(src));
         }
     }
 

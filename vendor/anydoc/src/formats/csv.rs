@@ -34,10 +34,8 @@ pub fn parse(bytes: &[u8]) -> Result<Document, ConvertError> {
                 continue;
             }
         };
-        let cells: Vec<Cell> = record
-            .iter()
-            .map(|f| Cell::from_inlines(vec![Inline::plain(clean_text(f))]))
-            .collect();
+        let cells: Vec<Cell> =
+            record.iter().map(|f| Cell::from_inlines(vec![Inline::plain(clean_text(f))])).collect();
         rows.push(cells);
     }
 
@@ -87,12 +85,8 @@ fn sniff_delimiter(text: &str) -> u8 {
         // Sample complete records (the reader is streaming, so this reads
         // only as much input as the records span): sampling physical lines
         // would cut a quoted multiline field in half.
-        let counts: Vec<usize> = reader
-            .records()
-            .map_while(Result::ok)
-            .take(20)
-            .map(|r| r.len())
-            .collect();
+        let counts: Vec<usize> =
+            reader.records().map_while(Result::ok).take(20).map(|r| r.len()).collect();
         if counts.is_empty() {
             continue;
         }
@@ -123,28 +117,17 @@ mod tests {
     #[test]
     fn quoted_fields_keep_padding() {
         let doc = parse(b"a,b\n\"  padded  \",x\n").unwrap();
-        let Block::Table(t) = &doc.blocks[0] else {
-            panic!()
-        };
-        let crate::model::CellSlot::Origin(cell) = &t.grid[1][0] else {
-            panic!()
-        };
-        let Block::Paragraph(inlines) = &cell.blocks[0] else {
-            panic!()
-        };
-        let crate::model::Inline::Text { text, .. } = &inlines[0] else {
-            panic!()
-        };
+        let Block::Table(t) = &doc.blocks[0] else { panic!() };
+        let crate::model::CellSlot::Origin(cell) = &t.grid[1][0] else { panic!() };
+        let Block::Paragraph(inlines) = &cell.blocks[0] else { panic!() };
+        let crate::model::Inline::Text { text, .. } = &inlines[0] else { panic!() };
         assert_eq!(text, "  padded  ");
     }
 
     #[test]
     fn quoted_delimiters_do_not_skew_sniffing() {
         // Semicolon-delimited with commas inside quoted fields.
-        assert_eq!(
-            sniff_delimiter("a;b;c\n\"1,5\";\"2,5\";x\n\"3,0\";y;z\n"),
-            b';'
-        );
+        assert_eq!(sniff_delimiter("a;b;c\n\"1,5\";\"2,5\";x\n\"3,0\";y;z\n"), b';');
         assert_eq!(sniff_delimiter("a,b,c\n1,2,3\n"), b',');
         assert_eq!(sniff_delimiter("a\tb\n1\t2\n"), b'\t');
     }
